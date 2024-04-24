@@ -1,0 +1,14 @@
+{
+  "smind": "smind-config.json",
+  "graphs": "graphs/",
+  "user_mng": {
+    "name": "redis",
+    "cfg": {
+      "host": "rmain",
+      "port": 6379,
+      "passwd": "",
+      "prefix": "users",
+      "path": "rmain"
+    }
+  }
+}

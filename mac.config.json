@@ -1,0 +1,14 @@
+{
+  "smind": "../deploy/smind-config-mac.json",
+  "graphs": "../deploy/graphs_mac/",
+  "user_mng": {
+    "name": "redis",
+    "cfg": {
+      "host": "localhost",
+      "port": 6381,
+      "passwd": "",
+      "prefix": "users",
+      "path": "../userdata/rmain"
+    }
+  }
+}

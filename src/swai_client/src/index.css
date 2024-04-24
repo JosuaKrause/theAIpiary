@@ -1,0 +1,170 @@
+/**
+ * Copyright (c) 2024 Josua Krause - All Rights Reserved
+ *
+ * THE CONTENTS OF THIS PROJECT ARE PROPRIETARY AND CONFIDENTIAL.
+ * UNAUTHORIZED COPYING, TRANSFERRING OR REPRODUCTION OF THE CONTENTS OF
+ * THIS PROJECT, VIA ANY MEDIUM IS STRICTLY PROHIBITED.
+ *
+ * The receipt or possession of the source code and/or any parts thereof does
+ * not convey or imply any right to use them for any purpose other than the
+ * purpose for which they were provided to you.
+ *
+ * The software is provided "AS IS", without warranty of any kind, express or
+ * implied, including but not limited to the warranties of merchantability,
+ * fitness for a particular purpose and non infringement. In no event shall the
+ * authors or copyright holders be liable for any claim, damages or other
+ * liability, whether in an action of contract, tort or otherwise, arising from,
+ * out of or in connection with the software or the use or other dealings in the
+ * software.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the software.
+ */
+/* general */
+
+* {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  line-height: 23px;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+@media (hover: none) and (max-width: 480px) {
+  * {
+    font-size: 16px;
+    line-height: 32px;
+  }
+}
+
+.error {
+  cursor: pointer;
+  color: white;
+  background-color: crimson;
+}
+
+/* links */
+
+a,
+a:visited {
+  color: black;
+}
+
+a:hover,
+a:focus {
+  color: #444;
+}
+
+/* scene */
+
+.loading {
+  filter: brightness(0.8) blur(5px);
+}
+
+/** look and feel */
+
+p {
+  margin: 0;
+}
+
+strong {
+  font-weight: bold;
+}
+
+em {
+  font-style: italic;
+}
+
+hr {
+  border-color: dimgray;
+}
+
+pre {
+  margin: 5px 0;
+  padding: 0 5px;
+  border: 1px solid silver;
+  background-color: lightgray;
+}
+
+.response-user pre {
+  background-color: lavenderblush;
+}
+
+.response-assistant pre {
+  background-color: lavender;
+}
+
+code {
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 500;
+  line-height: 15px;
+}
+
+/*******/
+
+:root {
+  --main-size: min(100vw, 50vh);
+  --main-text: white;
+  --main-background: #282c34;
+
+  --button-size: calc(var(--main-size) * 0.15);
+  --button-radius: calc(var(--main-size) * 0.075);
+  --button-text: white;
+  --button-text-hover: #8e929a;
+  --button-text-active: #7d8189;
+  --button-text-hover-lit: #d2d6de;
+  --button-text-active-lit: #c1c5cd;
+  --button-text-dim: #5b5f67;
+  --button-background: #393d45;
+  --button-hover: #4a4e56;
+  --button-active: #5b5f67;
+  --button-background-lit: #6c7078;
+  --button-hover-lit: #5b5f67;
+  --button-active-lit: #4a4e56;
+
+  --item-size: calc(var(--main-size) * 0.9);
+  --item-radius: calc(var(--main-size) * 0.075);
+  --item-radius-sm: calc(var(--main-size) * 0.025);
+  --item-padding: calc(var(--main-size) * 0.05);
+  --item-background: #393d45;
+  --item-background-dim: #334;
+  --item-shadow: #6c7078;
+  --item-lock: rgb(20, 145, 154);
+
+  --mid-top: calc(var(--main-size) * 0.06);
+
+  --mid-user-padding: calc(var(--main-size) * 0.0125);
+  --mid-user-radius: calc(var(--main-size) * 0.025);
+  --mid-user-top: calc(var(--main-size) * -0.0125);
+
+  --vote-size: calc(var(--main-size) * 0.05);
+  --vote-radius: calc(var(--main-size) * 0.025);
+  --vote-padding: calc(var(--main-size) * 0.0125);
+
+  --md-anchor: silver;
+  --md-anchor-hover: #ddd;
+  --md-size-w: calc(var(--main-size) * 0.85);
+  --md-size-h: calc(var(--main-size) * 0.8);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
+    'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
