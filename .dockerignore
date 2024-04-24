@@ -1,0 +1,14 @@
+.*
+deploy/
+data/
+notebooks/
+userdata/
+test-results/
+study/
+config.json
+test*.json
+*.rdb
+*.log
+*.csv
+requirements.docker.txt
+**/__pycache__

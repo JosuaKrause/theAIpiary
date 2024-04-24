@@ -1,0 +1,16 @@
+flake8
+flake8-commas
+flake8-isort
+isort
+mypy
+numpy
+pre-commit
+pycodestyle
+pylint
+pytest
+pytest-cov
+quick-server
+redipy
+requests
+torch
+types-requests

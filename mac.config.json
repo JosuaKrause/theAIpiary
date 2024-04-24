@@ -1,0 +1,4 @@
+{
+  "smind": "../deploy/smind-config-mac.json",
+  "graphs": "../deploy/graphs_mac/"
+}
