@@ -181,6 +181,10 @@ strong {
   font-weight: bold;
 }
 
+em {
+  font-style: italic;
+}
+
 hr {
   border-color: dimgray;
 }
