@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" type="image/png" href="icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="x-ua-compatible" content="ie=edge" />
     <title>Chat</title>
@@ -13,12 +14,20 @@
       <div class="vmain">
         <div class="response" id="response"></div>
         <div class="inputbar">
-          <input
-            type="text"
+          <textarea
             id="inputbar"
-            placeholder="Type your message..."
+            type="text"
+            rows="1"
+            dir=""
+            autocapitalize="off"
             autocomplete="off"
-          />
+            aria-autocomplete="both"
+            spellcheck="false"
+            aria-label="Type your message..."
+            autocorrect="off"
+            placeholder="Type your message..."
+            autofocus=""
+          ></textarea>
         </div>
       </div>
     </div>

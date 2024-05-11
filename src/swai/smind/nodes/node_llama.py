@@ -38,6 +38,7 @@ from swai.smind.llama_session import (
     load_messages,
     load_system_prompt,
     save_messages,
+    set_active_task,
 )
 
 
@@ -103,6 +104,7 @@ class LlamaNode(Node):
         # if not load_state(model, cache_dir):
         if True:  # pylint: disable=using-constant-test
             model.set_seed(123)
+        set_active_task(session, task_id)
         messages = load_messages(cache_dir)
         if messages is None:
             messages = load_system_prompt(cache_dir)
@@ -138,6 +140,7 @@ class LlamaNode(Node):
         save_messages(cache_dir, messages)
         # FIXME: use state
         # save_state(model, cache_dir)
+        set_active_task(session, None)
         return full_response
 
     def execute_tasks(self, state: ComputeState) -> None:

@@ -99,11 +99,37 @@ a:focus {
   justify-content: end;
 }
 
+textarea {
+  outline: none;
+}
+
+/** thinking */
+
+.thinking:before {
+  display: block;
+  font-weight: 500;
+  animation: ellipsis steps(4, end) 900ms infinite;
+  content: '\2026';
+  width: 100%;
+  float: right;
+  clear: both;
+  text-align: right;
+  translate: -5px 0;
+}
+
+@keyframes ellipsis {
+  to {
+    width: calc(100% - 2ch);
+  }
+}
+
 /** response panel */
 
 .response {
   overflow: auto;
   flex-grow: 0;
+  display: flex;
+  flex-direction: column-reverse;
 }
 
 .response-parent {
@@ -113,23 +139,71 @@ a:focus {
 }
 
 .response-message {
-  border-radius: 6px;
-  padding: 6px;
+  border-radius: 12px;
+  padding: 12px;
   margin: 3px;
 }
 
-.response-user-message {
+.response-user {
   float: left;
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 90%;
+}
+
+.response-user-message {
   text-align: left;
   background-color: blanchedalmond;
   border: 1px solid darkgoldenrod;
+  border-bottom-left-radius: 0;
+}
+
+.response-assistant {
+  float: right;
+  align-self: flex-end;
+  width: 90%;
 }
 
 .response-assistant-message {
-  float: right;
-  text-align: right;
+  text-align: left;
   background-color: lightskyblue;
   border: 1px solid cornflowerblue;
+  border-bottom-right-radius: 0;
+}
+
+/** look and feel */
+
+p {
+  margin: 0;
+}
+
+strong {
+  font-weight: bold;
+}
+
+hr {
+  border-color: dimgray;
+}
+
+pre {
+  margin: 5px 0;
+  padding: 0 5px;
+  border: 1px solid silver;
+  background-color: lightgray;
+}
+
+.response-user pre {
+  background-color: lavenderblush;
+}
+
+.response-assistant pre {
+  background-color: lavender;
+}
+
+code {
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 500;
+  line-height: 15px;
 }
 
 /** phone */

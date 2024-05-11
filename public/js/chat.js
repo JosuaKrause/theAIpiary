@@ -21,6 +21,8 @@
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the software.
  */
+import { marked } from '../lib/marked.esm.js';
+import DOMPurify from '../lib/purify.es.mjs';
 import { getElement } from './util.js';
 
 /**
@@ -73,7 +75,7 @@ export default class Chat {
     /** @type {string} */ responseId,
     /** @type {string} */ base,
   ) {
-    /** @type {HTMLInputElement} */ this._inputbar = getElement(inputbarId);
+    /** @type {HTMLTextAreaElement} */ this._inputbar = getElement(inputbarId);
     /** @type {HTMLDivElement} */ this._response = getElement(responseId);
     /** @type {string} */ this._base = base;
     /** @type {string} */ this._input = '';
@@ -81,6 +83,7 @@ export default class Chat {
     /** @type {string?} */ this._task = null;
     /** @type {number?} */ this._index = null;
     /** @type {number} */ this._response_num = 0;
+    /** @type {string} */ this._cur_msg = '';
     /** @type {ChatState} */ this._state = {
       session: this._session,
     };
@@ -140,7 +143,7 @@ export default class Chat {
       if (e.defaultPrevented) {
         return;
       }
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         if (inputbar.value === this._input) {
           return;
@@ -176,16 +179,14 @@ export default class Chat {
   }
 
   readResponse() {
-    if (!this._task) {
-      return;
-    }
-
     const readNext = async () => {
       if (!this._task) {
+        this._response.classList.remove('thinking');
         return;
       }
       this._response_num += 1;
       const response_num = this._response_num;
+      this._response.classList.add('thinking');
       const { diff, next_index: nextIndex } = await this.getChatResponse();
       if (response_num !== this._response_num) {
         return;
@@ -307,9 +308,11 @@ export default class Chat {
 
   renderMessages(/** @type {Message[]} */ messages) {
     this._response.replaceChildren();
-    messages.forEach(({ content, role }) => {
-      this.appendMessage(content, role);
-    });
+    messages
+      .filter(({ content }) => content)
+      .forEach(({ content, role }) => {
+        this.appendMessage(content, role);
+      });
   }
 
   appendMessage(/** @type {string} */ message, /** @type {Role} */ role) {
@@ -318,7 +321,7 @@ export default class Chat {
       assistant: 'response-assistant',
     };
     const className = roleMap[role];
-    const last = this._response.lastElementChild;
+    const last = this._response.firstElementChild;
     let current;
     if (last && last.classList.contains(className)) {
       current = last;
@@ -330,12 +333,18 @@ export default class Chat {
       element.classList.add(className);
       element.classList.add('response-parent');
       element.appendChild(textElement);
-      this._response.appendChild(element);
+      if (last) {
+        this._response.insertBefore(element, last);
+      } else {
+        this._response.appendChild(element);
+      }
       current = element;
+      this._cur_msg = '';
     }
+    this._cur_msg += message;
     const textBody = current.firstElementChild;
     if (textBody) {
-      textBody.textContent += message;
+      textBody.innerHTML = DOMPurify.sanitize(marked.parse(this._cur_msg));
     }
   }
 } // Chat

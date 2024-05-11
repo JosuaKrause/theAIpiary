@@ -183,12 +183,19 @@ def get_model_output(
     task_id, index = pos
     response_key = get_response_key(task_id)
 
-    def has_content() -> str | None:
-        return session.get_value(response_key, index)
+    def has_content() -> Literal[True] | str | None:
+        res = session.get_value(response_key, index)
+        if res is None:
+            return None
+        if not res:
+            return True
+        return res
 
     cur = session.wait_for_signal(response_key, has_content, timeout)
     if cur is None:
         return ("", (task_id, index))
+    if not isinstance(cur, str):
+        return ("", None)
     response: list[str] = [cur]
     while True:
         index += 1
