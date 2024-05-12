@@ -142,6 +142,8 @@ def get_interrupt_key(task_id: TaskId) -> str:
 
 
 def set_active_task(session: Session, task_id: TaskId | None) -> None:
+    # FIXME: detect active tasks that are aborted and switch over to them
+    # needs task in response api
     active_key = get_active_key()
     if task_id is None:
         session.pop_value(active_key)

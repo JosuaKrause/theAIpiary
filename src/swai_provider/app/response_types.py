@@ -48,5 +48,6 @@ ChatPromptResponse = TypedDict('ChatPromptResponse', {
 })
 ChatTextResponse = TypedDict('ChatTextResponse', {
     "diff": str,
+    "task": str | None,
     "next_index": int | None,
 })

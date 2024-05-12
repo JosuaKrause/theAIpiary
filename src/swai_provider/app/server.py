@@ -229,11 +229,13 @@ def setup(
         index = int(args["index"])
         diff, next_pos = retrieve_llama_response(session, (task_id, index))
         if next_pos is not None:
-            _, next_index = next_pos
+            task_out, next_index = next_pos
         else:
+            task_out = None
             next_index = None
         return {
             "diff": diff,
+            "task": None if task_out is None else task_out.to_parseable(),
             "next_index": next_index,
         }
 

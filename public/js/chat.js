@@ -59,6 +59,7 @@ import { getElement } from './util.js';
 /**
  * @typedef {{
  *  diff: string;
+ *  task: string?;
  *  next_index: number?;
  * }} ChatTextResponse
  */
@@ -187,7 +188,11 @@ export default class Chat {
       this._response_num += 1;
       const response_num = this._response_num;
       this._response.classList.add('thinking');
-      const { diff, next_index: nextIndex } = await this.getChatResponse();
+      const {
+        diff,
+        task,
+        next_index: nextIndex,
+      } = await this.getChatResponse();
       if (response_num !== this._response_num) {
         return;
       }
@@ -195,9 +200,7 @@ export default class Chat {
         this.appendMessage(diff, 'assistant');
       }
       this._index = nextIndex;
-      if (this._index === null || this._index === undefined) {
-        this._task = null;
-      }
+      this._task = task;
       await readNext();
     };
 
@@ -301,6 +304,7 @@ export default class Chat {
       console.error(err);
       return {
         diff: '[ERROR]',
+        task: null,
         next_index: null,
       };
     }
