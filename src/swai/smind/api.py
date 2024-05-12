@@ -29,7 +29,11 @@ from scattermind.api.loader import load_api
 from scattermind.system.base import TaskId, UserId
 from scattermind.system.io import open_readb
 from scattermind.system.names import GNamespace, UName
-from scattermind.system.response import response_ok
+from scattermind.system.response import (
+    response_ok,
+    TASK_STATUS_DONE,
+    TASK_STATUS_UNKNOWN,
+)
 from scattermind.system.session.session import Session
 
 from swai.config import Config
@@ -157,7 +161,6 @@ def start_llama_response(
         *,
         graph_profile: GraphProfile) -> TaskId:
     smind = graph_profile.get_api()
-    ns = graph_profile.get_ns()
     prev_task_id = get_active_task(session)
     if prev_task_id is not None:
         set_interrupted(session, prev_task_id)
@@ -168,6 +171,16 @@ def start_llama_response(
             except ValueError as exc:
                 raise ValueError("error computing previous response") from exc
             smind.clear_task(cur_task_id)
+    return do_enqueue(prompt, session, graph_profile=graph_profile)
+
+
+def do_enqueue(
+        prompt: str,
+        session: Session,
+        *,
+        graph_profile: GraphProfile) -> TaskId:
+    smind = graph_profile.get_api()
+    ns = graph_profile.get_ns()
     task_id = smind.enqueue_task(
         ns,
         {
@@ -183,3 +196,24 @@ def retrieve_llama_response(
         pos: ChunkPosition) -> tuple[str, ChunkPosition | None]:
     return get_model_output(
         session, pos, timeout=DEFAULT_TIMEOUT)
+
+
+def recover_llama_chat(
+        session: Session,
+        *,
+        graph_profile: GraphProfile,
+        ) -> tuple[list[VisibleMessage], TaskId | None]:
+    smind = graph_profile.get_api()
+    messages = get_visible_messages(session)
+    task_id = get_active_task(session)
+    if task_id is not None:
+        task_status = smind.get_status(task_id)
+        if task_status == TASK_STATUS_DONE:
+            set_active_task(session, None)
+            smind.clear_task(task_id)
+        elif task_status == TASK_STATUS_UNKNOWN and messages:
+            last_msg = messages[-1]
+            if last_msg["role"] == "user":
+                # NOTE: we got a task that got cleaned up
+                task_id = do_enqueue("", session, graph_profile=graph_profile)
+    return messages, task_id

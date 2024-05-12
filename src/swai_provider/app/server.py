@@ -37,10 +37,10 @@ from swai.smind.api import (
     init_llama,
     load_graph,
     load_smind,
+    recover_llama_chat,
     retrieve_llama_response,
     start_llama_response,
 )
-from swai.smind.llama_session import get_active_task, get_visible_messages
 from swai.version import get_version
 from swai_provider.app.response_types import (
     ChatInitResponse,
@@ -199,8 +199,8 @@ def setup(
     def _post_recover(_req: QSRH, rargs: ReqArgs) -> ChatRecoverResponse:
         meta = rargs["meta"]
         session: Session = meta["session"]
-        messages = get_visible_messages(session)
-        task_id = get_active_task(session)
+        messages, task_id = recover_llama_chat(
+            session, graph_profile=graph_llama)
         return {
             "messages": messages,
             "task": None if task_id is None else task_id.to_parseable(),
