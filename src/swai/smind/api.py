@@ -28,12 +28,8 @@ from scattermind.api.api import ScattermindAPI
 from scattermind.api.loader import load_api
 from scattermind.system.base import TaskId, UserId
 from scattermind.system.io import open_readb
-from scattermind.system.names import GNamespace, UName
-from scattermind.system.response import (
-    response_ok,
-    TASK_STATUS_DONE,
-    TASK_STATUS_UNKNOWN,
-)
+from scattermind.system.names import GNamespace
+from scattermind.system.response import response_ok, TASK_COMPLETE
 from scattermind.system.session.session import Session
 
 from swai.config import Config
@@ -141,13 +137,12 @@ def get_queue_stats(smind: ScattermindAPI) -> list[QueueStat]:
         return []
 
 
-USER = UserId.create(UName("test"))
-
-
 def init_llama(
+        user_id: UserId,
+        *,
         graph_profile: GraphProfile) -> tuple[Session, list[VisibleMessage]]:
     smind = graph_profile.get_api()
-    session = smind.new_session(USER, copy_from=None)
+    session = smind.new_session(user_id, copy_from=None)
     with session.get_local_folder() as cache_dir:
         msgs = load_system_prompt(cache_dir)
         save_messages(cache_dir, msgs)
@@ -208,12 +203,13 @@ def recover_llama_chat(
     task_id = get_active_task(session)
     if task_id is not None:
         task_status = smind.get_status(task_id)
-        if task_status == TASK_STATUS_DONE:
+        if task_status in TASK_COMPLETE:
             set_active_task(session, None)
             smind.clear_task(task_id)
-        elif task_status == TASK_STATUS_UNKNOWN and messages:
-            last_msg = messages[-1]
-            if last_msg["role"] == "user":
-                # NOTE: we got a task that got cleaned up
-                task_id = do_enqueue("", session, graph_profile=graph_profile)
+            task_id = None
+    if task_id is None and messages:
+        last_msg = messages[-1]
+        if last_msg["role"] == "user":
+            # NOTE: we got a task that got cleaned up before it finished
+            task_id = do_enqueue("", session, graph_profile=graph_profile)
     return messages, task_id

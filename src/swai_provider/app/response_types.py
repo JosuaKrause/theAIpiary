@@ -24,6 +24,9 @@ from swai.smind.api import QueueStat
 from swai.smind.llama_session import VisibleMessage
 
 
+LoginResponse = TypedDict('LoginResponse', {
+    "logged": bool,
+})
 VersionResponse = TypedDict('VersionResponse', {
     "app_name": str,
     "app_commit": str,
@@ -36,10 +39,12 @@ StatsResponse = TypedDict('StatsResponse', {
     "queues": list[QueueStat],
 })
 ChatInitResponse = TypedDict('ChatInitResponse', {
+    "name": str,
     "session": str,
     "messages": list[VisibleMessage],
 })
 ChatRecoverResponse = TypedDict('ChatRecoverResponse', {
+    "name": str,
     "messages": list[VisibleMessage],
     "task": str | None,
 })

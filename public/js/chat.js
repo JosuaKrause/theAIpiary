@@ -38,6 +38,7 @@ import { getElement } from './util.js';
 
 /**
  * @typedef {{
+ *  name: string;
  *  session: string;
  *  messages: Message[];
  * }} ChatInitResponse
@@ -45,6 +46,7 @@ import { getElement } from './util.js';
 
 /**
  * @typedef {{
+ *  name: string;
  *  messages: Message[];
  *  task: string?;
  * }} ChatRecoverResponse
@@ -255,6 +257,7 @@ export default class Chat {
     } catch (err) {
       console.error(err);
       return {
+        name: 'ERROR',
         messages: [],
         task: null,
       };

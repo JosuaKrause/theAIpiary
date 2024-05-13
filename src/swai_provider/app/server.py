@@ -20,12 +20,14 @@
 # all copies or substantial portions of the software.
 import sys
 import threading
-from typing import TypedDict
+from http.cookies import SimpleCookie
+from typing import cast, TypedDict
 
-from quick_server import create_server, QuickServer
+from quick_server import create_server, PreventDefaultResponse, QuickServer
 from quick_server import QuickServerRequestHandler as QSRH
 from quick_server import ReqArgs, ReqNext, Response
 from scattermind.system.base import SessionId, TaskId
+from scattermind.system.names import UName
 from scattermind.system.session.session import Session
 from scattermind.system.util import get_time_str
 
@@ -41,12 +43,16 @@ from swai.smind.api import (
     retrieve_llama_response,
     start_llama_response,
 )
+from swai.system.user.loader import load_user_manager
+from swai.system.user.manager import SessionToken
+from swai.system.user.secure import SecureContext
 from swai.version import get_version
 from swai_provider.app.response_types import (
     ChatInitResponse,
     ChatPromptResponse,
     ChatRecoverResponse,
     ChatTextResponse,
+    LoginResponse,
     StatsResponse,
     VersionResponse,
 )
@@ -123,22 +129,24 @@ def setup(
     smind_config = config["smind"]
     smind = load_smind(smind_config)
     graph_llama = load_graph(config, smind, "graph_llama.json")
+    sec_ctx = SecureContext(load_user_manager(config["user_mng"]))
 
     public_path = envload_path("PUBLIC_PATH", default="public/")
     server.bind_path("/chat/", public_path)
 
-    # def verify_token(
-    #         _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
-    #     token = rargs.get("post", {}).get("token")
-    #     if token is None:
-    #         token = rargs.get("query", {}).get("token")
-    #     if token is None:
-    #         raise KeyError("'token' not set")
-    #     user = is_valid_token(config, f"{token}")
-    #     if user is None:
-    #         return Response("invalid token provided", 401)
-    #     rargs["meta"]["user"] = user
-    #     return okay
+    def verify_session_token(
+            _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
+        cookies: dict[str, str] = cast(dict, rargs.get("cookies", {}))
+        session_token: str | None = cookies.get("session")
+        if session_token is None:
+            return Response("must be logged in", 401)
+        name = sec_ctx.get_name(session_token)
+        if name is None:
+            # FIXME: clear cookie
+            return Response("must be logged in", 401)
+        rargs["meta"]["session_token"] = session_token
+        rargs["meta"]["name"] = name
+        return okay
 
     def verify_prompt(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
@@ -155,10 +163,23 @@ def setup(
         rargs["meta"]["prompt"] = sanity_check(text)
         return okay
 
-    def verify_session(
+    def verify_session_read(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
         args = rargs["post"]
         session = smind.get_session(SessionId.parse(args["session"]))
+        user_id = smind.get_session_user(session.get_session_id())
+        session_token = rargs["meta"]["session_token"]
+        sec_ctx.ensure_can_read_chat(session_token, user_id)
+        rargs["meta"]["session"] = session
+        return okay
+
+    def verify_session_write(
+            _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
+        args = rargs["post"]
+        session = smind.get_session(SessionId.parse(args["session"]))
+        user_id = smind.get_session_user(session.get_session_id())
+        session_token: SessionToken = rargs["meta"]["session_token"]
+        sec_ctx.ensure_can_write_chat(session_token, user_id)
         rargs["meta"]["session"] = session
         return okay
 
@@ -181,33 +202,84 @@ def setup(
             "queues": get_queue_stats(smind),
         }
 
+    # *** user management ***
+
+    @server.json_post(f"{prefix}/login")
+    def _post_login(req: QSRH, rargs: ReqArgs) -> LoginResponse:
+        args = rargs["post"]
+        name = args["name"]
+        password = args["password"]
+        session_token = sec_ctx.login(UName(name), password)
+        if session_token is None:
+            return {
+                "logged": False,
+            }
+        cookie = SimpleCookie()
+        cookie["session"] = session_token
+        req.send_header("set-cookie", cookie.output())
+        return {
+            "logged": True,
+        }
+
+    @server.json_post(f"{prefix}/logout")
+    @server.middleware(verify_session_token)
+    def _post_logout(_req: QSRH, rargs: ReqArgs) -> LoginResponse:
+        session_token: SessionToken = rargs["meta"]["session_token"]
+        args = rargs["post"]
+        name = args.get("name")
+
+        if name is not None:
+            sec_ctx.logout_user(session_token, UName(name))
+        else:
+            sec_ctx.logout(session_token)
+            # FIXME: clear cookie
+        return {
+            "logged": False,
+        }
+
+    # TODO:
+    # - auto create first user
+    # - create user
+    # - reset password
+    # - list users (+reset +logout +email)
+    # - list capabilities
+    # - edit capabilities
+
     # # # SECURE # # #
-    # server.add_middleware(verify_token)
+    server.add_middleware(verify_session_token)
 
     # *** chat ***
 
     @server.json_post(f"{prefix}/new")
-    def _post_new(_req: QSRH, _rargs: ReqArgs) -> ChatInitResponse:
-        session, messages = init_llama(graph_profile=graph_llama)
+    def _post_new(_req: QSRH, rargs: ReqArgs) -> ChatInitResponse:
+        session_token: SessionToken = rargs["meta"]["session_token"]
+        name = sec_ctx.get_name(session_token)
+        if name is None:
+            raise PreventDefaultResponse(403, "operation not allowed")
+        user_id = sec_ctx.get_user_id(session_token, name)
+        session, messages = init_llama(user_id, graph_profile=graph_llama)
         return {
+            "name": name.get(),
             "session": session.get_session_id().to_parseable(),
             "messages": messages,
         }
 
     @server.json_post(f"{prefix}/recover")
-    @server.middleware(verify_session)
+    @server.middleware(verify_session_read)
     def _post_recover(_req: QSRH, rargs: ReqArgs) -> ChatRecoverResponse:
         meta = rargs["meta"]
+        name: UName = meta["name"]
         session: Session = meta["session"]
         messages, task_id = recover_llama_chat(
             session, graph_profile=graph_llama)
         return {
+            "name": name.get(),
             "messages": messages,
             "task": None if task_id is None else task_id.to_parseable(),
         }
 
     @server.json_post(f"{prefix}/prompt")
-    @server.middleware(verify_session)
+    @server.middleware(verify_session_write)
     @server.middleware(verify_prompt)
     def _post_prompt(_req: QSRH, rargs: ReqArgs) -> ChatPromptResponse:
         meta = rargs["meta"]
@@ -220,7 +292,7 @@ def setup(
         }
 
     @server.json_post(f"{prefix}/response")
-    @server.middleware(verify_session)
+    @server.middleware(verify_session_read)
     def _post_response(_req: QSRH, rargs: ReqArgs) -> ChatTextResponse:
         args = rargs["post"]
         meta = rargs["meta"]

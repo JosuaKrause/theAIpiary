@@ -24,12 +24,14 @@ from typing import cast, TypedDict
 
 from scattermind.system.io import open_reads, open_writes
 
-from swai.env import envload_path
+from swai.env import envload_int, envload_path, envload_str
+from swai.system.user.loader import UserManagerModule
 
 
 Config = TypedDict('Config', {
     "smind": str,
     "graphs": str,
+    "user_mng": UserManagerModule,
 })
 
 
@@ -49,6 +51,16 @@ def config_template() -> Config:
     return {
         "smind": "smind-config.json",
         "graphs": "graphs/",
+        "user_mng": {
+            "name": "redis",
+            "cfg": {
+                "host": "INVALID",
+                "passwd": "",
+                "path": "users",
+                "port": 6379,
+                "prefix": "users",
+            },
+        },
     }
 
 
@@ -74,6 +86,16 @@ def get_config() -> Config:
         CONFIG = {
             "smind": envload_path("SMIND_CFG"),
             "graphs": envload_path("GRAPH_PATH"),
+            "user_mng": {
+                "name": "redis",
+                "cfg": {
+                    "host": envload_str("REDIS_HOST"),
+                    "passwd": envload_str("REDIS_PW"),
+                    "path": envload_path("REDIS_PATH"),
+                    "port": envload_int("REDIS_PORT"),
+                    "prefix": envload_str("REDIS_PREFIX"),
+                },
+            },
         }
     else:
         print(f"loading config file: {config_path}")
