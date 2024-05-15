@@ -30,6 +30,7 @@ find . -type d \( \
         -path './public' -o \
         -path './models' -o \
         -path './userdata' -o \
+        -path './src/swai_client' -o \
         -path './.*' \
         \) -prune -o \( \
         -name '*.py' -o \
@@ -39,4 +40,5 @@ find . -type d \( \
     | grep -vF './.' \
     | grep -vF './public' \
     | grep -vF './models' \
-    | grep -vF './userdata'
+    | grep -vF './userdata' \
+    | grep -vF './src/swai_client'
