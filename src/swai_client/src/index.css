@@ -232,3 +232,65 @@ code {
     height: auto;
   }
 }
+
+/*******/
+
+:root {
+  --main-size: min(100vw, 50vh);
+  --main-text: white;
+  --main-background: #282c34;
+
+  --button-size: calc(var(--main-size) * 0.15);
+  --button-radius: calc(var(--main-size) * 0.075);
+  --button-text: white;
+  --button-text-hover: #8e929a;
+  --button-text-active: #7d8189;
+  --button-text-hover-lit: #d2d6de;
+  --button-text-active-lit: #c1c5cd;
+  --button-text-dim: #5b5f67;
+  --button-background: #393d45;
+  --button-hover: #4a4e56;
+  --button-active: #5b5f67;
+  --button-background-lit: #6c7078;
+  --button-hover-lit: #5b5f67;
+  --button-active-lit: #4a4e56;
+
+  --item-size: calc(var(--main-size) * 0.9);
+  --item-radius: calc(var(--main-size) * 0.075);
+  --item-radius-sm: calc(var(--main-size) * 0.025);
+  --item-padding: calc(var(--main-size) * 0.05);
+  --item-background: #393d45;
+  --item-background-dim: #334;
+  --item-shadow: #6c7078;
+  --item-lock: rgb(20, 145, 154);
+
+  --mid-top: calc(var(--main-size) * 0.06);
+
+  --mid-user-padding: calc(var(--main-size) * 0.0125);
+  --mid-user-radius: calc(var(--main-size) * 0.025);
+  --mid-user-top: calc(var(--main-size) * -0.0125);
+
+  --vote-size: calc(var(--main-size) * 0.05);
+  --vote-radius: calc(var(--main-size) * 0.025);
+  --vote-padding: calc(var(--main-size) * 0.0125);
+
+  --md-anchor: silver;
+  --md-anchor-hover: #ddd;
+  --md-size-w: calc(var(--main-size) * 0.85);
+  --md-size-h: calc(var(--main-size) * 0.8);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
+    'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
