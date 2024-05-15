@@ -11,6 +11,49 @@ on:
       - 'v*'
 
 jobs:
+  ts_pipeline:
+    name: Node CI Pipeline
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [16]
+    env:
+      ENV: CI
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install node ${{ matrix.node }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Cache node modules
+        uses: actions/cache@v3
+        with:
+          path: ui/node_modules/
+          key: v1-${{ matrix.node }}-${{ hashFiles('src/swai_client/yarn.lock') }}
+
+      - name: Yarn Install
+        run: |
+          make install-ts
+
+      - name: Unused exports (ts)
+        run: |
+          make ts-unused
+
+      - name: Lint Code (ts)
+        run: |
+          make lint-ts
+
+      - name: Test Code (ts)
+        run: |
+          make test-ts
+
+      - name: Test Build (ts)
+        run: |
+          make ts-build
+
   lints_pipeline:
     name: Lints CI Pipeline
     runs-on: ubuntu-latest

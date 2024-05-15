@@ -30,6 +30,7 @@ export LC_ALL=C
 export LANG=C
 
 PYTHON=python
+TS_ROOT=src/swai_client/
 
 build:
 	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) ./sh/build.sh
@@ -84,6 +85,12 @@ lint-flake8:
 	flake8 --verbose --select C812,C815,I001,I002,I003,I004,I005 --exclude \
 		venv,.git,.mypy_cache --show-source ./
 
+lint-ts:
+	yarn --cwd $(TS_ROOT) lint
+
+lint-ts-fix:
+	yarn --cwd $(TS_ROOT) lint --fix
+
 lint-all: \
 	lint-comment \
 	lint-emptyinit \
@@ -110,6 +117,9 @@ dockerpush:
 install:
 	PYTHON=$(PYTHON) REQUIREMENTS_PATH=$(REQUIREMENTS_PATH) ./sh/install.sh
 
+install-ts:
+	yarn --cwd $(TS_ROOT) install
+
 install-api:
 	PYTHON=$(PYTHON) MODE=api REQUIREMENTS_PATH=$(REQUIREMENTS_PATH) ./sh/install.sh
 
@@ -121,6 +131,15 @@ requirements-check:
 
 requirements-complete:
 	PYTHON=$(PYTHON) ./sh/requirements_complete.sh $(FILE)
+
+test-ts:
+	yarn --cwd $(TS_ROOT) testall
+
+ts-unused:
+	yarn --cwd $(TS_ROOT) unused
+
+ts-build:
+	yarn --cwd $(TS_ROOT) build
 
 uuid:
 	python -c "import uuid; print(f'{uuid.uuid4().hex}')"

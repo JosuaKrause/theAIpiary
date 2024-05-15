@@ -232,7 +232,7 @@ export default class Chat {
     const res = await fetch(`${this._base}/api/new`, {
       method: 'POST',
       headers: {
-        Accept: 'application/json',
+        'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({}),
@@ -246,7 +246,7 @@ export default class Chat {
       const res = await fetch(`${this._base}/api/recover`, {
         method: 'POST',
         headers: {
-          Accept: 'application/json',
+          'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -270,7 +270,7 @@ export default class Chat {
       const res = await fetch(`${this._base}/api/prompt`, {
         method: 'POST',
         headers: {
-          Accept: 'application/json',
+          'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -293,7 +293,7 @@ export default class Chat {
       const res = await fetch(`${this._base}/api/response`, {
         method: 'POST',
         headers: {
-          Accept: 'application/json',
+          'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
