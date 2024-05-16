@@ -1,6 +1,10 @@
 import { BATCH_DELAY } from './constants';
 import LRU from './LRU';
 
+export function timeout(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export type LoggerCB = (...msg: string[]) => void;
 
 export function maybeLog(

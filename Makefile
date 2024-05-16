@@ -111,6 +111,9 @@ compose:
 run-mac:
 	./sh/run_mac.sh
 
+run-ts:
+	yarn --cwd $(TS_ROOT) start
+
 dockerpush:
 	./sh/dockerpush.sh
 

@@ -21,7 +21,7 @@
 import sys
 import threading
 from http.cookies import SimpleCookie
-from typing import cast, TypedDict
+from typing import TypedDict
 
 from quick_server import create_server, PreventDefaultResponse, QuickServer
 from quick_server import QuickServerRequestHandler as QSRH
@@ -136,16 +136,17 @@ def setup(
 
     def verify_session_token(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
-        cookies: dict[str, str] = cast(dict, rargs.get("cookies", {}))
-        session_token: str | None = cookies.get("session")
-        if session_token is None:
-            return Response("must be logged in", 401)
-        name = sec_ctx.get_name(session_token)
-        if name is None:
-            # FIXME: clear cookie
-            return Response("must be logged in", 401)
-        rargs["meta"]["session_token"] = session_token
-        rargs["meta"]["name"] = name
+        # FIXME: enable security
+        # cookies: dict[str, str] = cast(dict, rargs.get("cookies", {}))
+        # session_token: str | None = cookies.get("session")
+        # if session_token is None:
+        #     return Response("must be logged in", 401)
+        # name = sec_ctx.get_name(session_token)
+        # if name is None:
+        #     # FIXME: clear cookie
+        #     return Response("must be logged in", 401)
+        # rargs["meta"]["session_token"] = session_token
+        rargs["meta"]["name"] = UName("TEST")  # name
         return okay
 
     def verify_prompt(
@@ -167,9 +168,10 @@ def setup(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
         args = rargs["post"]
         session = smind.get_session(SessionId.parse(args["session"]))
-        user_id = smind.get_session_user(session.get_session_id())
-        session_token = rargs["meta"]["session_token"]
-        sec_ctx.ensure_can_read_chat(session_token, user_id)
+        # FIXME: enable security
+        # user_id = smind.get_session_user(session.get_session_id())
+        # session_token = rargs["meta"]["session_token"]
+        # sec_ctx.ensure_can_read_chat(session_token, user_id)
         rargs["meta"]["session"] = session
         return okay
 
@@ -177,9 +179,10 @@ def setup(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
         args = rargs["post"]
         session = smind.get_session(SessionId.parse(args["session"]))
-        user_id = smind.get_session_user(session.get_session_id())
-        session_token: SessionToken = rargs["meta"]["session_token"]
-        sec_ctx.ensure_can_write_chat(session_token, user_id)
+        # FIXME: enable security
+        # user_id = smind.get_session_user(session.get_session_id())
+        # session_token: SessionToken = rargs["meta"]["session_token"]
+        # sec_ctx.ensure_can_write_chat(session_token, user_id)
         rargs["meta"]["session"] = session
         return okay
 

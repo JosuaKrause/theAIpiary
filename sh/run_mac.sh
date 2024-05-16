@@ -55,12 +55,13 @@ start_smind() {
 }
 
 start_provider() {
+    mkdir -p "userdata/swai/"
     pushd "src/"
     HISTORY_PATH="../userdata/.cmd_history" \
     CONFIG_PATH="../mac.config.json" \
     VERSION_PATH="../userdata/version.txt" \
     PUBLIC_PATH="../public/" \
-        ${PYTHON} -m swai_provider --dedicated
+        ${PYTHON} -m swai_provider --dedicated >> "../userdata/swai/swai_provider.log" 2>&1 &
     popd
 }
 
@@ -75,5 +76,6 @@ start_redis rcache 6384 &
 DEVICE="${DEVICE:-auto}"
 
 start_smind "${DEVICE}" &
+start_provider &
 
-start_provider
+make run-ts
