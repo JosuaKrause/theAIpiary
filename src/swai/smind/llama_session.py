@@ -33,6 +33,8 @@ from scattermind.system.io import (
 )
 from scattermind.system.session.session import Session
 
+from swai.smind.default_prompts import HELLO_PROMPT, SYSTEM_PROMPT
+
 
 ChunkPosition: TypeAlias = tuple[TaskId, int]
 
@@ -104,16 +106,12 @@ def load_system_prompt(cache_dir: str) -> list[ChatCompletionRequestMessage]:
         with open_reads(sys_prompt_file) as sys_in:
             system_prompt: str = sys_in.read().strip()
     else:
-        system_prompt = (
-            "You are a helpful assistant who answers questions. "
-            "You initiate the conversation by intorducing yourself and "
-            "inviting the user to ask questions.")
+        system_prompt = SYSTEM_PROMPT
     if os.path.exists(hello_prompt_file):
         with open_reads(hello_prompt_file) as hello_in:
             hello_prompt: str = hello_in.read().strip()
     else:
-        hello_prompt = (
-            "Hi, I'm swAI. How can I help you today?")
+        hello_prompt = HELLO_PROMPT
     messages: list[ChatCompletionRequestMessage] = [
         {
             "role": "system",
