@@ -34,18 +34,22 @@ import {
 
 export type ChatApiProvider = {
   response: (
-    session: SessionId,
-    task: TaskId,
+    session: Readonly<SessionId>,
+    task: Readonly<TaskId>,
     index: number,
   ) => Promise<ChatTextResponse>;
   new: () => Promise<ChatInitResponse>;
-  recover: (session: SessionId) => Promise<ChatRecoverResponse>;
-  prompt: (prompt: string, session: SessionId) => Promise<ChatPromptResponse>;
+  recover: (session: Readonly<SessionId>) => Promise<ChatRecoverResponse>;
+  prompt: (
+    prompt: Readonly<string>,
+    session: Readonly<SessionId>,
+  ) => Promise<ChatPromptResponse>;
 };
 
 export const DEFAULT_CHAT_API: ChatApiProvider = {
   response: async (session, task, index) => {
     try {
+      console.log('response', session, task, index);
       const res = await fetch(`${URL_PREFIX}/response`, {
         method: 'POST',
         headers: {
@@ -58,6 +62,11 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           index,
         }),
       });
+      if (!res.ok) {
+        throw new Error(
+          `Error in request ${res} (${res.status}): ${res.statusText}`,
+        );
+      }
       return await res.json();
     } catch (err) {
       console.error(err);
@@ -70,6 +79,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
     }
   },
   new: async () => {
+    console.log('new');
     const res = await fetch(`${URL_PREFIX}/new`, {
       method: 'POST',
       headers: {
@@ -78,9 +88,15 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
       },
       body: JSON.stringify({}),
     });
+    if (!res.ok) {
+      throw new Error(
+        `Error in request ${res} (${res.status}): ${res.statusText}`,
+      );
+    }
     return await res.json();
   },
   recover: async (session) => {
+    console.log('recover', session);
     try {
       const res = await fetch(`${URL_PREFIX}/recover`, {
         method: 'POST',
@@ -92,6 +108,11 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           session,
         }),
       });
+      if (!res.ok) {
+        throw new Error(
+          `Error in request ${res} (${res.status}): ${res.statusText}`,
+        );
+      }
       return await res.json();
     } catch (err) {
       console.error(err);
@@ -103,6 +124,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
     }
   },
   prompt: async (prompt, session) => {
+    console.log('prompt', session, prompt);
     try {
       const res = await fetch(`${URL_PREFIX}/prompt`, {
         method: 'POST',
@@ -115,6 +137,11 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           prompt,
         }),
       });
+      if (!res.ok) {
+        throw new Error(
+          `Error in request ${res} (${res.status}): ${res.statusText}`,
+        );
+      }
       return await res.json();
     } catch (err) {
       console.error(err);

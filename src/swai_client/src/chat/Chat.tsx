@@ -20,12 +20,16 @@
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the software.
  */
-import { PureComponent, ReactNode } from 'react';
+import React, { PureComponent, ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { SpecialComponents } from 'react-markdown/lib/ast-to-react';
+import { NormalComponents } from 'react-markdown/lib/complex-types';
 import { ConnectedProps, connect } from 'react-redux';
-import styled from 'styled-components';
-import { Message, TaskId } from '../api/types';
+import styled, { css } from 'styled-components';
+import { Message, Role, SessionId } from '../api/types';
 import { RootState } from '../store';
 import ChatActions from './ChatActions';
+import { setSession } from './ChatStateSlice';
 
 const VMain = styled.div`
   display: flex;
@@ -41,7 +45,36 @@ const VMain = styled.div`
   }
 `;
 
-const Response = styled.div`
+type ResponseProps = {
+  isThinking: boolean;
+};
+
+function styleResponse(isThinking: boolean) {
+  if (!isThinking) {
+    return css``;
+  }
+  return css`
+    &:before {
+      display: block;
+      font-weight: 500;
+      animation: ellipsis steps(4, end) 900ms infinite;
+      content: '\2026';
+      width: 100%;
+      float: right;
+      clear: both;
+      text-align: right;
+      translate: -5px 0;
+    }
+
+    @keyframes ellipsis {
+      to {
+        width: calc(100% - 2ch);
+      }
+    }
+  `;
+}
+
+const Response = styled.div<ResponseProps>`
   overflow: auto;
   flex-grow: 0;
   display: flex;
@@ -50,6 +83,69 @@ const Response = styled.div`
   @media (hover: none) and (max-width: 480px) {
     width: 100vw;
   }
+
+  ${({ isThinking }) => styleResponse(isThinking)}
+`;
+
+type ResponseElemProps = {
+  role: Role;
+};
+
+function styleResponseElem(role: Role) {
+  switch (role) {
+    case 'user':
+      return css`
+        float: left;
+        align-self: flex-start;
+        width: fit-content;
+        max-width: 90%;
+      `;
+    case 'assistant':
+      return css`
+        float: right;
+        align-self: flex-end;
+        width: 90%;
+      `;
+  }
+}
+
+const ResponseElem = styled.div<ResponseElemProps>`
+  width: 100%;
+  height: max-content;
+  clear: both;
+  ${({ role }) => styleResponseElem(role)}
+`;
+
+type ResponseMessageProps = {
+  role: Role;
+};
+
+function styleResponseMessage(role: Role) {
+  switch (role) {
+    case 'user':
+      return css`
+        text-align: left;
+        color: black;
+        background-color: blanchedalmond;
+        border: 1px solid darkgoldenrod;
+        border-bottom-left-radius: 0;
+      `;
+    case 'assistant':
+      return css`
+        text-align: left;
+        color: black;
+        background-color: lightskyblue;
+        border: 1px solid cornflowerblue;
+        border-bottom-right-radius: 0;
+      `;
+  }
+}
+
+const ResponseMessage = styled.div<ResponseMessageProps>`
+  border-radius: 12px;
+  padding: 12px;
+  margin: 3px;
+  ${({ role }) => styleResponseMessage(role)}
 `;
 
 const InputBar = styled.div`
@@ -68,47 +164,192 @@ const InputBar = styled.div`
 
 const InputText = styled.textarea`
   outline: none;
+  min-height: 2.08em;
+  max-height: 30vh;
+  width: 100%;
+  resize: vertical;
+`;
+
+const Link = styled.a`
+  color: var(--md-anchor);
+
+  &:visited {
+    color: var(--md-anchor);
+  }
+  &:active {
+    color: var(--md-anchor);
+  }
+  &:hover {
+    color: var(--md-anchor-hover);
+  }
 `;
 
 interface ChatProps extends ConnectChat {
   chatActions: ChatActions;
+  ready: boolean;
 }
 
 type EmptyChatProps = {
   session: undefined;
+  ready: false;
 };
 
 type ChatState = {
-  task: TaskId | undefined;
-  index: number | undefined;
-  messages: Message[];
+  messages: Readonly<Message[]>;
+  isThinking: boolean;
+};
+
+const MD_COMPONENTS: Partial<
+  Omit<NormalComponents, keyof SpecialComponents> & SpecialComponents
+> = {
+  a: ({ node: _, ...props }) => <Link {...props} />,
 };
 
 class Chat extends PureComponent<ChatProps, ChatState> {
+  private readonly inputRef: React.RefObject<HTMLTextAreaElement>;
+
   constructor(props: Readonly<ChatProps>) {
     super(props);
     this.state = {
-      task: undefined,
-      index: undefined,
       messages: [],
+      isThinking: false,
     };
+    this.inputRef = React.createRef();
   }
 
   componentDidMount(): void {
-    this.componentDidUpdate({ session: undefined }, undefined);
+    this.componentDidUpdate({ session: undefined, ready: false }, undefined);
   }
 
   componentDidUpdate(
     prevProps: Readonly<ChatProps> | EmptyChatProps,
     _prevState: Readonly<ChatState> | undefined,
-  ): void {}
+  ): void {
+    const { ready, session, chatActions } = this.props;
+    const { session: prevSession, ready: prevReady } = prevProps;
+    console.log(ready, session, prevSession);
+    if (!ready) {
+      return;
+    }
+    if (ready && ready !== prevReady) {
+      chatActions
+        .doInit(
+          session,
+          this.setMessages,
+          this.setSession,
+          this.setThinking,
+          this.appendMessage,
+        )
+        .catch((err) => {
+          console.error(err);
+        });
+    }
+    if (session && session !== prevSession && prevSession !== undefined) {
+      chatActions
+        .doInit(
+          session,
+          this.setMessages,
+          this.setSession,
+          this.setThinking,
+          this.appendMessage,
+        )
+        .catch((err) => {
+          console.error(err);
+        });
+    }
+  }
+
+  setMessages = (messages: Readonly<Message[]>) => {
+    this.setState({
+      messages,
+    });
+  };
+
+  setSession = (session: Readonly<SessionId>) => {
+    const { dispatch } = this.props;
+    dispatch(setSession({ session }));
+  };
+
+  setThinking = (isThinking: boolean) => {
+    this.setState({ isThinking });
+  };
+
+  appendMessage = (msg: Readonly<Message>) => {
+    const { messages } = this.state;
+    if (!messages.length) {
+      this.setState({ messages: [msg] });
+      return;
+    }
+    const last = messages[messages.length - 1];
+    if (last.role === msg.role) {
+      this.setState({
+        messages: [
+          ...messages.slice(0, -1),
+          {
+            role: last.role,
+            content: `${last.content}${msg.content}`,
+          },
+        ],
+      });
+    } else {
+      this.setState({
+        messages: [...messages, msg],
+      });
+    }
+  };
+
+  onTextKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = async (
+    e,
+  ) => {
+    if (e.defaultPrevented) {
+      return;
+    }
+    if (e.key !== 'Enter' || e.shiftKey) {
+      return;
+    }
+    e.preventDefault();
+    const inputText = this.inputRef.current;
+    if (inputText === null) {
+      return;
+    }
+    const { chatActions, session } = this.props;
+    const prompt = inputText.value;
+    if (!prompt || !session) {
+      return;
+    }
+    chatActions.sendMessage(
+      session,
+      prompt,
+      this.setThinking,
+      this.appendMessage,
+    );
+    inputText.value = '';
+  };
 
   render(): ReactNode {
+    const { messages, isThinking } = this.state;
+    const revMessages = [...messages].reverse();
     return (
       <VMain>
-        <Response />
+        <Response isThinking={isThinking}>
+          {revMessages.map(({ role, content }, ix) => (
+            <ResponseElem
+              key={messages.length - ix - 1}
+              role={role}>
+              <ResponseMessage role={role}>
+                <ReactMarkdown
+                  skipHtml={true}
+                  components={MD_COMPONENTS}>
+                  {content}
+                </ReactMarkdown>
+              </ResponseMessage>
+            </ResponseElem>
+          ))}
+        </Response>
         <InputBar>
           <InputText
+            ref={this.inputRef}
+            onKeyDown={this.onTextKeyDown}
             rows={1}
             dir=""
             autoCapitalize="off"
@@ -123,7 +364,7 @@ class Chat extends PureComponent<ChatProps, ChatState> {
       </VMain>
     );
   }
-} // View
+} // Chat
 
 const connector = connect((state: RootState) => ({
   session: state.chatState.currentSession,
@@ -132,334 +373,3 @@ const connector = connect((state: RootState) => ({
 export default connector(Chat);
 
 type ConnectChat = ConnectedProps<typeof connector>;
-
-// /**
-//  * @typedef {'assistant' | 'user'} Role
-//  */
-
-// /**
-//  * @typedef {{
-//  *  role: Role;
-//  *  content: string;
-//  * }} Message
-//  */
-
-// /**
-//  * @typedef {{
-//  *  name: string;
-//  *  session: string;
-//  *  messages: Message[];
-//  * }} ChatInitResponse
-//  */
-
-// /**
-//  * @typedef {{
-//  *  name: string;
-//  *  messages: Message[];
-//  *  task: string?;
-//  * }} ChatRecoverResponse
-//  */
-
-// /**
-//  * @typedef {{
-//  *  task: string?;
-//  * }} ChatPromptResponse
-//  */
-
-// /**
-//  * @typedef {{
-//  *  diff: string;
-//  *  task: string?;
-//  *  next_index: number?;
-//  * }} ChatTextResponse
-//  */
-
-// /**
-//  * @typedef {{
-//  *   session: string?;
-//  * }} ChatState
-//  */
-
-// export default class Chat {
-//   constructor(
-//     /** @type {string} */ inputbarId,
-//     /** @type {string} */ responseId,
-//     /** @type {string} */ base,
-//   ) {
-//  /** @type {HTMLTextAreaElement} */ this._inputbar = getElement(inputbarId);
-//     /** @type {HTMLDivElement} */ this._response = getElement(responseId);
-//     /** @type {string} */ this._base = base;
-//     /** @type {string} */ this._input = '';
-//     /** @type {string?} */ this._session = null;
-//     /** @type {string?} */ this._task = null;
-//     /** @type {number?} */ this._index = null;
-//     /** @type {number} */ this._response_num = 0;
-//     /** @type {string} */ this._cur_msg = '';
-//     /** @type {ChatState} */ this._state = {
-//       session: this._session,
-//     };
-//     window.addEventListener('popstate', (event) => {
-//       /** @type {ChatState} */ const state = event.state;
-//       const { session } = state;
-//       const oldSession = this._session;
-//       this._session = session;
-//       this._state = {
-//         session: this._session,
-//       };
-//       if (oldSession !== session) {
-//         this._task = null;
-//         this._index = null;
-//         this._input = '';
-//         this._inputbar.value = this._input;
-//       }
-//       this.initView();
-//     });
-
-//     this.getFromParams();
-//     this.setupInput();
-//   }
-
-//   getFromParams() {
-//     const params = new URL(window.location.href).searchParams;
-//     const session = params.get('session');
-//     if (session) {
-//       this._session = session;
-//     }
-//     this._state = {
-//       session: this._session,
-//     };
-//   }
-
-//   pushHistory() {
-//     const { session: oldSession } = this._state;
-//     const session = this._session;
-//     if (oldSession !== session) {
-//       const history = window.history;
-//       const params = new URLSearchParams();
-//       if (session) {
-//         params.set('session', session);
-//       }
-//       const url = new URL(window.location.href);
-//       url.search = params.toString();
-//       history.pushState({ session }, '', url);
-//       this._state = {
-//         session,
-//       };
-//     }
-//   }
-
-//   setupInput() {
-//     const inputbar = this._inputbar;
-//     inputbar.addEventListener('keydown', async (e) => {
-//       if (e.defaultPrevented) {
-//         return;
-//       }
-//       if (e.key === 'Enter' && !e.shiftKey) {
-//         e.preventDefault();
-//         if (inputbar.value === this._input) {
-//           return;
-//         }
-//         this._input = inputbar.value;
-//         await this.sendMessage();
-//       }
-//     });
-//   }
-
-//   initView() {
-//     setTimeout(async () => {
-//       await this.doInit();
-//     }, 0);
-//   }
-
-//   async doInit() {
-//     this._response_num = 0;
-//     if (!this._session) {
-//       const { session, messages } = await this.getChatInit();
-//       this._session = session;
-//       this._task = null;
-//       this._index = null;
-//       this.pushHistory();
-//       this.renderMessages(messages);
-//     } else {
-//       const { messages, task } = await this.getChatRecover();
-//       this.renderMessages(messages);
-//       this._task = task;
-//       this._index = 0;
-//     }
-//     this.readResponse();
-//   }
-
-//   readResponse() {
-//     const readNext = async () => {
-//       if (!this._task) {
-//         this._response.classList.remove('thinking');
-//         return;
-//       }
-//       this._response_num += 1;
-//       const response_num = this._response_num;
-//       this._response.classList.add('thinking');
-//       const {
-//         diff,
-//         task,
-//         next_index: nextIndex,
-//       } = await this.getChatResponse();
-//       if (response_num !== this._response_num) {
-//         return;
-//       }
-//       if (diff) {
-//         this.appendMessage(diff, 'assistant');
-//       }
-//       this._index = nextIndex;
-//       this._task = task;
-//       await readNext();
-//     };
-
-//     setTimeout(readNext, 0);
-//   }
-
-//   async sendMessage() {
-//     const prompt = this._input;
-//     if (!prompt) {
-//       return;
-//     }
-//     this._input = '';
-//     this._inputbar.value = '';
-//     this.appendMessage(prompt, 'user');
-//     const { task } = await this.getChatPrompt(prompt);
-//     this._task = task;
-//     this._index = 0;
-//     if (task) {
-//       this.readResponse();
-//     } else {
-//       this.appendMessage('ERROR!', 'assistant');
-//     }
-//   }
-
-//   /** @type {() => Promise<ChatInitResponse>} */
-//   async getChatInit() {
-//     const res = await fetch(`${this._base}/api/new`, {
-//       method: 'POST',
-//       headers: {
-//         'Accept': 'application/json',
-//         'Content-Type': 'application/json',
-//       },
-//       body: JSON.stringify({}),
-//     });
-//     return await res.json();
-//   }
-
-//   /** @type {() => Promise<ChatRecoverResponse>} */
-//   async getChatRecover() {
-//     try {
-//       const res = await fetch(`${this._base}/api/recover`, {
-//         method: 'POST',
-//         headers: {
-//           'Accept': 'application/json',
-//           'Content-Type': 'application/json',
-//         },
-//         body: JSON.stringify({
-//           session: this._session,
-//         }),
-//       });
-//       return await res.json();
-//     } catch (err) {
-//       console.error(err);
-//       return {
-//         name: 'ERROR',
-//         messages: [],
-//         task: null,
-//       };
-//     }
-//   }
-
-//   /** @type {(prompt: string) => Promise<ChatPromptResponse>} */
-//   async getChatPrompt(prompt) {
-//     try {
-//       const res = await fetch(`${this._base}/api/prompt`, {
-//         method: 'POST',
-//         headers: {
-//           'Accept': 'application/json',
-//           'Content-Type': 'application/json',
-//         },
-//         body: JSON.stringify({
-//           session: this._session,
-//           prompt,
-//         }),
-//       });
-//       return await res.json();
-//     } catch (err) {
-//       console.error(err);
-//       return {
-//         task: null,
-//       };
-//     }
-//   }
-
-//   /** @type {() => Promise<ChatTextResponse>} */
-//   async getChatResponse() {
-//     try {
-//       const res = await fetch(`${this._base}/api/response`, {
-//         method: 'POST',
-//         headers: {
-//           'Accept': 'application/json',
-//           'Content-Type': 'application/json',
-//         },
-//         body: JSON.stringify({
-//           session: this._session,
-//           task: this._task,
-//           index: this._index,
-//         }),
-//       });
-//       return await res.json();
-//     } catch (err) {
-//       console.error(err);
-//       return {
-//         diff: '[ERROR]',
-//         task: null,
-//         next_index: null,
-//       };
-//     }
-//   }
-
-//   renderMessages(/** @type {Message[]} */ messages) {
-//     this._response.replaceChildren();
-//     messages
-//       .filter(({ content }) => content)
-//       .forEach(({ content, role }) => {
-//         this.appendMessage(content, role);
-//       });
-//   }
-
-//   appendMessage(/** @type {string} */ message, /** @type {Role} */ role) {
-//     const roleMap = {
-//       user: 'response-user',
-//       assistant: 'response-assistant',
-//     };
-//     const className = roleMap[role];
-//     const last = this._response.firstElementChild;
-//     let current;
-//     if (last && last.classList.contains(className)) {
-//       current = last;
-//     } else {
-//       const textElement = document.createElement('div');
-//       textElement.classList.add(`${className}-message`);
-//       textElement.classList.add('response-message');
-//       const element = document.createElement('div');
-//       element.classList.add(className);
-//       element.classList.add('response-parent');
-//       element.appendChild(textElement);
-//       if (last) {
-//         this._response.insertBefore(element, last);
-//       } else {
-//         this._response.appendChild(element);
-//       }
-//       current = element;
-//       this._cur_msg = '';
-//     }
-//     this._cur_msg += message;
-//     const textBody = current.firstElementChild;
-//     if (textBody) {
-//       textBody.innerHTML = DOMPurify.sanitize(marked.parse(this._cur_msg));
-//     }
-//   }
-// } // Chat

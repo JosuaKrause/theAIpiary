@@ -957,3 +957,4 @@
 //   assertTrue(equalView(invalidView, nextInvalidView),
 //'should be no change');
 // });
+export {};

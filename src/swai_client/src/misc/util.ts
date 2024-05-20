@@ -1,4 +1,3 @@
-import { BATCH_DELAY } from './constants';
 import LRU from './LRU';
 
 export function timeout(ms: number) {
@@ -427,7 +426,7 @@ export class BlockLoader<I extends number, T> {
 
     setTimeout(() => {
       fetchRange(0);
-    }, BATCH_DELAY);
+    }, 10);
   }
 
   private waitFor(index: Readonly<I>, notify: NotifyBlockCB<T>): void {

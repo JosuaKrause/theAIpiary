@@ -676,3 +676,4 @@
 // export default connector(View);
 
 // type ConnectView = ConnectedProps<typeof connector>;
+export {};

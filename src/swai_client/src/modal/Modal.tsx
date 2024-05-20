@@ -1,5 +1,5 @@
-import { connect, ConnectedProps } from 'react-redux';
 import React, { PureComponent, ReactNode } from 'react';
+import { ConnectedProps, connect } from 'react-redux';
 import styled from 'styled-components';
 import { RootState } from '../store';
 import { ActiveModal, setModal } from './ModalStateSlice';

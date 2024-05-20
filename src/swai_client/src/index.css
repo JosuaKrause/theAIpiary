@@ -64,77 +64,8 @@ a:focus {
 
 /* scene */
 
-.hmain {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  max-width: 100vw;
-}
-
 .loading {
   filter: brightness(0.8) blur(5px);
-}
-
-/** thinking */
-
-.thinking:before {
-  display: block;
-  font-weight: 500;
-  animation: ellipsis steps(4, end) 900ms infinite;
-  content: '\2026';
-  width: 100%;
-  float: right;
-  clear: both;
-  text-align: right;
-  translate: -5px 0;
-}
-
-@keyframes ellipsis {
-  to {
-    width: calc(100% - 2ch);
-  }
-}
-
-/** response panel */
-
-.response-parent {
-  width: 100%;
-  height: max-content;
-  clear: both;
-}
-
-.response-message {
-  border-radius: 12px;
-  padding: 12px;
-  margin: 3px;
-}
-
-.response-user {
-  float: left;
-  align-self: flex-start;
-  width: fit-content;
-  max-width: 90%;
-}
-
-.response-user-message {
-  text-align: left;
-  background-color: blanchedalmond;
-  border: 1px solid darkgoldenrod;
-  border-bottom-left-radius: 0;
-}
-
-.response-assistant {
-  float: right;
-  align-self: flex-end;
-  width: 90%;
-}
-
-.response-assistant-message {
-  text-align: left;
-  background-color: lightskyblue;
-  border: 1px solid cornflowerblue;
-  border-bottom-right-radius: 0;
 }
 
 /** look and feel */
@@ -174,16 +105,6 @@ code {
   font-family: 'Courier New', Courier, monospace;
   font-weight: 500;
   line-height: 15px;
-}
-
-/** phone */
-
-@media (hover: none) and (max-width: 480px) {
-  .hmain {
-    justify-content: start;
-    align-items: start;
-    flex-direction: column-reverse;
-  }
 }
 
 /*******/

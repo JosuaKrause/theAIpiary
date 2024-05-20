@@ -28,6 +28,7 @@ cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 mkdir -p "userdata/"
 
 PYTHON="${PYTHON:-python}"
+DATE=$(date "+%Y-%m-%d")
 
 start_redis() {
     REDIS_NAME=$1
@@ -37,7 +38,8 @@ start_redis() {
     pushd "${REDIS_PATH}"
     redis-server \
         "../../deploy/redis_mac/${REDIS_NAME}.conf" \
-        --port "${REDIS_PORT}" >> "redis.log" 2>&1 &
+        --port "${REDIS_PORT}" \
+        >> "redis-${DATE}.log" 2>&1 &
     popd
 }
 
@@ -50,7 +52,8 @@ start_smind() {
         --config "../deploy/smind-config-mac.json" \
         --device "${DEVICE}" \
         worker \
-        --graph "../deploy/graphs_mac/" >> "../userdata/smind/smind.log" 2>&1 &
+        --graph "../deploy/graphs_mac/" \
+        >> "../userdata/smind/smind-${DATE}.log" 2>&1 &
     popd
 }
 
@@ -61,21 +64,22 @@ start_provider() {
     CONFIG_PATH="../mac.config.json" \
     VERSION_PATH="../userdata/version.txt" \
     PUBLIC_PATH="../public/" \
-        ${PYTHON} -m swai_provider --dedicated >> "../userdata/swai/swai_provider.log" 2>&1 &
+        ${PYTHON} -m swai_provider --dedicated \
+        >> "../userdata/swai/swai_provider-${DATE}.log" 2>&1 &
     popd
 }
 
 make -s version-file
 mv version.txt userdata/version.txt
 
-start_redis rmain 6381 &
-start_redis rbody 6382 &
-start_redis rdata 6383 &
-start_redis rcache 6384 &
+start_redis rmain 6381
+start_redis rbody 6382
+start_redis rdata 6383
+start_redis rcache 6384
 
 DEVICE="${DEVICE:-auto}"
 
-start_smind "${DEVICE}" &
-start_provider &
+start_smind "${DEVICE}"
+start_provider
 
 make run-ts

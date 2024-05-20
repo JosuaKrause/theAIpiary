@@ -23,10 +23,10 @@ import threading
 from http.cookies import SimpleCookie
 from typing import TypedDict
 
-from quick_server import create_server, PreventDefaultResponse, QuickServer
+from quick_server import create_server, QuickServer
 from quick_server import QuickServerRequestHandler as QSRH
 from quick_server import ReqArgs, ReqNext, Response
-from scattermind.system.base import SessionId, TaskId
+from scattermind.system.base import SessionId, TaskId, UserId
 from scattermind.system.names import UName
 from scattermind.system.session.session import Session
 from scattermind.system.util import get_time_str
@@ -98,6 +98,8 @@ def setup(
     prefix = "/api"
 
     server.suppress_noise = True
+
+    server.register_shutdown()
 
     def report_slow_requests(
             method_str: str, path: str, duration: float) -> None:
@@ -254,12 +256,14 @@ def setup(
     # *** chat ***
 
     @server.json_post(f"{prefix}/new")
-    def _post_new(_req: QSRH, rargs: ReqArgs) -> ChatInitResponse:
-        session_token: SessionToken = rargs["meta"]["session_token"]
-        name = sec_ctx.get_name(session_token)
-        if name is None:
-            raise PreventDefaultResponse(403, "operation not allowed")
-        user_id = sec_ctx.get_user_id(session_token, name)
+    def _post_new(_req: QSRH, _rargs: ReqArgs) -> ChatInitResponse:
+        # session_token: SessionToken = rargs["meta"]["session_token"]
+        # name = sec_ctx.get_name(session_token)
+        # if name is None:
+        #     raise PreventDefaultResponse(403, "operation not allowed")
+        name = UName("test")
+        user_id = UserId.create(name)
+        # user_id = sec_ctx.get_user_id(session_token, name)
         session, messages = init_llama(user_id, graph_profile=graph_llama)
         return {
             "name": name.get(),

@@ -308,3 +308,4 @@
 // export default connector(UserMenu);
 
 // type ConnectUser = ConnectedProps<typeof connector>;
+export {};

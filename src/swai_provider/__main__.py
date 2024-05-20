@@ -1,6 +1,7 @@
 import argparse
 import traceback
 
+from quick_server import setup_shutdown
 from redipy.util import python_module
 
 from swai_provider.app.server import (
@@ -40,6 +41,7 @@ def run() -> None:
     print(f"app commit: {versions['commit']}")
     print(f"deploy time: {versions['deploy_time']}")
     print(f"start time: {versions['start_time']}")
+    setup_shutdown()
     try:
         server, prefix = setup_server(
             addr=args.address,

@@ -221,3 +221,4 @@
 // export default connector(Draft);
 
 // type ConnectDraft = ConnectedProps<typeof connector>;
+export {};
