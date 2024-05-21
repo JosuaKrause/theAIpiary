@@ -135,7 +135,9 @@ def setup(
     sec_ctx = SecureContext(load_user_manager(config["user_mng"]))
 
     if envload_bool("BOOTSTRAP_USERS", default=False):
-        pass  # FIXME: create admin if no users
+        admin_reset_token = sec_ctx.maybe_create_admin()
+        if admin_reset_token is not None:
+            print(f"user 'admin' created! reset token: {admin_reset_token}")
 
     public_path = envload_path("PUBLIC_PATH", default="public/")
     server.bind_path("/chat/", public_path)

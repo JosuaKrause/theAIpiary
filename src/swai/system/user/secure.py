@@ -34,6 +34,7 @@ from swai.system.user.manager import (
     CAP_RESET_OTHER_PW,
     CAP_RESET_OWN_PW,
     CAP_WRITE_CHAT,
+    CAPABILITIES,
     CapabilityName,
     SessionToken,
     UserManager,
@@ -215,3 +216,18 @@ class SecureContext:
             own_capability=CAP_CHANGE_CAPABILITIES,
             admin_capability=CAP_CHANGE_CAPABILITIES)
         return self._user_mng.list_capabilities(name)
+
+    def list_users(self, who: SessionToken) -> list[UName]:
+        self.ensure_can_act(who, None, admin_capability=CAP_LIST_USERS)
+        return list(self._user_mng.list_users())
+
+    def maybe_create_admin(self) -> str | None:
+        user_mng = self._user_mng
+        if any(True for _ in user_mng.list_users()):
+            return None
+        name = UName("admin")
+        if not user_mng.create_user(name, "-"):
+            return None
+        for cap in CAPABILITIES:
+            user_mng.set_capability(name, cap, has=True)
+        return user_mng.generate_reset_token(name)
