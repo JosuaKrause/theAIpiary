@@ -1,5 +1,4 @@
 import React, { FormEventHandler, PureComponent } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { Password, UserName } from '../api/types';
 import UserActions from './UserActions';
@@ -72,17 +71,21 @@ export default class Login extends PureComponent<LoginProps, LoginState> {
   ) {
     const nameInput = this.nameRef.current;
     if (nameInput) {
-      const [params, setParams] = useSearchParams();
+      const params = new URL(window.location.href).searchParams;
       const user = params.get('user');
       if (user) {
         nameInput.value = user;
-        params.delete('user');
-        setParams(params, { replace: true });
+        const newParams = new URLSearchParams(params);
+        newParams.delete('user');
+        const url = new URL(window.location.href);
+        url.search = newParams.toString();
+        history.replaceState(history.state, '', url);
       }
     }
   }
 
-  handleSubmit: FormEventHandler<HTMLFormElement> = () => {
+  handleSubmit: FormEventHandler<HTMLFormElement> = (e) => {
+    e.preventDefault();
     const nameInput = this.nameRef.current;
     const passwordInput = this.passwordRef.current;
     if (!nameInput || !passwordInput) {
@@ -92,9 +95,8 @@ export default class Login extends PureComponent<LoginProps, LoginState> {
     const password = passwordInput.value as Password;
     const { userActions } = this.props;
     userActions.login(userName, password, (user) => {
-      const navigate = useNavigate();
       if (user) {
-        navigate('/chat');
+        window.location.href = '/chat';
       }
     });
   };

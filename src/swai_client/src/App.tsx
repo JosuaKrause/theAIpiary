@@ -1,10 +1,6 @@
 import { PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
-import {
-  Route,
-  BrowserRouter as Router,
-  useSearchParams,
-} from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import styled from 'styled-components';
 import { SessionId } from './api/types';
 import Chat from './chat/Chat';
@@ -12,7 +8,7 @@ import ChatActions from './chat/ChatActions';
 import { setSession } from './chat/ChatStateSlice';
 import { RootState } from './store';
 import Login from './users/Login';
-import PasswordReset from './users/PasswordReset';
+import ResetPassword from './users/ResetPassword';
 import UserActions from './users/UserActions';
 
 const Main = styled.div`
@@ -73,7 +69,7 @@ class App extends PureComponent<AppProps, AppState> {
   componentDidMount(): void {
     const { dispatch } = this.props;
     const { ready } = this.state;
-    const [params] = useSearchParams();
+    const params = new URL(window.location.href).searchParams;
     const session = params.get('session') as SessionId | null;
     console.log(ready, session);
     if (session) {
@@ -97,9 +93,13 @@ class App extends PureComponent<AppProps, AppState> {
       }
     } else if (session !== prevSession) {
       const history = window.history;
-      const params = new URLSearchParams();
+      const params = new URLSearchParams(
+        new URL(window.location.href).searchParams,
+      );
       if (session) {
         params.set('session', `${session}`);
+      } else {
+        params.delete('session');
       }
       const url = new URL(window.location.href);
       url.search = params.toString();
@@ -116,25 +116,27 @@ class App extends PureComponent<AppProps, AppState> {
     return (
       <Main>
         <HMain>
-          <Router>
-            <Route
-              path="/chat"
-              element={
-                <Chat
-                  ready={ready}
-                  chatActions={this.chatActions}
-                />
-              }
-            />
-            <Route
-              path="/login"
-              element={<Login userActions={this.userActions} />}
-            />
-            <Route
-              path="/password-reset"
-              element={<PasswordReset userActions={this.userActions} />}
-            />
-          </Router>
+          <BrowserRouter>
+            <Routes>
+              <Route
+                path="/chat"
+                element={
+                  <Chat
+                    ready={ready}
+                    chatActions={this.chatActions}
+                  />
+                }
+              />
+              <Route
+                path="/login"
+                element={<Login userActions={this.userActions} />}
+              />
+              <Route
+                path="/reset-password"
+                element={<ResetPassword userActions={this.userActions} />}
+              />
+            </Routes>
+          </BrowserRouter>
         </HMain>
       </Main>
     );

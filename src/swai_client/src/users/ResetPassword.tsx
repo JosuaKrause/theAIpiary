@@ -1,5 +1,4 @@
 import React, { FormEventHandler, PureComponent } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { Password, ResetToken } from '../api/types';
 import UserActions from './UserActions';
@@ -18,7 +17,7 @@ const VMain = styled.div`
   }
 `;
 
-const PasswordResetInputText = styled.input`
+const ResetPasswordInputText = styled.input`
   appearance: none;
   border-radius: var(--item-radius);
   padding: var(--item-padding);
@@ -27,7 +26,7 @@ const PasswordResetInputText = styled.input`
   border-bottom-right-radius: 0;
 `;
 
-const PasswordResetSubmit = styled.input`
+const ResetPasswordSubmit = styled.input`
   appearance: none;
   border-radius: var(--item-radius);
   border-left-style: none;
@@ -46,28 +45,30 @@ const PasswordResetSubmit = styled.input`
   }
 `;
 
-type PasswordResetProps = {
+type ResetPasswordProps = {
   userActions: UserActions;
 };
-type PasswordResetState = Record<string, void>;
+type ResetPasswordState = Record<string, void>;
 
-export default class PasswordReset extends PureComponent<
-  PasswordResetProps,
-  PasswordResetState
+export default class ResetPassword extends PureComponent<
+  ResetPasswordProps,
+  ResetPasswordState
 > {
   private readonly newPasswordRef: React.RefObject<HTMLInputElement>;
   private readonly confirmPasswordRef: React.RefObject<HTMLInputElement>;
 
-  constructor(props: Readonly<PasswordResetProps>) {
+  constructor(props: Readonly<ResetPasswordProps>) {
     super(props);
     this.state = {};
     this.newPasswordRef = React.createRef();
     this.confirmPasswordRef = React.createRef();
   }
 
-  handleSubmit: FormEventHandler<HTMLFormElement> = () => {
-    const [params] = useSearchParams();
+  handleSubmit: FormEventHandler<HTMLFormElement> = (e) => {
+    e.preventDefault();
+    const params = new URL(window.location.href).searchParams;
     const resetToken = params.get('token') as ResetToken | undefined;
+    console.log(resetToken);
     if (!resetToken) {
       return;
     }
@@ -81,11 +82,12 @@ export default class PasswordReset extends PureComponent<
     if (newPassword !== confirmPassword) {
       return;
     }
+    console.log(resetToken, newPassword, confirmPassword);
     const { userActions } = this.props;
     userActions.changePassword(resetToken, newPassword, (user) => {
-      const navigate = useNavigate();
+      console.log(user);
       if (user) {
-        navigate(`/login?user=${user.name}`);
+        window.location.href = `/login?user=${user.name}`;
       }
     });
   };
@@ -96,7 +98,7 @@ export default class PasswordReset extends PureComponent<
         <form onSubmit={this.handleSubmit}>
           <label>
             New Password:&nbsp;
-            <PasswordResetInputText
+            <ResetPasswordInputText
               autoComplete="new-password"
               name="new-password"
               type="password"
@@ -105,14 +107,14 @@ export default class PasswordReset extends PureComponent<
           </label>
           <label>
             Confirm Password:&nbsp;
-            <PasswordResetInputText
+            <ResetPasswordInputText
               autoComplete="new-password"
               name="confirm-password"
               type="password"
               ref={this.confirmPasswordRef}
             />
           </label>
-          <PasswordResetSubmit
+          <ResetPasswordSubmit
             type="submit"
             value="Login"
           />
@@ -120,4 +122,4 @@ export default class PasswordReset extends PureComponent<
       </VMain>
     );
   }
-} // PasswordReset
+} // ResetPassword

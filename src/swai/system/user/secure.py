@@ -103,9 +103,7 @@ class SecureContext:
 
     def logout_user(self, who: SessionToken, name: UName) -> None:
         self.ensure_can_act(who, name, admin_capability=CAP_LOGOUT_OTHER_USER)
-        user_mng = self._user_mng
-        for session_token in user_mng.get_sessions_for_user(name):
-            user_mng.logout(session_token)
+        self.force_logout_user(name)
 
     def get_active_users(
             self, who: SessionToken) -> Iterable[tuple[UName, bool]]:
@@ -221,7 +219,12 @@ class SecureContext:
         self.ensure_can_act(who, None, admin_capability=CAP_LIST_USERS)
         return list(self._user_mng.list_users())
 
-    def maybe_create_admin(self) -> str | None:
+    def force_logout_user(self, name: UName) -> None:
+        user_mng = self._user_mng
+        for session_token in user_mng.get_sessions_for_user(name):
+            user_mng.logout(session_token)
+
+    def force_maybe_create_admin(self) -> str | None:
         user_mng = self._user_mng
         if any(True for _ in user_mng.list_users()):
             return None

@@ -109,7 +109,7 @@ compose:
 	./sh/compose.sh
 
 run-mac:
-	./sh/run_mac.sh
+	BOOTSTRAP_USERS=$(BOOTSTRAP_USERS) ./sh/run_mac.sh
 
 run-ts:
 	yarn --cwd $(TS_ROOT) start

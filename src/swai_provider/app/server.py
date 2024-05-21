@@ -135,7 +135,7 @@ def setup(
     sec_ctx = SecureContext(load_user_manager(config["user_mng"]))
 
     if envload_bool("BOOTSTRAP_USERS", default=False):
-        admin_reset_token = sec_ctx.maybe_create_admin()
+        admin_reset_token = sec_ctx.force_maybe_create_admin()
         if admin_reset_token is not None:
             print(f"user 'admin' created! reset token: {admin_reset_token}")
 
@@ -296,13 +296,12 @@ def setup(
 
     @server.json_post(f"{prefix}/reset_password")
     def _post_reset_password(_req: QSRH, rargs: ReqArgs) -> LoginResponse:
-        user_session: SessionToken = rargs["meta"]["user_session"]
         args = rargs["post"]
         password = args["password"]
         reset_token = args["reset_token"]
         user_name = sec_ctx.set_password(password, reset_token)
         if user_name is not None:
-            sec_ctx.logout_user(user_session, user_name)
+            sec_ctx.force_logout_user(user_name)
         return {
             "user_name": None if user_name is None else user_name.get(),
             "logged": False,
