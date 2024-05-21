@@ -68,7 +68,6 @@ export default class ResetPassword extends PureComponent<
     e.preventDefault();
     const params = new URL(window.location.href).searchParams;
     const resetToken = params.get('token') as ResetToken | undefined;
-    console.log(resetToken);
     if (!resetToken) {
       return;
     }
@@ -82,10 +81,8 @@ export default class ResetPassword extends PureComponent<
     if (newPassword !== confirmPassword) {
       return;
     }
-    console.log(resetToken, newPassword, confirmPassword);
     const { userActions } = this.props;
     userActions.changePassword(resetToken, newPassword, (user) => {
-      console.log(user);
       if (user) {
         window.location.href = `/login?user=${user.name}`;
       }

@@ -227,7 +227,6 @@ class Chat extends PureComponent<ChatProps, ChatState> {
   ): void {
     const { ready, session, chatActions } = this.props;
     const { session: prevSession, ready: prevReady } = prevProps;
-    console.log(ready, session, prevSession);
     if (!ready) {
       return;
     }

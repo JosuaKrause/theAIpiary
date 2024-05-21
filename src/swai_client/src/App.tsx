@@ -71,7 +71,6 @@ class App extends PureComponent<AppProps, AppState> {
     const { ready } = this.state;
     const params = new URL(window.location.href).searchParams;
     const session = params.get('session') as SessionId | null;
-    console.log(ready, session);
     if (session) {
       dispatch(setSession({ session }));
     } else if (!ready) {
@@ -86,7 +85,6 @@ class App extends PureComponent<AppProps, AppState> {
     const { ready } = this.state;
     const { session } = this.props;
     const { session: prevSession } = prevProps;
-    console.log(ready, session);
     if (!ready) {
       if (session) {
         this.setState({ ready: true });

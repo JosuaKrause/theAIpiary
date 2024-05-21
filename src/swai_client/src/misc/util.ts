@@ -2,27 +2,6 @@ export function timeout(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export type LoggerCB = (...msg: string[]) => void;
-
-export function maybeLog(
-  logger: LoggerCB | undefined,
-  text: string,
-): LoggerCB {
-  return logger !== undefined ? amend(logger, text) : (..._) => undefined;
-}
-
-export function amend(logger: LoggerCB, text: string): LoggerCB {
-  return (...msg) => logger(text, ...msg);
-}
-
-export function num<T extends number>(value: Readonly<T>): number {
-  return value as unknown as number;
-}
-
-export function str<T extends string>(value: Readonly<T>): Readonly<string> {
-  return value as unknown as string;
-}
-
 export function range(from: number, to?: number): number[] {
   if (to === undefined) {
     to = from;
@@ -40,36 +19,6 @@ export function union<K, V>(left: Map<K, V>, right: Map<K, V>): Map<K, V> {
   );
 }
 
-export function detectSlowCallback(
-  obj: any,
-  onSlow: (e: any) => void,
-): () => void {
-  let done = false;
-  setTimeout(() => {
-    if (done) {
-      return;
-    }
-    setTimeout(() => {
-      if (done) {
-        return;
-      }
-      const msg = `slow callback detected with: ${debugJSON(obj)}`;
-      onSlow(msg);
-    }, 900);
-  }, 100);
-  return () => {
-    done = true;
-  };
-}
-
-/* istanbul ignore next */
-export function errHnd(e: any): void {
-  if (process.env.JEST_WORKER_ID !== undefined) {
-    assertFail(e);
-  }
-  console.error(e);
-}
-
 export function toJson(obj: any): string {
   return JSON.stringify(obj, (_key, value) => {
     if (value instanceof Set) {
@@ -77,27 +26,6 @@ export function toJson(obj: any): string {
     }
     return value;
   });
-}
-
-const UNITS: readonly [Readonly<string>, number, number][] = [
-  ['k', 1000, 1000],
-  ['M', 1000, 1000],
-];
-
-export function toReadableNumber(num: number): string {
-  if (num < 0) {
-    return `-${toReadableNumber(-num)}`;
-  }
-  let unit = '';
-  let cur = num;
-  let ix = 0;
-  while (ix < UNITS.length && cur >= UNITS[ix][2]) {
-    const [curUnit, curMul, _] = UNITS[ix];
-    unit = curUnit;
-    cur /= curMul;
-    ix += 1;
-  }
-  return `${cur.toPrecision(3).replace(/(?:\.0+|(\.\d+?)0+)$/, '$1')}${unit}`;
 }
 
 export function assertFail(e: any): never {
@@ -153,11 +81,7 @@ function stringify(obj: any, space: string): string {
   );
 }
 
-export function debugJSON(obj: any): string {
-  return stringify(obj, '  ');
-}
-
-export function safeStringify(obj: any): string {
+function safeStringify(obj: any): string {
   return stringify(obj, '');
 }
 

@@ -5,14 +5,14 @@ type UserState = {
   currentUser: Readonly<User> | undefined;
 };
 
-type SetAction = {
-  payload: {
-    user: Readonly<User> | undefined;
-  };
-};
+// type SetAction = {
+//   payload: {
+//     user: Readonly<User> | undefined;
+//   };
+// };
 
 type UserReducers = {
-  setUser: (state: UserState, action: SetAction) => void;
+  // setUser: (state: UserState, action: SetAction) => void;
 };
 
 const userStateSlice = createSlice<UserState, UserReducers, string>({
@@ -21,13 +21,13 @@ const userStateSlice = createSlice<UserState, UserReducers, string>({
     currentUser: undefined,
   },
   reducers: {
-    setUser: (state, action) => {
-      const { user } = action.payload;
-      state.currentUser = user;
-    },
+    // setUser: (state, action) => {
+    //   const { user } = action.payload;
+    //   state.currentUser = user;
+    // },
   },
 });
 
-export const { setUser } = userStateSlice.actions;
+// export const { setUser } = userStateSlice.actions;
 
 export default userStateSlice.reducer;

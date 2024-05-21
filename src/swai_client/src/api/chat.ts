@@ -50,7 +50,6 @@ export type ChatApiProvider = {
 export const DEFAULT_CHAT_API: ChatApiProvider = {
   response: async (session, task, index) => {
     try {
-      console.log('response', session, task, index);
       const res = await fetch(`${URL_PREFIX}/response`, {
         method: 'POST',
         headers: {
@@ -89,7 +88,6 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
     }
   },
   new: async () => {
-    console.log('new');
     const res = await fetch(`${URL_PREFIX}/new`, {
       method: 'POST',
       headers: {
@@ -111,7 +109,6 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
     };
   },
   recover: async (session) => {
-    console.log('recover', session);
     try {
       const res = await fetch(`${URL_PREFIX}/recover`, {
         method: 'POST',
@@ -139,7 +136,6 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
     }
   },
   prompt: async (prompt, session) => {
-    console.log('prompt', session, prompt);
     try {
       const res = await fetch(`${URL_PREFIX}/prompt`, {
         method: 'POST',
