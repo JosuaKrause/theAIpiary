@@ -1,5 +1,3 @@
-import LRU from './LRU';
-
 export function timeout(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -64,39 +62,12 @@ export function detectSlowCallback(
   };
 }
 
-export type OnCacheMiss = (() => void) | undefined;
-type HasCacheMiss = () => boolean;
-
-export function reportCacheMiss(onCacheMiss: OnCacheMiss): void {
-  if (onCacheMiss !== undefined) {
-    onCacheMiss();
-  }
-}
-
-export function cacheHitProbe(): {
-  onCacheMiss: OnCacheMiss;
-  hasCacheMiss: HasCacheMiss;
-} {
-  let cacheMiss = false;
-  return {
-    onCacheMiss: () => {
-      cacheMiss = true;
-    },
-    hasCacheMiss: () => cacheMiss,
-  };
-}
-
 /* istanbul ignore next */
 export function errHnd(e: any): void {
   if (process.env.JEST_WORKER_ID !== undefined) {
     assertFail(e);
   }
   console.error(e);
-}
-
-/* istanbul ignore next */
-export function json(resp: Response): Promise<any> {
-  return resp.json();
 }
 
 export function toJson(obj: any): string {
@@ -335,135 +306,3 @@ export class SafeSet<V> {
     return this.setValues.values();
   }
 } // SafeSet
-
-type BlockIndex = number & { _blockIndex: void };
-
-export type BlockResponse<I extends number, T> = {
-  values: Readonly<T[]>;
-  next: Readonly<I>;
-};
-type BlockLoading<I extends number, T> = (
-  offset: Readonly<I>,
-  limit: number,
-) => Promise<BlockResponse<I, T>>;
-type NotifyBlockCB<T> = (value: T) => void;
-
-export class BlockLoader<I extends number, T> {
-  private readonly loader: BlockLoading<I, T>;
-  private readonly defaultValue: Readonly<T>;
-  private readonly blockSize: Readonly<number>;
-
-  private readonly cache: LRU<Readonly<I>, Readonly<T>>;
-  private readonly listeners: Map<Readonly<I>, NotifyBlockCB<T>[]>;
-  private readonly activeBlocks: Set<Readonly<BlockIndex>>;
-
-  constructor(
-    maxCacheSize: Readonly<number>,
-    blockSize: Readonly<number>,
-    defaultValue: Readonly<T>,
-    loader: BlockLoading<I, T>,
-  ) {
-    this.loader = loader;
-    this.defaultValue = defaultValue;
-    this.blockSize = blockSize;
-    this.cache = new LRU(maxCacheSize);
-    this.listeners = new Map();
-    this.activeBlocks = new Set<BlockIndex>();
-  }
-
-  private getBlock(index: Readonly<I>): BlockIndex {
-    return Math.floor(num(index) / this.blockSize) as BlockIndex;
-  }
-
-  private toIndex(offset: Readonly<number>, block: Readonly<BlockIndex>): I {
-    return (num(block) * this.blockSize + offset) as I;
-  }
-
-  private requestIndex(index: Readonly<I>): void {
-    this.fetchBlock(this.getBlock(index));
-  }
-
-  private fetchBlock(block: Readonly<BlockIndex>): void {
-    if (this.activeBlocks.has(block)) {
-      return;
-    }
-    this.activeBlocks.add(block);
-
-    const finish = () => {
-      this.activeBlocks.delete(block);
-    };
-
-    const fetchRange = (blockOffset: Readonly<number>): void => {
-      const fromOffset = this.toIndex(blockOffset, block);
-      const remainCount = this.blockSize - blockOffset;
-      this.loader(fromOffset, remainCount).then(
-        (obj: BlockResponse<I, T>) => {
-          const { values, next } = obj;
-          const curCount = num(next) - fromOffset;
-          const count = curCount > 0 ? curCount : remainCount;
-          range(count).forEach((curOffset) => {
-            const extIndex = (fromOffset + curOffset) as I;
-            const cur =
-              curOffset < values.length
-                ? values[curOffset]
-                : this.defaultValue;
-            this.cache.set(extIndex, cur);
-            this.note(extIndex);
-          });
-          if (count < remainCount) {
-            fetchRange(blockOffset + count);
-          } else {
-            finish();
-          }
-        },
-        /* istanbul ignore next */
-        (e) => {
-          finish();
-          errHnd(e);
-        },
-      );
-    };
-
-    setTimeout(() => {
-      fetchRange(0);
-    }, 10);
-  }
-
-  private waitFor(index: Readonly<I>, notify: NotifyBlockCB<T>): void {
-    let notes = this.listeners.get(index);
-    /* istanbul ignore else */
-    if (notes === undefined) {
-      notes = [];
-      this.listeners.set(index, notes);
-    }
-    notes.push(notify);
-    this.note(index);
-  }
-
-  private note(index: Readonly<I>): void {
-    const val = this.cache.get(index);
-    if (val !== undefined) {
-      const notes = this.listeners.get(index);
-      if (notes !== undefined) {
-        this.listeners.delete(index);
-        notes.forEach((cur) => cur(val));
-      }
-    }
-  }
-
-  async get(index: Readonly<I>, ocm: OnCacheMiss): Promise<T> {
-    const res = this.cache.get(index);
-    if (res !== undefined) {
-      return res;
-    }
-    reportCacheMiss(ocm);
-    return new Promise((resolve) => {
-      this.waitFor(index, resolve);
-      this.requestIndex(index);
-    });
-  }
-
-  clear(): void {
-    this.cache.clear();
-  }
-} // BlockLoader

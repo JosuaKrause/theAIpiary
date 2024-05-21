@@ -62,7 +62,7 @@ export type ChatTextResponse = {
   nextIndex: number | undefined;
 };
 
-export type UserCapabilities = {
+type UserCapabilities = {
   changeCapabilities: Readonly<boolean>;
   resetOwnPassword: Readonly<boolean>;
   resetOtherPassword: Readonly<boolean>;
@@ -101,7 +101,7 @@ export type PasswordResetTokenResponse = {
   resetToken: Readonly<ResetToken>;
 };
 
-export const NO_CAPABILITIES: Readonly<UserCapabilities> = {
+const NO_CAPABILITIES: Readonly<UserCapabilities> = {
   changeCapabilities: false,
   resetOwnPassword: false,
   resetOtherPassword: false,
