@@ -1,62 +1,40 @@
-// import { DEFAULT_PRIVILEGE_API, PrivilegeApiProvider }
-//from '../api/privilege';
-// import {
-//   Link,
-//   MHash,
-//   Token,
-//   toLink,
-//   toUser,
-//   User,
-//   Username,
-//   ValidLink,
-//   VoteTypeExt,
-// } from '../api/types';
+import { DEFAULT_LOGIN_API, LoginApiProvider } from '../api/login';
+import { Password, ResetToken, User, UserName } from '../api/types';
 
-// export default class UserActions {
-//   private readonly api: PrivilegeApiProvider;
+type UserCallback = (user: Readonly<User> | null) => void;
 
-//   constructor(api?: PrivilegeApiProvider) {
-//     this.api = api ?? DEFAULT_PRIVILEGE_API;
-//   }
+export default class UserActions {
+  private readonly api: LoginApiProvider;
 
-//   async login(username: Readonly<Username>): Promise<User> {
-//     const res = await this.api.login(username);
-//     return toUser(res);
-//   }
+  constructor(api?: LoginApiProvider) {
+    this.api = api ?? DEFAULT_LOGIN_API;
+  }
 
-//   async logout(token: Readonly<Token>): Promise<boolean> {
-//     const res = await this.api.logout(token);
-//     return !!res.success;
-//   }
+  async currentUser(updateUser: UserCallback) {
+    const user = await this.api.getUser();
+    updateUser(user);
+  }
 
-//   async activeUser(
-//     token: Readonly<Token> | undefined,
-//   ): Promise<User | undefined> {
-//     if (token === undefined) {
-//       return undefined;
-//     }
-//     const res = await this.api.userInfo(token);
-//     return toUser(res);
-//   }
+  async login(
+    username: Readonly<UserName>,
+    password: Readonly<Password>,
+    updateUser: UserCallback,
+  ) {
+    const user = await this.api.loginUser(username, password);
+    updateUser(user);
+  }
 
-//   async vote(
-//     token: Readonly<Token>,
-//     parent: Readonly<MHash>,
-//     child: Readonly<MHash>,
-//     votes: Readonly<VoteTypeExt[]>,
-//     isAdd: boolean,
-//   ): Promise<Link> {
-//     const res = await this.api.vote(token, parent, child, votes, isAdd);
-//     return toLink(res);
-//   }
+  async changePassword(
+    resetToken: Readonly<ResetToken>,
+    password: Readonly<Password>,
+    updateUser: UserCallback,
+  ) {
+    const user = await this.api.resetPassword(resetToken, password);
+    updateUser(user);
+  }
 
-//   async writeMessage(
-//     token: Readonly<Token>,
-//     parent: Readonly<MHash>,
-//     text: string,
-//   ): Promise<ValidLink> {
-//     const res = await this.api.writeMessage(token, parent, text);
-//     return toLink(res);
-//   }
-// } // UserActions
-export {};
+  async logout(updateUser: UserCallback) {
+    const user = await this.api.logout();
+    updateUser(user);
+  }
+} // UserActions

@@ -20,10 +20,11 @@
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the software.
  */
-
 import { URL_PREFIX } from '../misc/constants';
 import { timeout } from '../misc/util';
 import {
+  ApiChatInitResponse,
+  ApiChatTextResponse,
   ChatInitResponse,
   ChatPromptResponse,
   ChatRecoverResponse,
@@ -57,7 +58,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          session,
+          model_session: session,
           task,
           index,
         }),
@@ -67,14 +68,23 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           `Error in request ${res} (${res.status}): ${res.statusText}`,
         );
       }
-      return await res.json();
+      const {
+        diff,
+        task: nextTask,
+        next_index: nextIndex,
+      } = (await res.json()) as ApiChatTextResponse;
+      return {
+        diff,
+        nextTask,
+        nextIndex,
+      };
     } catch (err) {
       console.error(err);
       await timeout(500.0);
       return {
         diff: '',
-        task,
-        next_index: index,
+        nextTask: task,
+        nextIndex: index,
       };
     }
   },
@@ -93,7 +103,12 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
         `Error in request ${res} (${res.status}): ${res.statusText}`,
       );
     }
-    return await res.json();
+    const { model_session, messages } =
+      (await res.json()) as ApiChatInitResponse;
+    return {
+      session: model_session,
+      messages,
+    };
   },
   recover: async (session) => {
     console.log('recover', session);
@@ -105,7 +120,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          session,
+          model_session: session,
         }),
       });
       if (!res.ok) {
@@ -133,7 +148,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          session,
+          model_session: session,
           prompt,
         }),
       });

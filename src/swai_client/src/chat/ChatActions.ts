@@ -47,11 +47,11 @@ export default class ChatActions {
     for (;;) {
       this.responseNum += 1;
       const responseNum = this.responseNum;
-      const {
-        diff,
-        task: nextTask,
-        next_index: nextIndex,
-      } = await this.api.response(session, task, index);
+      const { diff, nextTask, nextIndex } = await this.api.response(
+        session,
+        task,
+        index,
+      );
       if (responseNum !== this.responseNum) {
         break;
       }

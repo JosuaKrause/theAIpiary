@@ -1,11 +1,19 @@
 import { PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
+import {
+  Route,
+  BrowserRouter as Router,
+  useSearchParams,
+} from 'react-router-dom';
 import styled from 'styled-components';
 import { SessionId } from './api/types';
 import Chat from './chat/Chat';
 import ChatActions from './chat/ChatActions';
 import { setSession } from './chat/ChatStateSlice';
 import { RootState } from './store';
+import Login from './users/Login';
+import PasswordReset from './users/PasswordReset';
+import UserActions from './users/UserActions';
 
 const Main = styled.div`
   text-align: center;
@@ -32,17 +40,6 @@ const HMain = styled.div`
   }
 `;
 
-// const MainColumn = styled.div`
-//   margin: 0 auto;
-//   width: var(--main-size);
-//   height: 100vh;
-//   border: 0;
-//   display: flex;
-//   flex-direction: column;
-//   flex-grow: 0;
-//   overflow: hidden;
-// `;
-
 type AppProps = ConnectApp;
 
 type AppState = {
@@ -55,6 +52,7 @@ type HistoryState = {
 
 class App extends PureComponent<AppProps, AppState> {
   private readonly chatActions: ChatActions;
+  private readonly userActions: UserActions;
 
   constructor(props: AppProps) {
     super(props);
@@ -62,6 +60,7 @@ class App extends PureComponent<AppProps, AppState> {
       ready: false,
     };
     this.chatActions = new ChatActions(undefined);
+    this.userActions = new UserActions(undefined);
 
     window.addEventListener('popstate', (event) => {
       const { dispatch } = this.props;
@@ -74,7 +73,7 @@ class App extends PureComponent<AppProps, AppState> {
   componentDidMount(): void {
     const { dispatch } = this.props;
     const { ready } = this.state;
-    const params = new URL(window.location.href).searchParams;
+    const [params] = useSearchParams();
     const session = params.get('session') as SessionId | null;
     console.log(ready, session);
     if (session) {
@@ -117,10 +116,25 @@ class App extends PureComponent<AppProps, AppState> {
     return (
       <Main>
         <HMain>
-          <Chat
-            ready={ready}
-            chatActions={this.chatActions}
-          />
+          <Router>
+            <Route
+              path="/chat"
+              element={
+                <Chat
+                  ready={ready}
+                  chatActions={this.chatActions}
+                />
+              }
+            />
+            <Route
+              path="/login"
+              element={<Login userActions={this.userActions} />}
+            />
+            <Route
+              path="/password-reset"
+              element={<PasswordReset userActions={this.userActions} />}
+            />
+          </Router>
         </HMain>
       </Main>
     );

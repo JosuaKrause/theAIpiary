@@ -1,14 +1,10 @@
 import { configureStore } from '@reduxjs/toolkit';
-import modalStateSliceReducer from './modal/ModalStateSlice';
-// import viewStateSliceReducer from './view/ViewStateSlice';
-// import userStateSliceReducer from './users/UserStateSlice';
 import chatStateSliceReducer from './chat/ChatStateSlice';
+import userStateSliceReducer from './users/UserStateSlice';
 
 const store = configureStore({
   reducer: {
-    // viewState: viewStateSliceReducer,
-    // userState: userStateSliceReducer,
-    modalState: modalStateSliceReducer,
+    userState: userStateSliceReducer,
     chatState: chatStateSliceReducer,
   },
 });

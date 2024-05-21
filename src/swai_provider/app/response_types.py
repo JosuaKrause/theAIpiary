@@ -22,10 +22,17 @@ from typing import TypedDict
 
 from swai.smind.api import QueueStat
 from swai.smind.llama_session import VisibleMessage
+from swai.system.user.manager import CapabilityName
 
 
 LoginResponse = TypedDict('LoginResponse', {
+    "user_name": str | None,
     "logged": bool,
+    "capabilities": list[CapabilityName],
+})
+ResetTokenResponse = TypedDict('ResetTokenResponse', {
+    "user_name": str,
+    "reset_token": str,
 })
 VersionResponse = TypedDict('VersionResponse', {
     "app_name": str,
@@ -39,12 +46,10 @@ StatsResponse = TypedDict('StatsResponse', {
     "queues": list[QueueStat],
 })
 ChatInitResponse = TypedDict('ChatInitResponse', {
-    "name": str,
-    "session": str,
+    "model_session": str,
     "messages": list[VisibleMessage],
 })
 ChatRecoverResponse = TypedDict('ChatRecoverResponse', {
-    "name": str,
     "messages": list[VisibleMessage],
     "task": str | None,
 })

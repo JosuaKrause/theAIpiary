@@ -1,7 +1,30 @@
-export type UserId = string & { _userId: void };
+/**
+ * Copyright (c) 2024 Josua Krause - All Rights Reserved
+ *
+ * THE CONTENTS OF THIS PROJECT ARE PROPRIETARY AND CONFIDENTIAL.
+ * UNAUTHORIZED COPYING, TRANSFERRING OR REPRODUCTION OF THE CONTENTS OF
+ * THIS PROJECT, VIA ANY MEDIUM IS STRICTLY PROHIBITED.
+ *
+ * The receipt or possession of the source code and/or any parts thereof does
+ * not convey or imply any right to use them for any purpose other than the
+ * purpose for which they were provided to you.
+ *
+ * The software is provided "AS IS", without warranty of any kind, express or
+ * implied, including but not limited to the warranties of merchantability,
+ * fitness for a particular purpose and non infringement. In no event shall the
+ * authors or copyright holders be liable for any claim, damages or other
+ * liability, whether in an action of contract, tort or otherwise, arising
+ * from, out of or in connection with the software or the use or other dealings
+ * in the software.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the software.
+ */
 export type UserName = string & { _userName: void };
+export type Password = string & { _password: void };
 export type SessionId = string & { _sessionId: void };
 export type TaskId = string & { _taskId: void };
+export type ResetToken = string & { _resetToken: void };
 
 export type Role = 'assistant' | 'user';
 
@@ -10,14 +33,16 @@ export type Message = {
   content: string;
 };
 
+export type ApiChatInitResponse = {
+  model_session: SessionId;
+  messages: Message[];
+};
 export type ChatInitResponse = {
-  name: UserName;
   session: SessionId;
   messages: Message[];
 };
 
 export type ChatRecoverResponse = {
-  name: UserName;
   messages: Message[];
   task: TaskId | undefined;
 };
@@ -26,140 +51,106 @@ export type ChatPromptResponse = {
   task: TaskId | undefined;
 };
 
-export type ChatTextResponse = {
+export type ApiChatTextResponse = {
   diff: string;
-  task: TaskId | undefined;
+  task: Readonly<TaskId> | undefined;
   next_index: number | undefined;
 };
-
-export type ChatState = {
-  session: SessionId | undefined;
+export type ChatTextResponse = {
+  diff: string;
+  nextTask: Readonly<TaskId> | undefined;
+  nextIndex: number | undefined;
 };
 
-type UserPermissions = {
-  canCreateTopic: Readonly<boolean>;
+export type UserCapabilities = {
+  changeCapabilities: Readonly<boolean>;
+  resetOwnPassword: Readonly<boolean>;
+  resetOtherPassword: Readonly<boolean>;
+  logoutOtherUser: Readonly<boolean>;
+  createUser: Readonly<boolean>;
+  listUsers: Readonly<boolean>;
+  writeChat: Readonly<boolean>;
+  readChat: Readonly<boolean>;
 };
 export type User = {
   name: Readonly<UserName>;
-  userId: Readonly<UserId>;
-  permissions: Readonly<UserPermissions>;
+  capabilities: Readonly<UserCapabilities>;
 };
 
-// type ApiUserPermissions = {
-//   can_create_topic: Readonly<boolean>;
-// };
-// export type ApiLoginResponse = {
-//   token: Readonly<Token>;
-//   user: Readonly<Username>;
-//   userid: Readonly<UserId>;
-//   permissions: Readonly<ApiUserPermissions>;
-// };
-// export type ApiLogout = {
-//   success: boolean;
-// };
+type ApiUserCapability =
+  | 'change_capabilities'
+  | 'reset_own_password'
+  | 'reset_other_password'
+  | 'logout_other_user'
+  | 'create_user'
+  | 'list_users'
+  | 'write_chat'
+  | 'read_chat';
+export type ApiLoginResponse = {
+  user_name: Readonly<UserName> | undefined;
+  logged: boolean;
+  capabilities: Readonly<ApiUserCapability[]>;
+};
 
-// export function toUser(userResp: Readonly<ApiLoginResponse>):
-// Readonly<User> {
-//   const { user, userid, permissions, ...rest } = userResp;
-//   return {
-//     name: user,
-//     userId: userid,
-//     permissions: {
-//       canCreateTopic: permissions.can_create_topic,
-//     },
-//     ...rest,
-//   };
-// }
+export type ApiPasswordResetTokenResponse = {
+  user_name: Readonly<UserName>;
+  reset_token: Readonly<ResetToken>;
+};
+export type PasswordResetTokenResponse = {
+  name: Readonly<UserName>;
+  resetToken: Readonly<ResetToken>;
+};
 
-// export type ApiTopic = {
-//   topics: Readonly<{ [key: string]: string }>;
-//   next: Readonly<number>;
-// };
+export const NO_CAPABILITIES: Readonly<UserCapabilities> = {
+  changeCapabilities: false,
+  resetOwnPassword: false,
+  resetOtherPassword: false,
+  logoutOtherUser: false,
+  createUser: false,
+  listUsers: false,
+  writeChat: false,
+  readChat: false,
+};
 
-// export type ApiRead = {
-//   messages: Readonly<{ [key: string]: string }>;
-//   skipped: Readonly<MHash[]>;
-// };
-
-// export type ApiLinkResponse = {
-//   parent: Readonly<MHash>;
-//   child: Readonly<MHash>;
-//   user: Readonly<Username> | undefined;
-//   userid: Readonly<UserId> | undefined;
-//   first: Readonly<number>;
-//   votes: ApiVotes;
-//   meta: Readonly<string>;
-// };
-
-// type ApiVote = {
-//   count: Readonly<number>;
-//   uservoted: Readonly<boolean>;
-// };
-// type Vote = {
-//   count: Readonly<number>;
-//   userVoted: Readonly<boolean>;
-// };
-// export type VoteType = 'honor' | 'up' | 'down';
-// export type VoteTypeExt = VoteType | 'view' | 'ack' | 'skip';
-// export type RichVote = {
-//   voteType: VoteType;
-//   count: number;
-//   userVoted: boolean;
-// };
-// export const VOTE_TYPES: VoteType[] = ['honor', 'up', 'down'];
-// export type ApiVotes = Readonly<{ [key in VoteType]?: Readonly<ApiVote> }>;
-// type Votes = Readonly<{ [key in VoteType]?: Readonly<Vote> }>;
-
-// export type ValidLink = {
-//   invalid?: Readonly<false>;
-//   parent: Readonly<MHash>;
-//   child: Readonly<MHash>;
-//   username: Readonly<Username> | undefined;
-//   userId: Readonly<UserId> | undefined;
-//   first: Readonly<number>;
-//   votes: Votes;
-//   meta: Readonly<string>;
-// };
-// type InvalidLink = {
-//   invalid: Readonly<true>;
-// };
-// export type Link = ValidLink | InvalidLink;
-// export const INVALID_LINK: Readonly<InvalidLink> = { invalid: true };
-
-// export function toLink(link: Readonly<ApiLinkResponse>)
-// Readonly<ValidLink> {
-//   const { user, userid, votes, ...rest } = link;
-
-//   function convertVote(vote: ApiVote | undefined): Vote | undefined {
-//     if (vote === undefined) {
-//       return undefined;
-//     }
-//     const { count, uservoted } = vote;
-//     return {
-//       count,
-//       userVoted: uservoted,
-//     };
-//   }
-
-//   return {
-//     username: user,
-//     userId: userid,
-//     votes: {
-//       up: convertVote(votes.up),
-//       down: convertVote(votes.down),
-//       honor: convertVote(votes.honor),
-//     },
-//     ...rest,
-//   };
-// }
-
-// export type ApiLinkList = {
-//   links: Readonly<Readonly<ApiLinkResponse>[]>;
-//   next: Readonly<number>;
-// };
-
-// export function toLinks(
-//   links: Readonly<Readonly<ApiLinkResponse>[]>,
-// ): Readonly<Readonly<ValidLink>[]> {
-//   return links.map((link) => toLink(link));
-// }
+export function toUser(
+  userResp: Readonly<ApiLoginResponse>,
+): Readonly<User> | null {
+  const { logged, user_name, capabilities: caps, ...rest } = userResp;
+  if (!logged || !user_name) {
+    return null;
+  }
+  const capabilities: UserCapabilities = { ...NO_CAPABILITIES };
+  caps.forEach((cap) => {
+    switch (cap) {
+      case 'change_capabilities':
+        capabilities.changeCapabilities = true;
+        break;
+      case 'reset_own_password':
+        capabilities.resetOwnPassword = true;
+        break;
+      case 'reset_other_password':
+        capabilities.resetOtherPassword = true;
+        break;
+      case 'logout_other_user':
+        capabilities.logoutOtherUser = true;
+        break;
+      case 'create_user':
+        capabilities.createUser = true;
+        break;
+      case 'list_users':
+        capabilities.listUsers = true;
+        break;
+      case 'write_chat':
+        capabilities.writeChat = true;
+        break;
+      case 'read_chat':
+        capabilities.readChat = true;
+        break;
+    }
+  });
+  return {
+    name: user_name,
+    capabilities,
+    ...rest,
+  };
+}
