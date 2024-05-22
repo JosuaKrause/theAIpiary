@@ -32,21 +32,9 @@ from scattermind.system.session.session import Session
 from scattermind.system.util import get_time_str
 
 from swai.clean import sanity_check
-from swai.config import get_config
-from swai.env import envload_bool, envload_int, envload_path, envload_str
-from swai.smind.api import (
-    get_queue_stats,
-    init_llama,
-    load_graph,
-    load_smind,
-    recover_llama_chat,
-    retrieve_llama_response,
-    start_llama_response,
-)
 from swai.system.user.loader import load_user_manager
 from swai.system.user.manager import SessionToken
 from swai.system.user.secure import SecureContext
-from swai.version import get_version
 from swai_provider.app.response_types import (
     ChatInitResponse,
     ChatPromptResponse,
@@ -57,6 +45,23 @@ from swai_provider.app.response_types import (
     StatsResponse,
     VersionResponse,
 )
+from swai_provider.config import get_config
+from swai_provider.env import (
+    envload_bool,
+    envload_int,
+    envload_path,
+    envload_str,
+)
+from swai_provider.smind.worker_api import (
+    get_queue_stats,
+    init_llama,
+    load_graph,
+    load_smind,
+    recover_llama_chat,
+    retrieve_llama_response,
+    start_llama_response,
+)
+from swai_provider.version import get_version
 
 
 MAX_INPUT_LENGTH = 10 * 1024  # 10KiB

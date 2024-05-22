@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  rmain:
+    container_name: rmain
+    image: $DOCKER_RMAIN
+    restart: always
+    expose:
+      - 6379
+    volumes:
+      - ${WEBAPP_STORAGE_HOME}/rmain:/data
+  api:
+    image: $DOCKER_API
+    restart: always
+    ports:
+      - '8080:8080'
+    volumes:
+      - ${WEBAPP_STORAGE_HOME}/swai:/swai
+# eof

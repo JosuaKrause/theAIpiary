@@ -20,9 +20,9 @@
 # all copies or substantial portions of the software.
 from typing import TypedDict
 
-from swai.smind.api import QueueStat
 from swai.smind.llama_session import VisibleMessage
 from swai.system.user.manager import CapabilityName
+from swai_provider.smind.worker_api import QueueStat
 
 
 LoginResponse = TypedDict('LoginResponse', {

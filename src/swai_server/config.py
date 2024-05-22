@@ -22,15 +22,17 @@ import json
 import os
 from typing import cast, TypedDict
 
+from redipy import RedisConfig
 from scattermind.system.io import open_reads, open_writes
+from scattermind.system.session.loader import SessionStoreModule
 
-from swai.env import envload_int, envload_path, envload_str
 from swai.system.user.loader import UserManagerModule
+from swai_server.env import envload_int, envload_path, envload_str
 
 
 Config = TypedDict('Config', {
-    "smind": str,
-    "graphs": str,
+    "task_queue": RedisConfig,
+    "session_store": SessionStoreModule,
     "user_mng": UserManagerModule,
 })
 
@@ -49,14 +51,32 @@ def get_config_path() -> str:
 
 def config_template() -> Config:
     return {
-        "smind": "smind-config.json",
-        "graphs": "graphs/",
+        "task_queue": {
+            "host": "INVALID",
+            "passwd": "",
+            "path": "swai_server/queue/redis",
+            "port": 6379,
+            "prefix": "sessions",
+        },
+        "session_store": {
+            "name": "redis",
+            "cfg": {
+                "host": "INVALID",
+                "passwd": "",
+                "path": "swai_server/session/redis",
+                "port": 6379,
+                "prefix": "sessions",
+            },
+            "cache_path": "swai_server/session/cache",
+            "disk_path": "swai_server/session/disk",
+            "is_shared": False,
+        },
         "user_mng": {
             "name": "redis",
             "cfg": {
                 "host": "INVALID",
                 "passwd": "",
-                "path": "users",
+                "path": "swai_server/users/redis",
                 "port": 6379,
                 "prefix": "users",
             },
@@ -83,9 +103,28 @@ def get_config() -> Config:
     config_path = get_config_path()
     if config_path == "-":
         print("loading config from env")
+        session_root = envload_path("SESSION_PATH")
         CONFIG = {
-            "smind": envload_path("SMIND_CFG"),
-            "graphs": envload_path("GRAPH_PATH"),
+            "task_queue": {
+                "host": envload_str("REDIS_HOST"),
+                "passwd": envload_str("REDIS_PW"),
+                "path": envload_path("REDIS_PATH"),
+                "port": envload_int("REDIS_PORT"),
+                "prefix": envload_str("REDIS_PREFIX"),
+            },
+            "session_store": {
+                "name": "redis",
+                "cfg": {
+                    "host": envload_str("REDIS_HOST"),
+                    "passwd": envload_str("REDIS_PW"),
+                    "path": envload_path("REDIS_PATH"),
+                    "port": envload_int("REDIS_PORT"),
+                    "prefix": envload_str("REDIS_PREFIX"),
+                },
+                "cache_path": os.path.join(session_root, "cache"),
+                "disk_path": os.path.join(session_root, "disk"),
+                "is_shared": False,
+            },
             "user_mng": {
                 "name": "redis",
                 "cfg": {

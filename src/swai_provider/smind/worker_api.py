@@ -32,7 +32,6 @@ from scattermind.system.names import GNamespace
 from scattermind.system.response import response_ok, TASK_COMPLETE
 from scattermind.system.session.session import Session
 
-from swai.config import Config
 from swai.smind.llama_session import (
     ChunkPosition,
     get_active_task,
@@ -44,6 +43,7 @@ from swai.smind.llama_session import (
     set_interrupted,
     VisibleMessage,
 )
+from swai_provider.config import Config
 
 
 DEFAULT_TIMEOUT = 60.0  # 1min
