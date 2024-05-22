@@ -21,8 +21,49 @@
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
 #
-set -e
+set -x
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-docker compose -f "docker-compose.dev.yml" up || echo "done $?"
+BASE="userdata/server"
+ROOT="../.."
+
+mkdir -p "${BASE}/"
+
+PYTHON="${PYTHON:-python}"
+DATE=$(date "+%Y-%m-%d")
+
+start_redis() {
+    REDIS_NAME=$1
+    REDIS_PORT=$2
+    REDIS_PATH="${BASE}/${REDIS_NAME}/"
+    mkdir -p "${REDIS_PATH}"
+    pushd "${REDIS_PATH}"
+    redis-server \
+        "../${ROOT}/deploy/redis_local/${REDIS_NAME}.conf" \
+        --port "${REDIS_PORT}" \
+        >> "redis-${DATE}.log" 2>&1 &
+    popd
+}
+
+start_server() {
+    mkdir -p "${BASE}/swai/"
+    pushd "src/"
+    HISTORY_PATH="../${BASE}/.cmd_history" \
+    CONFIG_PATH="../local/server.config.json" \
+    VERSION_PATH="../${BASE}/version.txt" \
+        ${PYTHON} -u -m swai_server --dedicated \
+        >> "../${BASE}/swai/swai_server-${DATE}.log" 2>&1 &
+    popd
+}
+
+make -s version-file
+mv version.txt "${BASE}/version.txt"
+
+start_redis rserver 6385
+
+DEVICE="${DEVICE:-auto}"
+
+start_server
+
+make run-ts

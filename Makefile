@@ -14,7 +14,10 @@ help:
 	@echo "lint-stringformat	run string format check"
 	@echo "lint-type-check	run type check"
 	@echo "lint-all	run all lints"
-	@echo "build	build the docker image"
+	@echo "build-provider	build the provider docker image"
+	@echo "build-provider-dev	build the provider docker image for local usage"
+	@echo "build-server	build the server docker image"
+	@echo "build-server-dev	build the server docker image for local usage"
 	@echo "pre-commit 	sort python package imports using isort"
 	@echo "name	generate a unique permanent name for the current commit"
 	@echo "commit	print precise commit hash (with a * if the working copy is dirty)"
@@ -29,14 +32,20 @@ help:
 export LC_ALL=C
 export LANG=C
 
-PYTHON=python
-TS_ROOT=src/swai_client/
+PYTHON?=python
+TS_ROOT?=src/swai_client/
 
-build:
-	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) ./sh/build.sh
+build-provider:
+	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) ./sh/build_provider.sh
 
-build-dev:
-	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) DEV=1 ./sh/build.sh
+build-provider-dev:
+	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) DEV=1 ./sh/build_provider.sh
+
+build-server:
+	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) ./sh/build_server.sh
+
+build-server-dev:
+	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) DEV=1 ./sh/build_server.sh
 
 lint-comment:
 	! ./sh/findpy.sh \
@@ -105,11 +114,17 @@ lint-all: \
 	lint-type-check \
 	lint-flake8
 
-compose:
-	./sh/compose.sh
+compose-server:
+	./sh/compose_server.sh
 
-run-mac:
-	BOOTSTRAP_USERS=$(BOOTSTRAP_USERS) ./sh/run_mac.sh
+compose-provider:
+	./sh/compose_provider.sh
+
+run-local:
+	./sh/run_local.sh
+
+run-server:
+	BOOTSTRAP_USERS=$(BOOTSTRAP_USERS) ./sh/run_server.sh
 
 run-ts:
 	yarn --cwd $(TS_ROOT) start
@@ -123,8 +138,11 @@ install:
 install-ts:
 	yarn --cwd $(TS_ROOT) install
 
-install-api:
-	PYTHON=$(PYTHON) MODE=api REQUIREMENTS_PATH=$(REQUIREMENTS_PATH) ./sh/install.sh
+install-server:
+	PYTHON=$(PYTHON) MODE=server REQUIREMENTS_PATH=$(REQUIREMENTS_PATH) ./sh/install.sh
+
+install-provider:
+	PYTHON=$(PYTHON) MODE=provider REQUIREMENTS_PATH=$(REQUIREMENTS_PATH) ./sh/install.sh
 
 install-worker:
 	PYTHON=$(PYTHON) MODE=worker REQUIREMENTS_PATH=$(REQUIREMENTS_PATH) ./sh/install.sh

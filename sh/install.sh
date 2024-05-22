@@ -40,7 +40,6 @@ if [ ${MAJOR} -eq 3 ] && [ ${MINOR} -lt 11 ] || [ ${MAJOR} -lt 3 ]; then
 fi
 
 # see https://github.com/abetlen/llama-cpp-python?tab=readme-ov-file#installation-configuration
-# TODO: use pre-built images for CUDA if available
 
 ! read -r -d '' PY_TORCH_VERIFY <<'EOF'
 import sys
@@ -76,8 +75,9 @@ else
         ${PYTHON} -m pip install --progress-bar off torch torchvision torchaudio
     fi
 fi
+${PYTHON} -c 'import torch;print(torch.__version__)'
 
-${PYTHON} -m pip install --progress-bar off --upgrade pip
+${PYTHON} -m pip install --progress-bar off "pip>=24.0"
 if [ -z "${MODE}" ]; then
     REQUIREMENTS_PATH="${REQUIREMENTS_PATH:-requirements.txt}"
     ${PYTHON} -m pip install --progress-bar off --upgrade -r "${REQUIREMENTS_PATH}"
@@ -110,8 +110,11 @@ if [ -z "${MODE}" ]; then
             ${PYTHON} -m pip install --upgrade "${SMIND_URL}@${SMIND_BRANCH}"
         fi
     fi
-elif [ "${MODE}" = "api" ]; then
-    REQUIREMENTS_PATH="${REQUIREMENTS_PATH:-requirements.api.txt}"
+elif [ "${MODE}" = "provider" ]; then
+    REQUIREMENTS_PATH="${REQUIREMENTS_PATH:-requirements.provider.txt}"
+    ${PYTHON} -m pip install --progress-bar off --no-cache-dir --upgrade -r "${REQUIREMENTS_PATH}"
+elif [ "${MODE}" = "server" ]; then
+    REQUIREMENTS_PATH="${REQUIREMENTS_PATH:-requirements.server.txt}"
     ${PYTHON} -m pip install --progress-bar off --no-cache-dir --upgrade -r "${REQUIREMENTS_PATH}"
 elif [ "${MODE}" = "worker" ]; then
     REQUIREMENTS_PATH="${REQUIREMENTS_PATH:-requirements.worker.txt}"
@@ -124,7 +127,10 @@ fi
 LLAMA_CMAKE_ARGS=$(${PYTHON} -c "${PY_TORCH_VERIFY}")
 
 if grep -q "METAL" <<< "${LLAMA_CMAKE_ARGS}"; then
-    ${PYTHON} -m pip install llama-cpp-python==0.2.68 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/metal
+    ${PYTHON} -m pip install llama-cpp-python==0.2.68 --extra-index-url "https://abetlen.github.io/llama-cpp-python/whl/metal"
+elif grep -q "CUDA" <<< "${LLAMA_CMAKE_ARGS}"; then
+    CUDA_VERSION_SHORT="${CUDA_VERSION_SHORT:-cu121}"
+    ${PYTHON} -m pip install llama-cpp-python==0.2.68 --extra-index-url "https://abetlen.github.io/llama-cpp-python/whl/${CUDA_VERSION_SHORT}"
 else
     CMAKE_ARGS="${LLAMA_CMAKE_ARGS}" ${PYTHON} -m pip install --progress-bar off llama-cpp-python==0.2.68
 fi

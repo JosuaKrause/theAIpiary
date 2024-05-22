@@ -32,28 +32,22 @@ services:
       - 6379
     volumes:
       - ${WEBAPP_STORAGE_HOME}/rbody:/data
-  worker-1:
+  worker:
     image: $DOCKER_WORKER
     restart: always
     expose:
       - 6380
     volumes:
+      - ${WEBAPP_STORAGE_HOME}/swai:/swai
+      - ${WEBAPP_STORAGE_HOME}/models:/models
       - ${WEBAPP_STORAGE_HOME}/smind_cache:/smind_cache
       - ${WEBAPP_STORAGE_HOME}/smind_sess:/smind_sess
-  # worker-2:
-  #   image: $DOCKER_WORKER
-  #   restart: always
-  #   expose:
-  #     - 6380
-  #   volumes:
-  #     - ${WEBAPP_STORAGE_HOME}/smind_cache:/smind_cache
-  #     - ${WEBAPP_STORAGE_HOME}/smind_sess:/smind_sess
   api:
-    image: $DOCKER_API
+    image: $DOCKER_PROVIDER
     restart: always
-    ports:
-      - '8080:8080'
     volumes:
+      - ${WEBAPP_STORAGE_HOME}/swai:/swai
+      - ${WEBAPP_STORAGE_HOME}/models:/models
       - ${WEBAPP_STORAGE_HOME}/smind_cache:/smind_cache
       - ${WEBAPP_STORAGE_HOME}/smind_sess:/smind_sess
 # eof

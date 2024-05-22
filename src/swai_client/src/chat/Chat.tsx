@@ -58,18 +58,12 @@ function styleResponse(isThinking: boolean) {
       display: block;
       font-weight: 500;
       animation: ellipsis steps(4, end) 900ms infinite;
-      content: '\2026';
+      content: '\\2026';
       width: 100%;
       float: right;
       clear: both;
       text-align: right;
       translate: -5px 0;
-    }
-
-    @keyframes ellipsis {
-      to {
-        width: calc(100% - 2ch);
-      }
     }
   `;
 }

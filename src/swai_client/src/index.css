@@ -68,7 +68,15 @@ a:focus {
   filter: brightness(0.8) blur(5px);
 }
 
-/** look and feel */
+/* animation */
+
+@keyframes ellipsis {
+  to {
+    width: calc(100% - 2ch);
+  }
+}
+
+/* look and feel */
 
 p {
   margin: 0;
@@ -91,6 +99,7 @@ pre {
   padding: 0 5px;
   border: 1px solid silver;
   background-color: lightgray;
+  color: black;
 }
 
 .response-user pre {

@@ -96,7 +96,7 @@ export default class Login extends PureComponent<LoginProps, LoginState> {
     const { userActions } = this.props;
     userActions.login(userName, password, (user) => {
       if (user) {
-        window.location.href = '/chat';
+        window.location.href = '/profile';
       }
     });
   };

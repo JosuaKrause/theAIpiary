@@ -24,11 +24,13 @@ import { URL_PREFIX } from '../misc/constants';
 import {
   ApiLoginResponse,
   ApiPasswordResetTokenResponse,
+  ApiWorkerTokenResponse,
   Password,
   PasswordResetTokenResponse,
   ResetToken,
   User,
   UserName,
+  WorkerToken,
   toUser,
 } from './types';
 
@@ -46,12 +48,13 @@ export type LoginApiProvider = {
     password: Readonly<Password>,
   ) => Promise<Readonly<User> | null>;
   logout: () => Promise<Readonly<User> | null>;
+  getWorkerToken: () => Promise<Readonly<WorkerToken>>;
 };
 
 export const DEFAULT_LOGIN_API: LoginApiProvider = {
   getUser: async () => {
-    const res = await fetch(`${URL_PREFIX}/login`, {
-      method: 'GET',
+    const res = await fetch(`${URL_PREFIX}/user`, {
+      method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
@@ -144,5 +147,23 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     }
     const obj = (await res.json()) as ApiLoginResponse;
     return toUser(obj);
+  },
+  getWorkerToken: async () => {
+    const res = await fetch(`${URL_PREFIX}/create_worker_token`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      throw new Error(
+        `Error in request ${res} (${res.status}): ${res.statusText}`,
+      );
+    }
+    const { worker_token: workerToken } =
+      (await res.json()) as ApiWorkerTokenResponse;
+    return workerToken;
   },
 };

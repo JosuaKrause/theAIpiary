@@ -1,0 +1,32 @@
+{
+  "session_store": {
+    "cache_path": "../userdata/server/session/cache",
+    "cfg": {
+      "host": "localhost",
+      "passwd": "",
+      "path": "../userdata/server/session/redis",
+      "port": 6385,
+      "prefix": "sessions"
+    },
+    "disk_path": "../userdata/server/session/disk",
+    "is_shared": false,
+    "name": "redis"
+  },
+  "task_queue": {
+    "host": "localhost",
+    "passwd": "",
+    "path": "../userdata/server/tasks/redis",
+    "port": 6385,
+    "prefix": "tasks"
+  },
+  "user_mng": {
+    "cfg": {
+      "host": "localhost",
+      "passwd": "",
+      "path": "../userdata/server/users/redis",
+      "port": 6385,
+      "prefix": "users"
+    },
+    "name": "redis"
+  }
+}

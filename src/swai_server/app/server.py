@@ -18,6 +18,8 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
+import io
+import shutil
 import sys
 import threading
 from http.cookies import SimpleCookie
@@ -26,37 +28,53 @@ from typing import TypedDict
 from quick_server import create_server, QuickServer
 from quick_server import QuickServerRequestHandler as QSRH
 from quick_server import ReqArgs, ReqNext, Response
-from scattermind.system.base import SessionId, TaskId
-from scattermind.system.names import UName
+from scattermind.system.base import SessionId, TaskId, UserId
+from scattermind.system.names import GNamespace, UName
+from scattermind.system.response import redis_to_response
 from scattermind.system.session.session import Session
 from scattermind.system.util import get_time_str
 
 from swai.clean import sanity_check
-from swai.config import get_config
-from swai.env import envload_bool, envload_int, envload_path, envload_str
-from swai.smind.api import (
-    get_queue_stats,
-    init_llama,
-    load_graph,
-    load_smind,
-    recover_llama_chat,
-    retrieve_llama_response,
-    start_llama_response,
-)
-from swai.system.user.loader import load_user_manager
-from swai.system.user.manager import SessionToken
-from swai.system.user.secure import SecureContext
-from swai.version import get_version
-from swai_provider.app.response_types import (
+from swai.server_response_types import (
     ChatInitResponse,
     ChatPromptResponse,
     ChatRecoverResponse,
     ChatTextResponse,
     LoginResponse,
     ResetTokenResponse,
-    StatsResponse,
+    TaskBidResponse,
+    TaskFinishResponse,
     VersionResponse,
+    WorkerBlobHashResponse,
+    WorkerBlobListResponse,
+    WorkerKeysResponse,
+    WorkerSessionListResponse,
+    WorkerSessionResponse,
+    WorkerSignalResponse,
+    WorkerTokenResponse,
+    WorkerUploadResponse,
+    WorkerUserResponse,
+    WorkerValueResponse,
 )
+from swai.system.user.loader import load_user_manager
+from swai.system.user.manager import SessionToken, WorkerToken
+from swai.system.user.secure import SecureContext
+from swai_server.auction.queue import TaskQueue
+from swai_server.config import get_config
+from swai_server.env import (
+    envload_bool,
+    envload_int,
+    envload_path,
+    envload_str,
+)
+from swai_server.smind.server_api import (
+    create_session_store,
+    init_llama,
+    recover_llama_chat,
+    retrieve_llama_response,
+    start_llama_response,
+)
+from swai_server.version import get_version
 
 
 MAX_INPUT_LENGTH = 10 * 1024  # 10KiB
@@ -83,7 +101,7 @@ def get_version_strs() -> VersionDict:
     return {
         "python_version_detail": py_version_detail,
         "python_version": py_version,
-        "server_version": f"SWAIprovider/{version_name[1:]}",
+        "server_version": f"SWAIserver/{version_name[1:]}",
         "app_version": version_name,
         "commit": version_hash,
         "deploy_time": version_date,
@@ -98,7 +116,7 @@ def setup(
         versions: VersionDict) -> tuple[QuickServer, str]:
     prefix = "/api"
 
-    server.suppress_noise = True
+    # server.suppress_noise = True
 
     server.register_shutdown()
 
@@ -129,18 +147,18 @@ def setup(
 
     config = get_config()
 
-    smind_config = config["smind"]
-    smind = load_smind(smind_config)
-    graph_llama = load_graph(config, smind, "graph_llama.json")
+    session_store = create_session_store(config)
+    task_queue = TaskQueue(session_store, config["task_queue"])
     sec_ctx = SecureContext(load_user_manager(config["user_mng"]))
+    model_ns = GNamespace("llama")
 
     if envload_bool("BOOTSTRAP_USERS", default=False):
         admin_reset_token = sec_ctx.force_maybe_create_admin()
         if admin_reset_token is not None:
             print(f"user 'admin' created! reset token: {admin_reset_token}")
 
-    public_path = envload_path("PUBLIC_PATH", default="public/")
-    server.bind_path("/chat/", public_path)
+    public_path = envload_path("UI_PATH", default="build/")
+    server.bind_path("/", public_path)
 
     def maybe_user_session(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
@@ -188,8 +206,9 @@ def setup(
     def verify_model_session_read(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
         args = rargs["post"]
-        session = smind.get_session(SessionId.parse(args["model_session"]))
-        user_id = smind.get_session_user(session.get_session_id())
+        session = session_store.get_session(
+            SessionId.parse(args["model_session"]))
+        user_id = session_store.get_user(session.get_session_id())
         user_session = rargs["meta"]["user_session"]
         sec_ctx.ensure_can_read_chat(user_session, user_id)
         rargs["meta"]["model_session"] = session
@@ -198,11 +217,21 @@ def setup(
     def verify_model_session_write(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
         args = rargs["post"]
-        session = smind.get_session(SessionId.parse(args["model_session"]))
-        user_id = smind.get_session_user(session.get_session_id())
+        session = session_store.get_session(
+            SessionId.parse(args["model_session"]))
+        user_id = session_store.get_user(session.get_session_id())
         user_session: SessionToken = rargs["meta"]["user_session"]
         sec_ctx.ensure_can_write_chat(user_session, user_id)
         rargs["meta"]["model_session"] = session
+        return okay
+
+    def verify_worker_token(
+            _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
+        args = rargs["post"]
+        worker_token: WorkerToken = args["worker_token"]
+        name = UName(args["name"])
+        sec_ctx.ensure_worker_token(name, worker_token)
+        rargs["meta"]["user_name"] = name
         return okay
 
     # *** misc ***
@@ -218,17 +247,11 @@ def setup(
             "error": None,
         }
 
-    @server.json_get(f"{prefix}/info")
-    def _get_info(_req: QSRH, _rargs: ReqArgs) -> StatsResponse:
-        return {
-            "queues": get_queue_stats(smind),
-        }
-
     # *** user management ***
 
-    @server.json_get(f"{prefix}/login")
+    @server.json_post(f"{prefix}/user")
     @server.middleware(maybe_user_session)
-    def _get_login(_req: QSRH, rargs: ReqArgs) -> LoginResponse:
+    def _post_user(_req: QSRH, rargs: ReqArgs) -> LoginResponse:
         user_session: SessionToken | None = rargs["meta"].get("user_session")
         if user_session is None:
             return {
@@ -280,9 +303,24 @@ def setup(
                 user_session, login_name)),
         }
 
+    @server.json_post(f"{prefix}/create_worker_token")
+    @server.middleware(verify_user_session)
+    def _post_create_worker_token(
+            _req: QSRH, rargs: ReqArgs) -> WorkerTokenResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
+        name: UName = rargs["meta"]["user_name"]
+        args = rargs["post"]
+        user_name: str | None = args.get("name")
+        if user_name is not None:
+            name = UName(user_name)
+        worker_token = sec_ctx.create_worker_token(user_session, name)
+        return {
+            "worker_token": worker_token,
+        }
+
     @server.json_post(f"{prefix}/reset_password_token")
     @server.middleware(verify_user_session)
-    def _get_reset_password_token(
+    def _post_reset_password_token(
             _req: QSRH, rargs: ReqArgs) -> ResetTokenResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
         args = rargs["post"]
@@ -326,12 +364,240 @@ def setup(
             "capabilities": [],
         }
 
+    # FIXME: use authorization headers
     # TODO:
-    # - auto create first user
     # - create user
     # - list users (+reset +logout +email)
-    # - list capabilities
     # - edit capabilities
+
+    # *** worker API ***
+
+    # * tasks *
+
+    @server.json_post(f"{prefix}/task/bid")
+    @server.middleware(verify_worker_token)
+    def _post_task_bid(_req: QSRH, rargs: ReqArgs) -> TaskBidResponse:
+        args = rargs["post"]
+        nss = [GNamespace(ns) for ns in args["nss"]]
+        timeout = float(args["timeout"])
+        assert timeout > 0.0
+        task = task_queue.pop_task(nss, timeout=timeout)
+        if task is None:
+            return {
+                "ns": None,
+                "task_id": None,
+                "input_data": None,
+            }
+        ns, task_id, input_data = task
+        return {
+            "ns": ns.get(),
+            "task_id": task_id.to_parseable(),
+            "input_data": input_data,
+        }
+
+    @server.json_post(f"{prefix}/task/finish")
+    @server.middleware(verify_worker_token)
+    def _post_task_finish(_req: QSRH, rargs: ReqArgs) -> TaskFinishResponse:
+        args = rargs["post"]
+        task_id = TaskId.parse(args["task_id"])
+        response = redis_to_response(args["response"])
+        task_queue.set_result(task_id, response)
+        return {
+            "well_done": True,
+        }
+
+    # * smind sessions *
+
+    @server.json_post(f"{prefix}/smind/user")
+    @server.middleware(verify_worker_token)
+    def _post_smind_user(_req: QSRH, rargs: ReqArgs) -> WorkerUserResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        user_id = session_store.get_user(session_id)
+        return {
+            "user_id": None if user_id is None else user_id.to_parseable(),
+        }
+
+    @server.json_put(f"{prefix}/smind/session")
+    @server.middleware(verify_worker_token)
+    def _put_smind_session(
+            _req: QSRH, rargs: ReqArgs) -> WorkerSessionResponse:
+        args = rargs["post"]
+        user_id = UserId.parse(args["user_id"])
+        session_id = SessionId.parse(args["session"])
+        session_store.register_session(user_id, session_id)
+        return {
+            "ok": True,
+        }
+
+    @server.json_post(f"{prefix}/smind/session")
+    @server.middleware(verify_worker_token)
+    def _post_smind_session(
+            _req: QSRH, rargs: ReqArgs) -> WorkerSessionListResponse:
+        args = rargs["post"]
+        user_id = UserId.parse(args["user_id"])
+        return {
+            "sessions": [
+                session.get_session_id().to_parseable()
+                for session in session_store.get_sessions(user_id)
+            ],
+        }
+
+    @server.json_delete(f"{prefix}/smind/session")
+    @server.middleware(verify_worker_token)
+    def _delete_smind_session(
+            _req: QSRH, rargs: ReqArgs) -> WorkerSessionResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        session_store.remove(session_id)
+        return {
+            "ok": True,
+        }
+
+    @server.json_post(f"{prefix}/smind/value")
+    @server.middleware(verify_worker_token)
+    def _post_smind_value(
+            _req: QSRH, rargs: ReqArgs) -> WorkerValueResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        key = args["key"]
+        index = int(args.get("index", 0))
+        value: str | None = args.get("value")
+        op = args["op"]
+        if op == "get":
+            value = session_store.get_value(session_id, key, index)
+            return {
+                "value": value,
+                "success": True,
+            }
+        if op == "pop":
+            value = session_store.pop_value(session_id, key)
+            return {
+                "value": value,
+                "success": True,
+            }
+        if op == "set":
+            if value is None:
+                raise ValueError(f"need value for {op=}")
+            session_store.set_value(session_id, key, index, value)
+            return {
+                "success": True,
+            }
+        if op == "push":
+            if value is None:
+                raise ValueError(f"need value for {op=}")
+            session_store.push_value(session_id, key, value)
+            return {
+                "success": True,
+            }
+        if op == "length":
+            length = session_store.get_length(session_id, key)
+            return {
+                "length": length,
+                "success": True,
+            }
+        raise ValueError(f"unknown {op=}")
+
+    @server.json_post(f"{prefix}/smind/keys")
+    @server.middleware(verify_worker_token)
+    def _post_smind_keys(
+            _req: QSRH, rargs: ReqArgs) -> WorkerKeysResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        return {
+            "keys": session_store.get_keys(session_id),
+        }
+
+    @server.json_post(f"{prefix}/smind/signal")
+    @server.middleware(verify_worker_token)
+    def _post_smind_signal(
+            _req: QSRH, rargs: ReqArgs) -> WorkerSignalResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        key = args["key"]
+        session_store.notify_signal(session_id, key)
+        return {
+            "signal": True,
+        }
+
+    @server.json_post(f"{prefix}/smind/wait")
+    @server.middleware(verify_worker_token)
+    def _post_smind_wait(
+            _req: QSRH, rargs: ReqArgs) -> WorkerSignalResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        key = args["key"]
+        timeout = float(args["timeout"])
+        assert timeout > 0.0
+
+        def any_signal() -> bool:
+            return True
+
+        res = session_store.wait_for_signal(
+            session_id, key, any_signal, timeout=timeout)
+        return {
+            "signal": bool(res),
+        }
+
+    @server.json_put(f"{prefix}/smind/blob")
+    @server.middleware(verify_worker_token)
+    def _put_smind_upload(_req: QSRH, rargs: ReqArgs) -> WorkerUploadResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        blob = args["blob"]
+        files = rargs["files"]
+        with session_store.open_blob_write(session_id, blob) as fout:
+            shutil.copyfileobj(files["blob"], fout)  # type: ignore
+        return {
+            "done": True,
+        }
+
+    @server.text_post(f"{prefix}/smind/blob")
+    @server.middleware(verify_worker_token)
+    def _post_smind_blob(req: QSRH, rargs: ReqArgs) -> Response:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        blob = args["blob"]
+        bout = io.BytesIO()
+        with session_store.open_blob_read(session_id, blob) as fin:
+            shutil.copyfileobj(fin, bout)
+        bout.seek(0, io.SEEK_SET)
+        req.send_header(
+            "content-disposition", f"attachment; filename=\"{blob}\"")
+        return Response(bout, ctype="application/octet-stream")
+
+    @server.json_delete(f"{prefix}/smind/blob")
+    @server.middleware(verify_worker_token)
+    def _delete_smind_blob(
+            _req: QSRH, rargs: ReqArgs) -> WorkerUploadResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        blobs: list[str] = args["blobs"]
+        session_store.blob_remove(session_id, blobs)
+        return {
+            "done": True,
+        }
+
+    @server.json_post(f"{prefix}/smind/list")
+    @server.middleware(verify_worker_token)
+    def _post_smind_list(
+            _req: QSRH, rargs: ReqArgs) -> WorkerBlobListResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        return {
+            "blobs": session_store.blob_list(session_id),
+        }
+
+    @server.json_post(f"{prefix}/smind/hash")
+    @server.middleware(verify_worker_token)
+    def _post_smind_hash(
+            _req: QSRH, rargs: ReqArgs) -> WorkerBlobHashResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        blobs: list[str] = args["blobs"]
+        return {
+            "blob_hashes": session_store.blob_hash(session_id, blobs),
+        }
 
     # # # SECURE # # #
     server.add_middleware(verify_user_session)
@@ -343,7 +609,7 @@ def setup(
         user_session: SessionToken = rargs["meta"]["user_session"]
         name: UName = rargs["meta"]["user_name"]
         user_id = sec_ctx.get_user_id(user_session, name)
-        session, messages = init_llama(user_id, graph_profile=graph_llama)
+        session, messages = init_llama(session_store, user_id)
         return {
             "model_session": session.get_session_id().to_parseable(),
             "messages": messages,
@@ -354,8 +620,7 @@ def setup(
     def _post_recover(_req: QSRH, rargs: ReqArgs) -> ChatRecoverResponse:
         meta = rargs["meta"]
         session: Session = meta["model_session"]
-        messages, task_id = recover_llama_chat(
-            session, graph_profile=graph_llama)
+        messages, task_id = recover_llama_chat(task_queue, model_ns, session)
         return {
             "messages": messages,
             "task": None if task_id is None else task_id.to_parseable(),
@@ -368,8 +633,7 @@ def setup(
         meta = rargs["meta"]
         session: Session = meta["model_session"]
         prompt: str = meta["prompt"]
-        task_id = start_llama_response(
-            prompt, session, graph_profile=graph_llama)
+        task_id = start_llama_response(task_queue, model_ns, prompt, session)
         return {
             "task": task_id.to_parseable(),
         }

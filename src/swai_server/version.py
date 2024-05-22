@@ -24,7 +24,7 @@ from typing import Literal
 from scattermind.system.io import open_reads
 from scattermind.system.util import get_time_str
 
-from swai.env import envload_path
+from swai_server.env import envload_path
 
 
 VERSION_NAME: str | None = None

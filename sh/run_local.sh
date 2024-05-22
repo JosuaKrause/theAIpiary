@@ -21,23 +21,40 @@
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
 #
-set -ex
+set -x
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-mkdir -p "userdata/"
+ENV_FILE="${ENV_FILE:-.env.provider}"
+BASE="userdata/provider"
+ROOT="../.."
+
+mkdir -p "${BASE}/"
 
 PYTHON="${PYTHON:-python}"
 DATE=$(date "+%Y-%m-%d")
 
+if [ ! -f "${ENV_FILE}" ]; then
+    cp "env_provider_sample" "${ENV_FILE}"
+    echo "created env file at ${ENV_FILE} please fill in all values and run again"
+    exit 1
+else
+    source "${ENV_FILE}"
+fi
+
+if [ -z "${SWAI_WORKER_TOKEN}" ] || [ -z "${SWAI_USER}" ] || [ -z "${SWAI_API_URL}" ]; then
+    echo "missing values in env file"
+    exit 2
+fi
+
 start_redis() {
     REDIS_NAME=$1
     REDIS_PORT=$2
-    REDIS_PATH="userdata/${REDIS_NAME}/"
+    REDIS_PATH="${BASE}/${REDIS_NAME}/"
     mkdir -p "${REDIS_PATH}"
     pushd "${REDIS_PATH}"
     redis-server \
-        "../../deploy/redis_mac/${REDIS_NAME}.conf" \
+        "../${ROOT}/deploy/redis_local/${REDIS_NAME}.conf" \
         --port "${REDIS_PORT}" \
         >> "redis-${DATE}.log" 2>&1 &
     popd
@@ -45,32 +62,36 @@ start_redis() {
 
 start_smind() {
     DEVICE=$1
-    mkdir -p "userdata/smind/"
+    mkdir -p "${BASE}/smind/"
     pushd "src/"
-    ${PYTHON} -m scattermind \
-        --version-file "../userdata/version.txt" \
-        --config "../deploy/smind-config-mac.json" \
+    SWAI_API_URL="${SWAI_API_URL}" \
+    SWAI_USER="${SWAI_USER}" \
+    SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
+        ${PYTHON} -u -m scattermind \
+        --version-file "../${BASE}/version.txt" \
+        --config "../deploy/smind-config-local.json" \
         --device "${DEVICE}" \
         worker \
-        --graph "../deploy/graphs_mac/" \
-        >> "../userdata/smind/smind-${DATE}.log" 2>&1 &
+        --graph "../deploy/graphs_local/" \
+        >> "../${BASE}/smind/smind-${DATE}.log" 2>&1 &
     popd
 }
 
 start_provider() {
-    mkdir -p "userdata/swai/"
+    mkdir -p "${BASE}/swai/"
     pushd "src/"
-    HISTORY_PATH="../userdata/.cmd_history" \
-    CONFIG_PATH="../mac.config.json" \
-    VERSION_PATH="../userdata/version.txt" \
-    PUBLIC_PATH="../public/" \
-        ${PYTHON} -m swai_provider --dedicated \
-        >> "../userdata/swai/swai_provider-${DATE}.log" 2>&1 &
+    SWAI_API_URL="${SWAI_API_URL}" \
+    SWAI_USER="${SWAI_USER}" \
+    SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
+    CONFIG_PATH="../local/local.config.json" \
+    VERSION_PATH="../${BASE}/version.txt" \
+        ${PYTHON} -u -m swai_provider \
+        >> "../${BASE}/swai/swai_provider-${DATE}.log" 2>&1
     popd
 }
 
 make -s version-file
-mv version.txt userdata/version.txt
+mv version.txt "${BASE}/version.txt"
 
 start_redis rmain 6381
 start_redis rbody 6382
@@ -81,5 +102,3 @@ DEVICE="${DEVICE:-auto}"
 
 start_smind "${DEVICE}"
 start_provider
-
-make run-ts

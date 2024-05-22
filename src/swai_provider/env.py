@@ -29,15 +29,14 @@ EnvPath = Literal[
     "GRAPH_PATH",
     "HISTORY_PATH",
     "PUBLIC_PATH",
-    "REDIS_PATH",
     "SMIND_CFG",
     "VERSION_PATH",
 ]
 EnvStr = Literal[
     "HOST",
-    "REDIS_HOST",
-    "REDIS_PREFIX",
-    "REDIS_PW",
+    "SWAI_API_URL",
+    "SWAI_USER",
+    "SWAI_WORKER_TOKEN",
 ]
 EnvInt = Literal[
     "PORT",

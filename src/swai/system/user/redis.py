@@ -18,6 +18,7 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
+import hmac
 import uuid
 from collections.abc import Iterable
 from typing import cast, TypeAlias, TypedDict
@@ -37,6 +38,7 @@ from swai.system.user.manager import (
     CapabilityName,
     SessionToken,
     UserManager,
+    WorkerToken,
 )
 
 
@@ -51,6 +53,10 @@ UserInfo = TypedDict('UserInfo', {
 
 
 PW_RESET_EXPIRE = 24.0 * 60.0 * 60.0  # 24h
+
+
+INVALID_WORKER_TOKEN: WorkerToken = uuid.UUID(
+    "87f3fabee0ca4feaa42d8f40e5cdc303").hex
 
 
 class RedisUserManager(UserManager):
@@ -88,6 +94,10 @@ class RedisUserManager(UserManager):
     @classmethod
     def _key_pw_reset(cls, reset_token: str) -> str:
         return f"reset:{reset_token}"
+
+    @staticmethod
+    def _key_worker(user_id: UserId) -> str:
+        return f"worker:{user_id.to_parseable()}"
 
     @classmethod
     def _session_token(cls, name: UName) -> SessionToken:
@@ -217,6 +227,29 @@ class RedisUserManager(UserManager):
         }
 
     def list_users(self) -> Iterable[UName]:
-        key = f"{self._key_userhash_info(None)}*"
-        for name in sorted(self._redis.keys(match=key, block=False)):
+        pat = f"{self._key_userhash_info(None)}*"
+        for key in sorted(self._redis.keys(match=pat, block=False)):
+            name = self._redis.hget(key, "name")
+            if name is None:
+                continue
             yield UName(name)
+
+    def create_worker_token(self, name: UName) -> WorkerToken:
+        user_id = self.get_user_id(name)
+        worker_token: WorkerToken | None = None
+        while worker_token is None:
+            worker_token = uuid.uuid4().hex
+            if hmac.compare_digest(INVALID_WORKER_TOKEN, worker_token):
+                worker_token = None
+        self._redis.set_value(self._key_worker(user_id), worker_token)
+        return worker_token
+
+    def is_correct_worker_token(
+            self, name: UName, worker_token: WorkerToken) -> bool:
+        user_id = self.get_user_id(name)
+        expected_token: WorkerToken | None = self._redis.get_value(
+            self._key_worker(user_id))
+        if expected_token is None:
+            # NOTE: no shortcut for missing tokens
+            expected_token = INVALID_WORKER_TOKEN
+        return hmac.compare_digest(expected_token, worker_token)
