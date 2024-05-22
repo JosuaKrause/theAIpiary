@@ -50,8 +50,8 @@ export type LoginApiProvider = {
 
 export const DEFAULT_LOGIN_API: LoginApiProvider = {
   getUser: async () => {
-    const res = await fetch(`${URL_PREFIX}/login`, {
-      method: 'GET',
+    const res = await fetch(`${URL_PREFIX}/user`, {
+      method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',

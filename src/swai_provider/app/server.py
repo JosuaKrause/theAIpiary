@@ -226,9 +226,9 @@ def setup(
 
     # *** user management ***
 
-    @server.json_get(f"{prefix}/login")
+    @server.json_post(f"{prefix}/user")
     @server.middleware(maybe_user_session)
-    def _get_login(_req: QSRH, rargs: ReqArgs) -> LoginResponse:
+    def _post_user(_req: QSRH, rargs: ReqArgs) -> LoginResponse:
         user_session: SessionToken | None = rargs["meta"].get("user_session")
         if user_session is None:
             return {
