@@ -25,6 +25,9 @@ from scattermind.system.base import UserId
 from scattermind.system.names import UName
 
 
+WorkerToken: TypeAlias = str
+
+
 CapabilityName = Literal[
     "change_capabilities",
     "reset_own_password",
@@ -98,4 +101,11 @@ class UserManager:
         raise NotImplementedError()
 
     def list_users(self) -> Iterable[UName]:
+        raise NotImplementedError()
+
+    def create_worker_token(self, name: UName) -> WorkerToken:
+        raise NotImplementedError()
+
+    def is_correct_worker_token(
+            self, name: UName, worker_token: WorkerToken) -> bool:
         raise NotImplementedError()

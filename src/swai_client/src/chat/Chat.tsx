@@ -65,12 +65,6 @@ function styleResponse(isThinking: boolean) {
       text-align: right;
       translate: -5px 0;
     }
-
-    @keyframes ellipsis {
-      to {
-        width: calc(100% - 2ch);
-      }
-    }
   `;
 }
 

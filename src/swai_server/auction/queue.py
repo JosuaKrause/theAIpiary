@@ -1,10 +1,8 @@
-import hmac
-import uuid
 from typing import TypeAlias
 
 from redipy import Redis, RedisConfig
 from scattermind.api.api import InputTypes, task_input_to_redis
-from scattermind.system.base import TaskId, UserId
+from scattermind.system.base import TaskId
 from scattermind.system.names import GNamespace
 from scattermind.system.response import (
     redis_to_response,
@@ -19,11 +17,7 @@ from scattermind.system.response import (
 from scattermind.system.session.session import SessionStore
 
 
-WorkerToken: TypeAlias = str
-
-
-INVALID_WORKER_TOKEN: WorkerToken = uuid.UUID(
-    "87f3fabee0ca4feaa42d8f40e5cdc303").hex
+ResponseStr: TypeAlias = str
 
 
 class TaskQueue:
@@ -31,23 +25,25 @@ class TaskQueue:
         self._session_store = session_store
         self._redis = Redis(cfg=cfg, redis_module="task")
 
-    def queue_channel(self) -> str:
+    @staticmethod
+    def queue_channel() -> str:
         return "queue"
 
-    def queue_key(self, ns: GNamespace) -> str:
+    @staticmethod
+    def queue_key(ns: GNamespace) -> str:
         return f"queue:{ns.get()}"
 
-    def input_key(self, task_id: TaskId) -> str:
+    @staticmethod
+    def input_key(task_id: TaskId) -> str:
         return f"input:{task_id.to_parseable()}"
 
-    def output_key(self, task_id: TaskId) -> str:
+    @staticmethod
+    def output_key(task_id: TaskId) -> str:
         return f"output:{task_id.to_parseable()}"
 
-    def status_key(self, task_id: TaskId) -> str:
+    @staticmethod
+    def status_key(task_id: TaskId) -> str:
         return f"status:{task_id.to_parseable()}"
-
-    def worker_key(self, user_id: UserId) -> str:
-        return f"worker:{user_id.to_parseable()}"
 
     def enqueue_task(
             self,
@@ -66,11 +62,11 @@ class TaskQueue:
             self,
             nss: list[GNamespace],
             *,
-            timeout: float) -> tuple[TaskId, str] | None:
+            timeout: float) -> tuple[TaskId, ResponseStr] | None:
         redis = self._redis
         queue_channel = self.queue_channel()
 
-        def get_task() -> tuple[TaskId, str] | None:
+        def get_task() -> tuple[TaskId, ResponseStr] | None:
             for ns in nss:
                 task = redis.lpop(self.queue_key(ns))
                 if task is None:
@@ -126,21 +122,3 @@ class TaskQueue:
             pipe.delete(self.input_key(task_id))
             pipe.delete(self.output_key(task_id))
             pipe.delete(self.status_key(task_id))
-
-    def create_worker_token(self, user_id: UserId) -> WorkerToken:
-        worker_token: WorkerToken | None = None
-        while worker_token is None:
-            worker_token = uuid.uuid4().hex
-            if hmac.compare_digest(INVALID_WORKER_TOKEN, worker_token):
-                worker_token = None
-        self._redis.set_value(self.worker_key(user_id), worker_token)
-        return worker_token
-
-    def is_correct_worker_token(
-            self, user_id: UserId, worker_token: WorkerToken) -> bool:
-        expected_token: WorkerToken | None = self._redis.get_value(
-            self.worker_key(user_id))
-        if expected_token is None:
-            # NOTE: no shortcut for missing tokens
-            expected_token = INVALID_WORKER_TOKEN
-        return hmac.compare_digest(expected_token, worker_token)
