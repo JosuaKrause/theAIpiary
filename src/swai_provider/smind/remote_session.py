@@ -21,6 +21,7 @@ from swai.server_response_types import (
     WorkerValueResponse,
 )
 from swai.system.user.manager import WorkerToken
+from swai_provider.env import envload_str
 
 
 T = TypeVar('T')
@@ -30,14 +31,12 @@ class RemoteSessionStore(SessionStore):
     def __init__(
             self,
             api_url: str,
-            name: UName,
-            worker_token: WorkerToken,
             cache_path: str,
             is_shared: bool) -> None:
         # FIXME: use timeouts
         super().__init__(cache_path=cache_path, is_shared=is_shared)
-        self._name = name
-        self._worker_token = worker_token
+        self._name = UName(envload_str("SWAI_USER"))
+        self._worker_token: WorkerToken = envload_str("SWAI_WORKER_TOKEN")
         self._api_url = api_url
         self._api = requests.Session()
 
@@ -170,6 +169,7 @@ class RemoteSessionStore(SessionStore):
             session_id: SessionId,
             key: str,
             condition: Callable[[], T],
+            *,
             timeout: float) -> T | None:
         start_time = time.monotonic()
         while True:

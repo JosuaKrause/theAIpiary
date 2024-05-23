@@ -191,7 +191,7 @@ def get_model_output(
             return True
         return res
 
-    cur = session.wait_for_signal(response_key, has_content, timeout)
+    cur = session.wait_for_signal(response_key, has_content, timeout=timeout)
     if cur is None:
         return ("", (task_id, index))
     if not isinstance(cur, str):

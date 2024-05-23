@@ -69,17 +69,8 @@
     "scratch": "/smind_cache/"
   },
   "sessions": {
-    "name": "redis",
-    "cfg": {
-      "host": "rmain",
-      "port": 6379,
-      "passwd": "",
-      "prefix": "sess",
-      "path": "rmain"
-    },
-    "disk_path": "/smind_sess/sessions/",
-    "cache_path": "/smind_sess/cache/",
-    "is_shared": false
+    "name": "swai_provider.smind.remote_session",
+    "cache_path": "/smind_sess/cache/"
   },
   "logger": {
     "listeners": [

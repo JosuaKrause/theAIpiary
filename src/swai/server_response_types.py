@@ -29,6 +29,13 @@ LoginResponse = TypedDict('LoginResponse', {
     "logged": bool,
     "capabilities": list[CapabilityName],
 })
+TaskBidResponse = TypedDict('TaskBidResponse', {
+    "task_id": str | None,
+    "input_data": str | None,
+})
+TaskFinishResponse = TypedDict('TaskFinishResponse', {
+    "well_done": bool,
+})
 WorkerTokenResponse = TypedDict('WorkerTokenResponse', {
     "worker_token": WorkerToken,
 })

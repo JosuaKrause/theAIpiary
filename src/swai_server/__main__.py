@@ -24,7 +24,7 @@ import traceback
 from quick_server import setup_shutdown
 from redipy.util import python_module
 
-from swai_provider.app.server import (
+from swai_server.app.server import (
     fallback_server,
     get_version_strs,
     setup_server,
@@ -35,16 +35,16 @@ from swai_provider.app.server import (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog=f"python -m {python_module()}",
-        description="Run the provider API server")
+        description="Run the SWAI API server")
     parser.add_argument(
         "--address",
         default=None,
-        help="the address of the provider API server")
+        help="the address of the SWAI API server")
     parser.add_argument(
         "--port",
         default=None,
         type=int,
-        help="the port of the provider API server")
+        help="the port of the SWAI API server")
     parser.add_argument(
         "--dedicated",
         default=False,

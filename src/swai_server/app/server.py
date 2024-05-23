@@ -30,6 +30,7 @@ from quick_server import QuickServerRequestHandler as QSRH
 from quick_server import ReqArgs, ReqNext, Response
 from scattermind.system.base import SessionId, TaskId, UserId
 from scattermind.system.names import GNamespace, UName
+from scattermind.system.response import redis_to_response
 from scattermind.system.session.session import Session
 from scattermind.system.util import get_time_str
 
@@ -41,6 +42,8 @@ from swai.server_response_types import (
     ChatTextResponse,
     LoginResponse,
     ResetTokenResponse,
+    TaskBidResponse,
+    TaskFinishResponse,
     VersionResponse,
     WorkerBlobHashResponse,
     WorkerBlobListResponse,
@@ -98,7 +101,7 @@ def get_version_strs() -> VersionDict:
     return {
         "python_version_detail": py_version_detail,
         "python_version": py_version,
-        "server_version": f"SWAIprovider/{version_name[1:]}",
+        "server_version": f"SWAIserver/{version_name[1:]}",
         "app_version": version_name,
         "commit": version_hash,
         "deploy_time": version_date,
@@ -369,6 +372,40 @@ def setup(
 
     # *** worker API ***
 
+    # * tasks *
+
+    @server.json_post(f"{prefix}/task/bid")
+    @server.middleware(verify_worker_token)
+    def _post_task_bid(_req: QSRH, rargs: ReqArgs) -> TaskBidResponse:
+        args = rargs["post"]
+        nss = [GNamespace(ns) for ns in args["nss"]]
+        timeout = float(args["timeout"])
+        assert timeout > 0.0
+        task = task_queue.pop_task(nss, timeout=timeout)
+        if task is None:
+            return {
+                "task_id": None,
+                "input_data": None,
+            }
+        task_id, input_data = task
+        return {
+            "task_id": task_id.to_parseable(),
+            "input_data": input_data,
+        }
+
+    @server.json_post(f"{prefix}/task/finish")
+    @server.middleware(verify_worker_token)
+    def _post_task_finish(_req: QSRH, rargs: ReqArgs) -> TaskFinishResponse:
+        args = rargs["post"]
+        task_id = TaskId.parse(args["task_id"])
+        response = redis_to_response(args["response"])
+        task_queue.set_result(task_id, response)
+        return {
+            "well_done": True,
+        }
+
+    # * smind sessions *
+
     @server.json_post(f"{prefix}/smind/user")
     @server.middleware(verify_worker_token)
     def _post_smind_user(_req: QSRH, rargs: ReqArgs) -> WorkerUserResponse:
@@ -495,7 +532,7 @@ def setup(
             return True
 
         res = session_store.wait_for_signal(
-            session_id, key, any_signal, timeout)
+            session_id, key, any_signal, timeout=timeout)
         return {
             "signal": bool(res),
         }

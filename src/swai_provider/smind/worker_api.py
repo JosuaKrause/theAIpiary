@@ -26,7 +26,7 @@ from typing import TypedDict
 import redis as redis_lib
 from scattermind.api.api import ScattermindAPI
 from scattermind.api.loader import load_api
-from scattermind.system.base import TaskId, UserId
+from scattermind.system.base import TaskId
 from scattermind.system.io import open_readb
 from scattermind.system.names import GNamespace
 from scattermind.system.response import response_ok, TASK_COMPLETE
@@ -37,8 +37,6 @@ from swai.smind.llama_session import (
     get_active_task,
     get_model_output,
     get_visible_messages,
-    load_system_prompt,
-    save_messages,
     set_active_task,
     set_interrupted,
     VisibleMessage,
@@ -135,19 +133,6 @@ def get_queue_stats(smind: ScattermindAPI) -> list[QueueStat]:
     except redis_lib.ConnectionError:
         print(traceback.format_exc())
         return []
-
-
-def init_llama(
-        user_id: UserId,
-        *,
-        graph_profile: GraphProfile) -> tuple[Session, list[VisibleMessage]]:
-    smind = graph_profile.get_api()
-    session = smind.new_session(user_id, copy_from=None)
-    with session.get_local_folder() as cache_dir:
-        msgs = load_system_prompt(cache_dir)
-        save_messages(cache_dir, msgs)
-    messages = get_visible_messages(session)
-    return (session, messages)
 
 
 def start_llama_response(
