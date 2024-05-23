@@ -37,6 +37,8 @@ CapabilityName = Literal[
     "list_users",
     "write_chat",
     "read_chat",
+    "register_own_worker",
+    "register_other_worker",
 ]
 CAPABILITIES = get_args(CapabilityName)
 CAP_CHANGE_CAPABILITIES: CapabilityName = "change_capabilities"
@@ -47,6 +49,8 @@ CAP_CREATE_USER: CapabilityName = "create_user"
 CAP_LIST_USERS: CapabilityName = "list_users"
 CAP_WRITE_CHAT: CapabilityName = "write_chat"
 CAP_READ_CHAT: CapabilityName = "read_chat"
+CAP_REGISTER_OWN_WORKER: CapabilityName = "register_own_worker"
+CAP_REGISTER_OTHER_WORKER: CapabilityName = "register_other_worker"
 
 
 def as_capability(capability: str) -> CapabilityName:

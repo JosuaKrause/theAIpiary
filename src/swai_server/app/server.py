@@ -18,6 +18,8 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
+import io
+import shutil
 import sys
 import threading
 from http.cookies import SimpleCookie
@@ -26,16 +28,13 @@ from typing import TypedDict
 from quick_server import create_server, QuickServer
 from quick_server import QuickServerRequestHandler as QSRH
 from quick_server import ReqArgs, ReqNext, Response
-from scattermind.system.base import SessionId, TaskId
+from scattermind.system.base import SessionId, TaskId, UserId
 from scattermind.system.names import GNamespace, UName
 from scattermind.system.session.session import Session
 from scattermind.system.util import get_time_str
 
 from swai.clean import sanity_check
-from swai.system.user.loader import load_user_manager
-from swai.system.user.manager import SessionToken
-from swai.system.user.secure import SecureContext
-from swai_server.app.response_types import (
+from swai.server_response_types import (
     ChatInitResponse,
     ChatPromptResponse,
     ChatRecoverResponse,
@@ -43,7 +42,20 @@ from swai_server.app.response_types import (
     LoginResponse,
     ResetTokenResponse,
     VersionResponse,
+    WorkerBlobHashResponse,
+    WorkerBlobListResponse,
+    WorkerKeysResponse,
+    WorkerSessionListResponse,
+    WorkerSessionResponse,
+    WorkerSignalResponse,
+    WorkerTokenResponse,
+    WorkerUploadResponse,
+    WorkerUserResponse,
+    WorkerValueResponse,
 )
+from swai.system.user.loader import load_user_manager
+from swai.system.user.manager import SessionToken, WorkerToken
+from swai.system.user.secure import SecureContext
 from swai_server.auction.queue import TaskQueue
 from swai_server.config import get_config
 from swai_server.env import (
@@ -210,6 +222,15 @@ def setup(
         rargs["meta"]["model_session"] = session
         return okay
 
+    def verify_worker_token(
+            _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
+        args = rargs["post"]
+        worker_token: WorkerToken = args["worker_token"]
+        name = UName(args["name"])
+        sec_ctx.ensure_worker_token(name, worker_token)
+        rargs["meta"]["user_name"] = name
+        return okay
+
     # *** misc ***
 
     @server.json_get(f"{prefix}/version")
@@ -279,9 +300,24 @@ def setup(
                 user_session, login_name)),
         }
 
+    @server.json_post(f"{prefix}/create_worker_token")
+    @server.middleware(verify_user_session)
+    def _post_create_worker_token(
+            _req: QSRH, rargs: ReqArgs) -> WorkerTokenResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
+        name: UName = rargs["meta"]["user_name"]
+        args = rargs["post"]
+        user_name: str | None = args.get("name")
+        if user_name is not None:
+            name = UName(user_name)
+        worker_token = sec_ctx.create_worker_token(user_session, name)
+        return {
+            "worker_token": worker_token,
+        }
+
     @server.json_post(f"{prefix}/reset_password_token")
     @server.middleware(verify_user_session)
-    def _get_reset_password_token(
+    def _post_reset_password_token(
             _req: QSRH, rargs: ReqArgs) -> ResetTokenResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
         args = rargs["post"]
@@ -325,12 +361,204 @@ def setup(
             "capabilities": [],
         }
 
+    # FIXME: use authorization headers
     # TODO:
-    # - auto create first user
     # - create user
     # - list users (+reset +logout +email)
-    # - list capabilities
     # - edit capabilities
+
+    # *** worker API ***
+
+    @server.json_post(f"{prefix}/smind/user")
+    @server.middleware(verify_worker_token)
+    def _post_smind_user(_req: QSRH, rargs: ReqArgs) -> WorkerUserResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        user_id = session_store.get_user(session_id)
+        return {
+            "user_id": None if user_id is None else user_id.to_parseable(),
+        }
+
+    @server.json_put(f"{prefix}/smind/session")
+    @server.middleware(verify_worker_token)
+    def _put_smind_session(
+            _req: QSRH, rargs: ReqArgs) -> WorkerSessionResponse:
+        args = rargs["post"]
+        user_id = UserId.parse(args["user_id"])
+        session_id = SessionId.parse(args["session"])
+        session_store.register_session(user_id, session_id)
+        return {
+            "ok": True,
+        }
+
+    @server.json_post(f"{prefix}/smind/session")
+    @server.middleware(verify_worker_token)
+    def _post_smind_session(
+            _req: QSRH, rargs: ReqArgs) -> WorkerSessionListResponse:
+        args = rargs["post"]
+        user_id = UserId.parse(args["user_id"])
+        return {
+            "sessions": [
+                session.get_session_id().to_parseable()
+                for session in session_store.get_sessions(user_id)
+            ],
+        }
+
+    @server.json_delete(f"{prefix}/smind/session")
+    @server.middleware(verify_worker_token)
+    def _delete_smind_session(
+            _req: QSRH, rargs: ReqArgs) -> WorkerSessionResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        session_store.remove(session_id)
+        return {
+            "ok": True,
+        }
+
+    @server.json_post(f"{prefix}/smind/value")
+    @server.middleware(verify_worker_token)
+    def _post_smind_value(
+            _req: QSRH, rargs: ReqArgs) -> WorkerValueResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        key = args["key"]
+        index = int(args.get("index", 0))
+        value: str | None = args.get("value")
+        op = args["op"]
+        if op == "get":
+            value = session_store.get_value(session_id, key, index)
+            return {
+                "value": value,
+                "success": True,
+            }
+        if op == "pop":
+            value = session_store.pop_value(session_id, key)
+            return {
+                "value": value,
+                "success": True,
+            }
+        if op == "set":
+            if value is None:
+                raise ValueError(f"need value for {op=}")
+            session_store.set_value(session_id, key, index, value)
+            return {
+                "success": True,
+            }
+        if op == "push":
+            if value is None:
+                raise ValueError(f"need value for {op=}")
+            session_store.push_value(session_id, key, value)
+            return {
+                "success": True,
+            }
+        if op == "length":
+            length = session_store.get_length(session_id, key)
+            return {
+                "length": length,
+                "success": True,
+            }
+        raise ValueError(f"unknown {op=}")
+
+    @server.json_post(f"{prefix}/smind/keys")
+    @server.middleware(verify_worker_token)
+    def _post_smind_keys(
+            _req: QSRH, rargs: ReqArgs) -> WorkerKeysResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        return {
+            "keys": session_store.get_keys(session_id),
+        }
+
+    @server.json_post(f"{prefix}/smind/signal")
+    @server.middleware(verify_worker_token)
+    def _post_smind_signal(
+            _req: QSRH, rargs: ReqArgs) -> WorkerSignalResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        key = args["key"]
+        session_store.notify_signal(session_id, key)
+        return {
+            "signal": True,
+        }
+
+    @server.json_post(f"{prefix}/smind/wait")
+    @server.middleware(verify_worker_token)
+    def _post_smind_wait(
+            _req: QSRH, rargs: ReqArgs) -> WorkerSignalResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        key = args["key"]
+        timeout = float(args["timeout"])
+        assert timeout > 0.0
+
+        def any_signal() -> bool:
+            return True
+
+        res = session_store.wait_for_signal(
+            session_id, key, any_signal, timeout)
+        return {
+            "signal": bool(res),
+        }
+
+    @server.json_put(f"{prefix}/smind/blob")
+    @server.middleware(verify_worker_token)
+    def _put_smind_upload(_req: QSRH, rargs: ReqArgs) -> WorkerUploadResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        blob = args["blob"]
+        files = rargs["files"]
+        with session_store.open_blob_write(session_id, blob) as fout:
+            shutil.copyfileobj(files["blob"], fout)  # type: ignore
+        return {
+            "done": True,
+        }
+
+    @server.text_post(f"{prefix}/smind/blob")
+    @server.middleware(verify_worker_token)
+    def _post_smind_blob(req: QSRH, rargs: ReqArgs) -> Response:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        blob = args["blob"]
+        bout = io.BytesIO()
+        with session_store.open_blob_read(session_id, blob) as fin:
+            shutil.copyfileobj(fin, bout)
+        bout.seek(0, io.SEEK_SET)
+        req.send_header(
+            "content-disposition", f"attachment; filename=\"{blob}\"")
+        return Response(bout, ctype="application/octet-stream")
+
+    @server.json_delete(f"{prefix}/smind/blob")
+    @server.middleware(verify_worker_token)
+    def _delete_smind_blob(
+            _req: QSRH, rargs: ReqArgs) -> WorkerUploadResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        blobs: list[str] = args["blobs"]
+        session_store.blob_remove(session_id, blobs)
+        return {
+            "done": True,
+        }
+
+    @server.json_post(f"{prefix}/smind/list")
+    @server.middleware(verify_worker_token)
+    def _post_smind_list(
+            _req: QSRH, rargs: ReqArgs) -> WorkerBlobListResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        return {
+            "blobs": session_store.blob_list(session_id),
+        }
+
+    @server.json_post(f"{prefix}/smind/hash")
+    @server.middleware(verify_worker_token)
+    def _post_smind_hash(
+            _req: QSRH, rargs: ReqArgs) -> WorkerBlobHashResponse:
+        args = rargs["post"]
+        session_id = SessionId.parse(args["session"])
+        blobs: list[str] = args["blobs"]
+        return {
+            "blob_hashes": session_store.blob_hash(session_id, blobs),
+        }
 
     # # # SECURE # # #
     server.add_middleware(verify_user_session)

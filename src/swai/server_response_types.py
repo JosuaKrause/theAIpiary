@@ -18,16 +18,48 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from swai.smind.llama_session import VisibleMessage
-from swai.system.user.manager import CapabilityName
+from swai.system.user.manager import CapabilityName, WorkerToken
 
 
 LoginResponse = TypedDict('LoginResponse', {
     "user_name": str | None,
     "logged": bool,
     "capabilities": list[CapabilityName],
+})
+WorkerTokenResponse = TypedDict('WorkerTokenResponse', {
+    "worker_token": WorkerToken,
+})
+WorkerUserResponse = TypedDict('WorkerUserResponse', {
+    "user_id": str | None,
+})
+WorkerSessionResponse = TypedDict('WorkerSessionResponse', {
+    "ok": bool,
+})
+WorkerSessionListResponse = TypedDict('WorkerSessionListResponse', {
+    "sessions": list[str],
+})
+WorkerValueResponse = TypedDict('WorkerValueResponse', {
+    "value": NotRequired[str | None],
+    "length": NotRequired[int],
+    "success": bool,
+})
+WorkerUploadResponse = TypedDict('WorkerUploadResponse', {
+    "done": bool,
+})
+WorkerBlobListResponse = TypedDict('WorkerBlobListResponse', {
+    "blobs": list[str],
+})
+WorkerBlobHashResponse = TypedDict('WorkerBlobHashResponse', {
+    "blob_hashes": dict[str, str],
+})
+WorkerKeysResponse = TypedDict('WorkerKeysResponse', {
+    "keys": list[str],
+})
+WorkerSignalResponse = TypedDict('WorkerSignalResponse', {
+    "signal": bool,
 })
 ResetTokenResponse = TypedDict('ResetTokenResponse', {
     "user_name": str,

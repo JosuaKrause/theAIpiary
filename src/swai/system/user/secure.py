@@ -31,6 +31,8 @@ from swai.system.user.manager import (
     CAP_LIST_USERS,
     CAP_LOGOUT_OTHER_USER,
     CAP_READ_CHAT,
+    CAP_REGISTER_OTHER_WORKER,
+    CAP_REGISTER_OWN_WORKER,
     CAP_RESET_OTHER_PW,
     CAP_RESET_OWN_PW,
     CAP_WRITE_CHAT,
@@ -38,6 +40,7 @@ from swai.system.user.manager import (
     CapabilityName,
     SessionToken,
     UserManager,
+    WorkerToken,
 )
 
 
@@ -218,6 +221,20 @@ class SecureContext:
     def list_users(self, who: SessionToken) -> list[UName]:
         self.ensure_can_act(who, None, admin_capability=CAP_LIST_USERS)
         return list(self._user_mng.list_users())
+
+    def create_worker_token(
+            self, who: SessionToken, name: UName) -> WorkerToken:
+        self.ensure_can_act(
+            who,
+            name,
+            own_capability=CAP_REGISTER_OWN_WORKER,
+            admin_capability=CAP_REGISTER_OTHER_WORKER)
+        return self._user_mng.create_worker_token(name)
+
+    def ensure_worker_token(
+            self, name: UName, worker_token: WorkerToken) -> None:
+        if not self._user_mng.is_correct_worker_token(name, worker_token):
+            raise PreventDefaultResponse(401, "invalid worker token")
 
     def force_logout_user(self, name: UName) -> None:
         user_mng = self._user_mng

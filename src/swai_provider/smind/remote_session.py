@@ -1,19 +1,26 @@
-import os
-import shutil
+import io
+import time
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from typing import IO, TypeVar
 
+import requests
 from scattermind.system.base import L_REMOTE, Locality, SessionId, UserId
-from scattermind.system.io import (
-    ensure_folder,
-    get_files,
-    open_readb,
-    open_writeb,
-    remove_file,
-)
+from scattermind.system.names import UName
 from scattermind.system.session.session import Session, SessionStore
-from scattermind.system.util import get_blob_hash
+
+from swai.server_response_types import (
+    WorkerBlobHashResponse,
+    WorkerBlobListResponse,
+    WorkerKeysResponse,
+    WorkerSessionListResponse,
+    WorkerSessionResponse,
+    WorkerSignalResponse,
+    WorkerUploadResponse,
+    WorkerUserResponse,
+    WorkerValueResponse,
+)
+from swai.system.user.manager import WorkerToken
 
 
 T = TypeVar('T')
@@ -23,52 +30,60 @@ class RemoteSessionStore(SessionStore):
     def __init__(
             self,
             api_url: str,
+            name: UName,
+            worker_token: WorkerToken,
             cache_path: str,
             is_shared: bool) -> None:
+        # FIXME: use timeouts
         super().__init__(cache_path=cache_path, is_shared=is_shared)
+        self._name = name
+        self._worker_token = worker_token
         self._api_url = api_url
+        self._api = requests.Session()
 
     @staticmethod
     def locality() -> Locality:
         return L_REMOTE
 
-    @staticmethod
-    def _uts_key(user_id: UserId) -> str:
-        return f"uts:{user_id.to_parseable()}"
+    def _url(self, path: str) -> str:
+        return f"{self._api_url}/smind{path}"
 
-    @staticmethod
-    def _stu_key(session_id: SessionId) -> str:
-        return f"stu:{session_id.to_parseable()}"
-
-    @staticmethod
-    def _val_key(session_id: SessionId, key: str | None) -> str:
-        if key is None:
-            key = ""
-        elif not key:
-            raise ValueError(f"invalid {key=}")
-        return f"val:{session_id.to_parseable()}:{key}"
-
-    @staticmethod
-    def _signal_key(session_id: SessionId, key: str) -> str:
-        if not key:
-            raise ValueError(f"invalid {key=}")
-        return f"signal:{session_id.to_parseable()}:{key}"
+    def _json(self) -> dict[str, str | int | float | list[str] | None]:
+        return {
+            "name": self._name.get(),
+            "worker_token": self._worker_token,
+        }
 
     def register_session(self, user_id: UserId, session_id: SessionId) -> None:
-        with self._redis.pipeline() as pipe:
-            pipe.sadd(self._uts_key(user_id), session_id.to_parseable())
-            pipe.set_value(self._stu_key(session_id), user_id.to_parseable())
+        obj = self._json()
+        obj["user_id"] = user_id.to_parseable()
+        obj["session"] = session_id.to_parseable()
+        resp = self._api.put(self._url("/session"), json=obj)
+        resp.raise_for_status()
+        res: WorkerSessionResponse = resp.json()
+        assert res["ok"]
 
     def get_sessions(self, user_id: UserId) -> Iterable[Session]:
-        user_sessions = self._redis.smembers(self._uts_key(user_id))
+        obj = self._json()
+        obj["user_id"] = user_id.to_parseable()
+        resp = self._api.post(self._url("/session"), json=obj)
+        resp.raise_for_status()
+        res: WorkerSessionListResponse = resp.json()
         yield from (
-            self.get_session(SessionId.parse(sess_str))
-            for sess_str in user_sessions
+            self.get_session(SessionId.parse(session))
+            for session in res["sessions"]
         )
 
     def get_user(self, session_id: SessionId) -> UserId | None:
-        user_str = self._redis.get_value(self._stu_key(session_id))
-        return None if user_str is None else UserId.parse(user_str)
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        resp = self._api.post(self._url("/user"), json=obj)
+        resp.raise_for_status()
+        res: WorkerUserResponse = resp.json()
+        user_id_str = res["user_id"]
+        if user_id_str is None:
+            return None
+        return UserId.parse(user_id_str)
 
     def set_value(
             self,
@@ -76,36 +91,79 @@ class RemoteSessionStore(SessionStore):
             key: str,
             index: int,
             value: str) -> None:
-        # FIXME: implement as redis function
-        redis = self._redis
-        val_key = self._val_key(session_id, key)
-        if index == redis.llen(val_key):
-            self.push_value(session_id, key, value)
-            return
-        redis.lset(val_key, index, value)
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        obj["op"] = "set"
+        obj["key"] = key
+        obj["index"] = index
+        obj["value"] = value
+        resp = self._api.post(self._url("/value"), json=obj)
+        resp.raise_for_status()
+        res: WorkerValueResponse = resp.json()
+        assert res["success"]
 
     def push_value(self, session_id: SessionId, key: str, value: str) -> None:
-        self._redis.rpush(self._val_key(session_id, key), value)
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        obj["op"] = "push"
+        obj["key"] = key
+        obj["value"] = value
+        resp = self._api.post(self._url("/value"), json=obj)
+        resp.raise_for_status()
+        res: WorkerValueResponse = resp.json()
+        assert res["success"]
 
     def pop_value(self, session_id: SessionId, key: str) -> str | None:
-        return self._redis.rpop(self._val_key(session_id, key))
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        obj["op"] = "pop"
+        obj["key"] = key
+        resp = self._api.post(self._url("/value"), json=obj)
+        resp.raise_for_status()
+        res: WorkerValueResponse = resp.json()
+        assert res["success"]
+        return res["value"]
 
     def get_value(
             self, session_id: SessionId, key: str, index: int) -> str | None:
-        return self._redis.lindex(self._val_key(session_id, key), index)
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        obj["op"] = "set"
+        obj["key"] = key
+        obj["index"] = index
+        resp = self._api.post(self._url("/value"), json=obj)
+        resp.raise_for_status()
+        res: WorkerValueResponse = resp.json()
+        assert res["success"]
+        return res["value"]
 
     def get_length(self, session_id: SessionId, key: str) -> int:
-        return self._redis.llen(self._val_key(session_id, key))
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        obj["op"] = "length"
+        obj["key"] = key
+        resp = self._api.post(self._url("/value"), json=obj)
+        resp.raise_for_status()
+        res: WorkerValueResponse = resp.json()
+        assert res["success"]
+        return res["length"]
 
     def get_keys(self, session_id: SessionId) -> list[str]:
-        key_prefix = self._val_key(session_id, None)
-        return [
-            res.removeprefix(key_prefix)
-            for res in self._redis.keys(match=f"{key_prefix}*", block=False)
-        ]
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        resp = self._api.post(self._url("/keys"), json=obj)
+        resp.raise_for_status()
+        res: WorkerKeysResponse = resp.json()
+        return res["keys"]
 
     def notify_signal(self, session_id: SessionId, key: str) -> None:
-        self._redis.publish(self._signal_key(session_id, key), "signal")
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        obj["key"] = key
+        resp = self._api.post(self._url("/signal"), json=obj)
+        resp.raise_for_status()
+        res: WorkerSignalResponse = resp.json()
+        assert res["signal"]
 
     def wait_for_signal(
             self,
@@ -113,54 +171,93 @@ class RemoteSessionStore(SessionStore):
             key: str,
             condition: Callable[[], T],
             timeout: float) -> T | None:
-        return self._redis.wait_for(
-            self._signal_key(session_id, key), condition, timeout)
-
-    def _get_folder(
-            self, session_id: SessionId, *, ensure: bool = True) -> str:
-        folder = os.path.join(self._disk_path, *session_id.as_folder())
-        if ensure:
-            return ensure_folder(folder)
-        return folder
-
-    def _get_path(self, session_id: SessionId, name: str) -> str:
-        if not name or name.startswith(".") or "/" in name:
-            raise ValueError(f"invalid {name=} for {session_id=}")
-        return os.path.join(self._get_folder(session_id), name)
+        start_time = time.monotonic()
+        while True:
+            value = condition()
+            if bool(value):
+                return value
+            time_passed = time.monotonic() - start_time
+            if time_passed >= timeout:
+                return None
+            obj = self._json()
+            obj["session"] = session_id.to_parseable()
+            obj["key"] = key
+            obj["timeout"] = timeout - time_passed
+            resp = self._api.post(self._url("/signal"), json=obj)
+            resp.raise_for_status()
+            res: WorkerSignalResponse = resp.json()
+            assert "signal" in res
 
     @contextmanager
     def open_blob_write(
             self, session_id: SessionId, name: str) -> Iterator[IO[bytes]]:
-        with open_writeb(self._get_path(session_id, name)) as fout:
-            yield fout
+        bout = io.BytesIO()
+        yield bout
+        bout.seek(0, io.SEEK_SET)
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        obj["blob"] = name
+        resp = self._api.put(
+            self._url("/blob"),
+            data=obj,
+            files={
+                "blob": (
+                    "blob",
+                    bout,
+                    "application/octet-stream",
+                ),
+            })
+        resp.raise_for_status()
+        res: WorkerUploadResponse = resp.json()
+        assert res["done"]
 
     @contextmanager
     def open_blob_read(
             self, session_id: SessionId, name: str) -> Iterator[IO[bytes]]:
-        with open_readb(self._get_path(session_id, name)) as fin:
-            yield fin
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        obj["blob"] = name
+        resp = self._api.post(self._url("/blob"), json=obj)
+        resp.raise_for_status()
+        bout = io.BytesIO(resp.content)
+        try:
+            yield bout
+        finally:
+            bout.close()
 
-    def blob_hash(self, session_id: SessionId, name: str) -> str:
-        with self.open_blob_read(session_id, name) as fin:
-            return get_blob_hash(fin)
+    def blob_hash(
+            self,
+            session_id: SessionId,
+            names: Iterable[str]) -> dict[str, str]:
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        obj["blobs"] = sorted(set(names))
+        resp = self._api.post(self._url("/hash"), json=obj)
+        resp.raise_for_status()
+        res: WorkerBlobHashResponse = resp.json()
+        return res["blob_hashes"]
 
     def blob_list(self, session_id: SessionId) -> list[str]:
-        path = self._get_folder(session_id, ensure=False)
-        return get_files(path, exclude_prefix=["."], exclude_ext=[".~tmp"])
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        resp = self._api.post(self._url("/list"), json=obj)
+        resp.raise_for_status()
+        res: WorkerBlobListResponse = resp.json()
+        return res["blobs"]
 
-    def blob_remove(self, session_id: SessionId, name: str) -> None:
-        remove_file(self._get_path(session_id, name))
+    def blob_remove(self, session_id: SessionId, names: list[str]) -> None:
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        obj["blobs"] = sorted(set(names))
+        resp = self._api.delete(self._url("/blob"), json=obj)
+        resp.raise_for_status()
+        res: WorkerUploadResponse = resp.json()
+        assert res["done"]
 
     def remove(self, session_id: SessionId) -> None:
-        # FIXME: make redis function
-        user_id = self.get_user(session_id)
-        if user_id is None:
-            raise ValueError(f"cannot find user of {session_id=}")
-        keys = self.get_keys(session_id)
-        with self._redis.pipeline() as pipe:
-            pipe.delete(self._stu_key(session_id))
-            pipe.srem(self._uts_key(user_id), session_id.to_parseable())
-            pipe.delete(*(self._val_key(session_id, key) for key in keys))
-        folder = self._get_folder(session_id, ensure=False)
-        shutil.rmtree(folder, ignore_errors=True)
-        self.clear_local(session_id)
+        obj = self._json()
+        obj["session"] = session_id.to_parseable()
+        resp = self._api.delete(self._url("/session"), json=obj)
+        resp.raise_for_status()
+        res: WorkerSessionResponse = resp.json()
+        assert res["ok"]
