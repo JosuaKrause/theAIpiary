@@ -30,6 +30,7 @@ COPY "${CONFIG_PATH}" config.json
 ENV HOST=0.0.0.0
 ENV PORT=${PORT}
 ENV CONFIG_PATH=config.json
+ENV HISTORY_PATH=/swai
 EXPOSE ${PORT}
 ENTRYPOINT ["/bin/bash", "-l", "-c"]
 CMD ["python -u -m swai_server --dedicated"]
