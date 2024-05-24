@@ -227,10 +227,12 @@ class RedisUserManager(UserManager):
         }
 
     def list_users(self) -> Iterable[UName]:
-        prefix = self._key_userhash_info(None)
-        key = f"{prefix}*"
-        for name in sorted(self._redis.keys(match=key, block=False)):
-            yield UName(name.removeprefix(prefix))
+        pat = f"{self._key_userhash_info(None)}*"
+        for key in sorted(self._redis.keys(match=pat, block=False)):
+            name = self._redis.hget(key, "name")
+            if name is None:
+                continue
+            yield UName(name)
 
     def create_worker_token(self, name: UName) -> WorkerToken:
         user_id = self.get_user_id(name)
