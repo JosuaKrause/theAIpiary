@@ -33,6 +33,10 @@ mkdir -p "${BASE}/"
 PYTHON="${PYTHON:-python}"
 DATE=$(date "+%Y-%m-%d")
 
+SWAI_API_URL="${SWAI_API_URL:-http://localhost:3000/api}"
+SWAI_USER="${SWAI_USER:-admin}"
+SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}"
+
 start_redis() {
     REDIS_NAME=$1
     REDIS_PORT=$2
@@ -50,8 +54,8 @@ start_smind() {
     DEVICE=$1
     mkdir -p "${BASE}/smind/"
     pushd "src/"
-    SWAI_API_URL="http://localhost:3000/api" \
-    SWAI_USER="admin" \
+    SWAI_API_URL="${SWAI_API_URL}" \
+    SWAI_USER="${SWAI_USER}" \
     SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
         ${PYTHON} -u -m scattermind \
         --version-file "../${BASE}/version.txt" \
@@ -66,8 +70,8 @@ start_smind() {
 start_provider() {
     mkdir -p "${BASE}/swai/"
     pushd "src/"
-    SWAI_API_URL="http://localhost:3000/api" \
-    SWAI_USER="admin" \
+    SWAI_API_URL="${SWAI_API_URL}" \
+    SWAI_USER="${SWAI_USER}" \
     SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
     HISTORY_PATH="../${BASE}/.cmd_history" \
     CONFIG_PATH="../mac.config.json" \
