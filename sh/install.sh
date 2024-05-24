@@ -110,8 +110,8 @@ if [ -z "${MODE}" ]; then
             ${PYTHON} -m pip install --upgrade "${SMIND_URL}@${SMIND_BRANCH}"
         fi
     fi
-elif [ "${MODE}" = "api" ]; then
-    REQUIREMENTS_PATH="${REQUIREMENTS_PATH:-requirements.api.txt}"
+elif [ "${MODE}" = "provider" ]; then
+    REQUIREMENTS_PATH="${REQUIREMENTS_PATH:-requirements.provider.txt}"
     ${PYTHON} -m pip install --progress-bar off --no-cache-dir --upgrade -r "${REQUIREMENTS_PATH}"
 elif [ "${MODE}" = "server" ]; then
     REQUIREMENTS_PATH="${REQUIREMENTS_PATH:-requirements.server.txt}"
@@ -128,6 +128,8 @@ LLAMA_CMAKE_ARGS=$(${PYTHON} -c "${PY_TORCH_VERIFY}")
 
 if grep -q "METAL" <<< "${LLAMA_CMAKE_ARGS}"; then
     ${PYTHON} -m pip install llama-cpp-python==0.2.68 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/metal
+elif grep -q "CUDA" <<< "${LLAMA_CMAKE_ARGS}"; then
+    ${PYTHON} -m pip install llama-cpp-python==0.2.68 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
 else
     CMAKE_ARGS="${LLAMA_CMAKE_ARGS}" ${PYTHON} -m pip install --progress-bar off llama-cpp-python==0.2.68
 fi

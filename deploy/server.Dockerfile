@@ -15,7 +15,7 @@ ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
 RUN mkdir sh
 COPY sh/install.sh sh
-RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-api
+RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-server
 COPY LICENSE .
 COPY sh/ sh/
 COPY src/swai/ swai/

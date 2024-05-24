@@ -18,7 +18,7 @@ venv
 /userdata/
 /userdata*/
 /out.txt
-/buildtmp/
+/buildtmp_provider/
 /buildtmp_server/
 /deploy/default.env
 /deploy/default.server.env

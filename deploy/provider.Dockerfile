@@ -15,26 +15,21 @@ ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
 RUN mkdir sh
 COPY sh/install.sh sh
-RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-api
+RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-provider
 COPY LICENSE .
 COPY sh/ sh/
 COPY src/swai/ swai/
 COPY src/swai_provider swai_provider/
-COPY public/ public/
 RUN python -m compileall .
 COPY version.txt .
-ARG PORT=8080
-ARG CONFIG_PATH
 ARG SMIND_GRAPHS
 ARG SMIND_CONFIG
 COPY "${SMIND_CONFIG}" smind-config.json
 COPY "${SMIND_GRAPHS}" graphs/
-COPY "${CONFIG_PATH}" config.json
-ENV HOST=0.0.0.0
-ENV PORT=${PORT}
 ENV SMIND_CFG=smind-config.json
 ENV GRAPH_PATH=graphs/
-ENV CONFIG_PATH=config.json
+ENV CONFIG_PATH=-
+ENV VERSION_PATH=version.txt
 EXPOSE ${PORT}
 ENTRYPOINT ["/bin/bash", "-l", "-c"]
-CMD ["python -u -m swai_provider --dedicated"]
+CMD [". /swai/.env_provider && python -u -m swai_provider --dedicated"]

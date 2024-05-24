@@ -83,10 +83,8 @@ start_provider() {
     SWAI_API_URL="${SWAI_API_URL}" \
     SWAI_USER="${SWAI_USER}" \
     SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
-    HISTORY_PATH="../${BASE}/.cmd_history" \
     CONFIG_PATH="../local.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
-    PUBLIC_PATH="../public/" \
         ${PYTHON} -u -m swai_provider \
         >> "../${BASE}/swai/swai_provider-${DATE}.log" 2>&1
     popd
