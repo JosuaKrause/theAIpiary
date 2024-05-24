@@ -63,8 +63,8 @@ start_smind() {
 start_provider() {
     mkdir -p "${BASE}/swai/"
     pushd "src/"
-    SWAI_API_URL="http://localhost:3000/" \
-    SWAI_USER="test" \
+    SWAI_API_URL="http://localhost:3000" \
+    SWAI_USER="admin" \
     SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
     HISTORY_PATH="../${BASE}/.cmd_history" \
     CONFIG_PATH="../mac.config.json" \
