@@ -23,5 +23,7 @@ venv
 /deploy/default.env
 /deploy/default.server.env
 /version.txt
+/docker-compose.server.dev.yml
+/docker-compose.server.yml
 /docker-compose.dev.yml
 /docker-compose.yml

@@ -178,7 +178,7 @@ docker_build \
 
 DEFAULT_ENV_FILE=deploy/default.server.env
 echo "# created by sh/build_server.sh" > "${DEFAULT_ENV_FILE}"
-echo "DOCKER_API=${IMAGE_BASE}-api:${IMAGE_TAG}" >> "${DEFAULT_ENV_FILE}"
+echo "DOCKER_SERVER=${IMAGE_BASE}-api:${IMAGE_TAG}" >> "${DEFAULT_ENV_FILE}"
 echo "DOCKER_RSERVER=${IMAGE_BASE}-rserver:${REDIS_DOCKER_VERSION}" >> "${DEFAULT_ENV_FILE}"
 if [ ! -z "${WEBAPP_STORAGE_HOME}" ]; then
     echo "{WEBAPP_STORAGE_HOME}=${WEBAPP_STORAGE_HOME}" >> "${DEFAULT_ENV_FILE}"
