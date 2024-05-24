@@ -25,6 +25,7 @@ set -x
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
+ENV_FILE="${ENV_FILE:-.env.provider}"
 BASE="userdata/provider"
 ROOT="../.."
 
@@ -33,9 +34,18 @@ mkdir -p "${BASE}/"
 PYTHON="${PYTHON:-python}"
 DATE=$(date "+%Y-%m-%d")
 
-SWAI_API_URL="${SWAI_API_URL:-http://localhost:3000/api}"
-SWAI_USER="${SWAI_USER:-admin}"
-SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}"
+if [ ! -f "${ENV_FILE}" ]; then
+    cp "env_provider_sample" "${ENV_FILE}"
+    echo "created env file at ${ENV_FILE} please fill in all values and run again"
+    exit 1
+else
+    source "${ENV_FILE}"
+fi
+
+if [ -z "${SWAI_WORKER_TOKEN}" ] || [ -z "${SWAI_USER}" ] || [ -z "${SWAI_API_URL}" ]; then
+    echo "missing values in env file"
+    exit 2
+fi
 
 start_redis() {
     REDIS_NAME=$1

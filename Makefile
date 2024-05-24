@@ -115,7 +115,7 @@ compose-server:
 	./sh/compose_server.sh
 
 run-mac:
-	SWAI_WORKER_TOKEN=$(SWAI_WORKER_TOKEN) ./sh/run_mac.sh
+	./sh/run_mac.sh
 
 run-server:
 	BOOTSTRAP_USERS=$(BOOTSTRAP_USERS) ./sh/run_server.sh
