@@ -30,6 +30,7 @@ LoginResponse = TypedDict('LoginResponse', {
     "capabilities": list[CapabilityName],
 })
 TaskBidResponse = TypedDict('TaskBidResponse', {
+    "ns": str | None,
     "task_id": str | None,
     "input_data": str | None,
 })

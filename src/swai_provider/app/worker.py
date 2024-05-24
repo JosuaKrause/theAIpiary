@@ -21,14 +21,16 @@
 import sys
 from typing import TypedDict
 
-import requests
 from quick_server import add_shutdown_hook
 from scattermind.system.util import get_time_str
 
+from swai_provider.app.task_hnd import TaskHandler
 from swai_provider.config import get_config
-from swai_provider.env import envload_str
-from swai_provider.smind.worker_api import load_graph, load_smind
+from swai_provider.smind.worker_api import execute_task, load_graph, load_smind
 from swai_provider.version import get_version
+
+
+DEFAULT_TIMEOUT = 60.0  # 1min
 
 
 VersionDict = TypedDict('VersionDict', {
@@ -57,12 +59,11 @@ def get_version_strs() -> VersionDict:
 
 def task_loop() -> None:
     config = get_config()
-    api_url = envload_str("SWAI_API_URL")
 
     smind_config = config["smind"]
     smind = load_smind(smind_config)
     graphs = [load_graph(config, smind, "graph_llama.json")]
-    nss = [graph.get_ns().get() for graph in graphs]
+    task_hnd = TaskHandler()
     done = False
 
     def hook() -> None:
@@ -72,6 +73,10 @@ def task_loop() -> None:
 
     add_shutdown_hook(hook)
 
-    api = requests.Session()
     while not done:
-        pass
+        maybe_task = task_hnd.task_bid(graphs, timeout=DEFAULT_TIMEOUT)
+        if maybe_task is None:
+            continue  # NOTE: no sleep!
+        graph, task_id, input_data = maybe_task
+        response = execute_task(task_id, input_data, graph_profile=graph)
+        task_hnd.task_finish(task_id, response)

@@ -17,7 +17,7 @@ from scattermind.system.response import (
 from scattermind.system.session.session import SessionStore
 
 
-ResponseStr: TypeAlias = str
+InputStr: TypeAlias = str
 
 
 class TaskQueue:
@@ -62,11 +62,11 @@ class TaskQueue:
             self,
             nss: list[GNamespace],
             *,
-            timeout: float) -> tuple[TaskId, ResponseStr] | None:
+            timeout: float) -> tuple[GNamespace, TaskId, InputStr] | None:
         redis = self._redis
         queue_channel = self.queue_channel()
 
-        def get_task() -> tuple[TaskId, ResponseStr] | None:
+        def get_task() -> tuple[GNamespace, TaskId, InputStr] | None:
             for ns in nss:
                 task = redis.lpop(self.queue_key(ns))
                 if task is None:
@@ -75,7 +75,7 @@ class TaskQueue:
                 input_str = redis.get_value(self.input_key(task_id))
                 if input_str is not None:
                     self.set_status(task_id, TASK_STATUS_BUSY)
-                    return task_id, input_str
+                    return (ns, task_id, input_str)
                 self.clear_task(task_id)
             return None
 

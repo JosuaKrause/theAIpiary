@@ -384,11 +384,13 @@ def setup(
         task = task_queue.pop_task(nss, timeout=timeout)
         if task is None:
             return {
+                "ns": None,
                 "task_id": None,
                 "input_data": None,
             }
-        task_id, input_data = task
+        ns, task_id, input_data = task
         return {
+            "ns": ns.get(),
             "task_id": task_id.to_parseable(),
             "input_data": input_data,
         }

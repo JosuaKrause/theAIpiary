@@ -24,27 +24,18 @@ import traceback
 from typing import TypedDict
 
 import redis as redis_lib
-from scattermind.api.api import ScattermindAPI
+from scattermind.api.api import InputTypes, ScattermindAPI
 from scattermind.api.loader import load_api
 from scattermind.system.base import TaskId
+from scattermind.system.info import DataFormat
 from scattermind.system.io import open_readb
 from scattermind.system.names import GNamespace
-from scattermind.system.response import response_ok, TASK_COMPLETE
-from scattermind.system.session.session import Session
+from scattermind.system.response import ResponseObject, TASK_COMPLETE
 
-from swai.smind.llama_session import (
-    ChunkPosition,
-    get_active_task,
-    get_model_output,
-    get_visible_messages,
-    set_active_task,
-    set_interrupted,
-    VisibleMessage,
-)
 from swai_provider.config import Config
 
 
-DEFAULT_TIMEOUT = 60.0  # 1min
+LONG_TIMEOUT = 10.0 * 60.0  # 10min
 
 
 QueueStat = TypedDict('QueueStat', {
@@ -65,6 +56,7 @@ class GraphProfile:
     def __init__(self, smind: ScattermindAPI, ns: GNamespace) -> None:
         self._smind = smind
         self._ns = ns
+        self._input_format = smind.main_input_format(ns)
         inputs = list(smind.main_inputs(ns))
         outputs = list(smind.main_outputs(ns))
         self._inputs = inputs
@@ -78,6 +70,9 @@ class GraphProfile:
 
     def get_ns(self) -> GNamespace:
         return self._ns
+
+    def get_input_format(self) -> DataFormat:
+        return self._input_format
 
     def get_input_fields(self) -> list[str]:
         return self._inputs
@@ -135,66 +130,17 @@ def get_queue_stats(smind: ScattermindAPI) -> list[QueueStat]:
         return []
 
 
-def start_llama_response(
-        prompt: str,
-        session: Session,
+def execute_task(
+        task_id: TaskId,
+        input_data: dict[str, InputTypes],
         *,
-        graph_profile: GraphProfile) -> TaskId:
-    smind = graph_profile.get_api()
-    prev_task_id = get_active_task(session)
-    if prev_task_id is not None:
-        set_interrupted(session, prev_task_id)
-        for cur_task_id, result in smind.wait_for(
-                [prev_task_id], timeout=DEFAULT_TIMEOUT):
-            try:
-                response_ok(result, no_warn=True)
-            except ValueError as exc:
-                raise ValueError("error computing previous response") from exc
-            smind.clear_task(cur_task_id)
-    return do_enqueue(prompt, session, graph_profile=graph_profile)
-
-
-def do_enqueue(
-        prompt: str,
-        session: Session,
-        *,
-        graph_profile: GraphProfile) -> TaskId:
+        graph_profile: GraphProfile) -> ResponseObject:
+    # pylint: disable=unsubscriptable-object
     smind = graph_profile.get_api()
     ns = graph_profile.get_ns()
-    task_id = smind.enqueue_task(
-        ns,
-        {
-            "prompt": prompt,
-            "session": session,
-        })
-    set_active_task(session, task_id)
-    return task_id
-
-
-def retrieve_llama_response(
-        session: Session,
-        pos: ChunkPosition) -> tuple[str, ChunkPosition | None]:
-    return get_model_output(
-        session, pos, timeout=DEFAULT_TIMEOUT)
-
-
-def recover_llama_chat(
-        session: Session,
-        *,
-        graph_profile: GraphProfile,
-        ) -> tuple[list[VisibleMessage], TaskId | None]:
-    smind = graph_profile.get_api()
-    messages = get_visible_messages(session)
-    task_id = get_active_task(session)
-    if task_id is not None:
-        task_status = smind.get_status(task_id)
-        if task_status in TASK_COMPLETE:
-            set_active_task(session, None)
-            smind.clear_task(task_id)
-            task_id = None
-    if task_id is None and messages:
-        last_msg = messages[-1]
-        if last_msg["role"] == "user":
-            # NOTE: we got a task that got cleaned up before it finished
-            task_id = do_enqueue("", session, graph_profile=graph_profile)
-    return messages, task_id
+    task_id = smind.enqueue_task(ns, input_data, task_id=task_id)
+    response: ResponseObject | None = None
+    while response is None or response["status"] not in TASK_COMPLETE:
+        for (_, resp) in smind.wait_for([task_id], timeout=LONG_TIMEOUT):
+            response = resp
+    return response
