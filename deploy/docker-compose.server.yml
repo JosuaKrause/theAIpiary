@@ -9,7 +9,7 @@ services:
     volumes:
       - ${WEBAPP_STORAGE_HOME}/rmain:/data
   api:
-    image: $DOCKER_API
+    image: $DOCKER_SERVER
     restart: always
     ports:
       - '8080:8080'
