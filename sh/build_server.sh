@@ -27,6 +27,7 @@ cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
 BUILDTMP="buildtmp_server"
 
+rm -rf "${BUILDTMP}"
 mkdir -p "${BUILDTMP}"
 
 PYTHON="${PYTHON:-python}"
@@ -133,7 +134,7 @@ fi
 
 make install-ts
 make ts-build
-mv "src/swai_client/build/" "${BUILDTMP}/build"
+mv "src/swai_client/build/" "${BUILDTMP}/build/"
 
 docker_build() {
     ARGS=("$@")
