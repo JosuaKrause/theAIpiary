@@ -122,14 +122,18 @@ if [ ! -z "${DEVMODE}" ]; then
 fi
 
 if [ ! -z "${DEV}" ]; then
-    DOCKER_COMPOSE_OUT="docker-compose.dev.yml"
+    DOCKER_COMPOSE_OUT="docker-compose.server.dev.yml"
     WEBAPP_STORAGE_HOME="./userdata/server"
     DOCKER_LOGIN_SERVER=
 else
-    DOCKER_COMPOSE_OUT="docker-compose.yml"
+    DOCKER_COMPOSE_OUT="docker-compose.server.yml"
     WEBAPP_STORAGE_HOME=
     DOCKER_LOGIN_SERVER=
 fi
+
+make install-ts
+make ts-build
+cp -R "src/swai_client/build/" "${BUILDTMP}/build"
 
 docker_build() {
     ARGS=("$@")
@@ -217,11 +221,11 @@ ${PYTHON} -c "${PY_COMPOSE}" "${DOCKER_LOGIN_SERVER}" "deploy/docker-compose.ser
 echo "docker compose is ready at ${DOCKER_COMPOSE_OUT}"
 echo "make sure to call make dockerpush before updating"
 if [ ! -z "${DEV}" ]; then
-    echo "run 'make compose' next to start the app on http://localhost:8080/login/"
+    echo "run 'make compose-server' next to start the app on http://localhost:8080/login/"
 elif [ -z "${CI}" ]; then
     echo "================================================="
     grep -Ev '^\s*$|^\s*\#' "${DOCKER_COMPOSE_OUT}"
     echo "# eof"
 else
-    echo "run 'make build' locally (without dockerpush) to get the docker compose file"
+    echo "run 'make build-server' locally (without dockerpush) to get the docker compose file"
 fi

@@ -111,8 +111,8 @@ lint-all: \
 	lint-type-check \
 	lint-flake8
 
-compose:
-	./sh/compose.sh
+compose-server:
+	./sh/compose_server.sh
 
 run-mac:
 	SWAI_WORKER_TOKEN=$(SWAI_WORKER_TOKEN) ./sh/run_mac.sh

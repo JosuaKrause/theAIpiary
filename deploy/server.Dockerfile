@@ -8,8 +8,6 @@ RUN apt-get update && apt-get -y upgrade \
   libc6-dev \
   build-essential \
   make
-RUN brew install node@20
-RUN corepack enable
 WORKDIR /usr/src/app
 RUN pip install --progress-bar off --no-cache-dir 'torch~=2.2.0' torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 COPY Makefile .
@@ -18,14 +16,12 @@ COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
 RUN mkdir sh
 COPY sh/install.sh sh
 RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-api
-COPY src/swai_client/package.json swai_client/package.json
-RUN TS_ROOT="swai_client/" make install-ts
 COPY LICENSE .
 COPY sh/ sh/
 COPY src/swai/ swai/
 COPY src/swai_server swai_server/
-COPY src/swai_client swai_client/
-RUN TS_ROOT="swai_client/" make ts-build
+COPY buildtmp_server/build build/
+ENV UI_PATH=build/
 RUN python -m compileall .
 COPY version.txt .
 ARG PORT=8080

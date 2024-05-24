@@ -16,5 +16,5 @@ requirements.docker.txt
 out.txt
 **/__pycache__
 **/.DS_Store
-src/swai_client/node_modules
+src/swai_client/
 logo/
