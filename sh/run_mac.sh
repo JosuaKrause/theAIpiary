@@ -63,7 +63,7 @@ start_smind() {
 start_provider() {
     mkdir -p "${BASE}/swai/"
     pushd "src/"
-    SWAI_API_URL="http://localhost:3000" \
+    SWAI_API_URL="http://localhost:3000/api" \
     SWAI_USER="admin" \
     SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
     HISTORY_PATH="../${BASE}/.cmd_history" \
