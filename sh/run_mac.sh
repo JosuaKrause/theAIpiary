@@ -50,7 +50,7 @@ start_smind() {
     DEVICE=$1
     mkdir -p "${BASE}/smind/"
     pushd "src/"
-    ${PYTHON} -m scattermind \
+    ${PYTHON} -u -m scattermind \
         --version-file "../${BASE}/version.txt" \
         --config "../deploy/smind-config-mac.json" \
         --device "${DEVICE}" \
@@ -70,7 +70,7 @@ start_provider() {
     CONFIG_PATH="../mac.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
     PUBLIC_PATH="../public/" \
-        ${PYTHON} -m swai_provider
+        ${PYTHON} -u -m swai_provider
     popd
 }
 
