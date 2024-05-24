@@ -138,7 +138,7 @@ install:
 install-ts:
 	yarn --cwd $(TS_ROOT) install
 
-install-provider:
+install-server:
 	PYTHON=$(PYTHON) MODE=server REQUIREMENTS_PATH=$(REQUIREMENTS_PATH) ./sh/install.sh
 
 install-provider:
