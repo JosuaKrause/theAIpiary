@@ -38,6 +38,12 @@ build:
 build-dev:
 	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) DEV=1 ./sh/build.sh
 
+build-server:
+	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) ./sh/build_server.sh
+
+build-server-dev:
+	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) DEV=1 ./sh/build_server.sh
+
 lint-comment:
 	! ./sh/findpy.sh \
 	| xargs grep --color=always -nE \

@@ -19,7 +19,9 @@ venv
 /userdata*/
 /out.txt
 /buildtmp/
+/buildtmp_server/
 /deploy/default.env
+/deploy/default.server.env
 /version.txt
 /docker-compose.dev.yml
 /docker-compose.yml

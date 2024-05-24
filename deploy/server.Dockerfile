@@ -8,6 +8,8 @@ RUN apt-get update && apt-get -y upgrade \
   libc6-dev \
   build-essential \
   make
+RUN brew install node@20
+RUN corepack enable
 WORKDIR /usr/src/app
 RUN pip install --progress-bar off --no-cache-dir 'torch~=2.2.0' torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 COPY Makefile .
@@ -16,24 +18,21 @@ COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
 RUN mkdir sh
 COPY sh/install.sh sh
 RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-api
+COPY src/swai_client/package.json swai_client/package.json
+RUN TS_ROOT="swai_client/" make install-ts
 COPY LICENSE .
 COPY sh/ sh/
 COPY src/swai/ swai/
 COPY src/swai_server swai_server/
 COPY src/swai_client swai_client/
+RUN TS_ROOT="swai_client/" make ts-build
 RUN python -m compileall .
 COPY version.txt .
 ARG PORT=8080
 ARG CONFIG_PATH
-ARG SMIND_GRAPHS
-ARG SMIND_CONFIG
-COPY "${SMIND_CONFIG}" smind-config.json
-COPY "${SMIND_GRAPHS}" graphs/
 COPY "${CONFIG_PATH}" config.json
 ENV HOST=0.0.0.0
 ENV PORT=${PORT}
-ENV SMIND_CFG=smind-config.json
-ENV GRAPH_PATH=graphs/
 ENV CONFIG_PATH=config.json
 EXPOSE ${PORT}
 ENTRYPOINT ["/bin/bash", "-l", "-c"]

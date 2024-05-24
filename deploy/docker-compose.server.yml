@@ -1,13 +1,13 @@
 version: '3.8'
 services:
-  rmain:
-    container_name: rmain
-    image: $DOCKER_RMAIN
+  rserver:
+    container_name: rserver
+    image: $DOCKER_RSERVER
     restart: always
     expose:
       - 6379
     volumes:
-      - ${WEBAPP_STORAGE_HOME}/rmain:/data
+      - ${WEBAPP_STORAGE_HOME}/rserver:/data
   api:
     image: $DOCKER_SERVER
     restart: always
@@ -15,4 +15,5 @@ services:
       - '8080:8080'
     volumes:
       - ${WEBAPP_STORAGE_HOME}/swai:/swai
+      - ${WEBAPP_STORAGE_HOME}/session:/session
 # eof

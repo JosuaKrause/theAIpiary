@@ -113,6 +113,9 @@ if [ -z "${MODE}" ]; then
 elif [ "${MODE}" = "api" ]; then
     REQUIREMENTS_PATH="${REQUIREMENTS_PATH:-requirements.api.txt}"
     ${PYTHON} -m pip install --progress-bar off --no-cache-dir --upgrade -r "${REQUIREMENTS_PATH}"
+elif [ "${MODE}" = "server" ]; then
+    REQUIREMENTS_PATH="${REQUIREMENTS_PATH:-requirements.server.txt}"
+    ${PYTHON} -m pip install --progress-bar off --no-cache-dir --upgrade -r "${REQUIREMENTS_PATH}"
 elif [ "${MODE}" = "worker" ]; then
     REQUIREMENTS_PATH="${REQUIREMENTS_PATH:-requirements.worker.txt}"
     ${PYTHON} -m pip install --progress-bar off --no-cache-dir --upgrade -r "${REQUIREMENTS_PATH}"
