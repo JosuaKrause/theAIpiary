@@ -53,7 +53,7 @@ start_server() {
     CONFIG_PATH="../server.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
         ${PYTHON} -m swai_server --dedicated \
-        >> "../${BASE}/swai/swai_provider-${DATE}.log" 2>&1 &
+        >> "../${BASE}/swai/swai_server-${DATE}.log" 2>&1 &
     popd
 }
 
