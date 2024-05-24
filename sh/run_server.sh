@@ -52,7 +52,7 @@ start_server() {
     HISTORY_PATH="../${BASE}/.cmd_history" \
     CONFIG_PATH="../server.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
-        ${PYTHON} -m swai_server --dedicated \
+        ${PYTHON} -m swai_server --dedicated --help \
         >> "../${BASE}/swai/swai_server-${DATE}.log" 2>&1 &
     popd
 }

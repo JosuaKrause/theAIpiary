@@ -70,7 +70,8 @@
   },
   "sessions": {
     "name": "swai_provider.smind.remote_session",
-    "cache_path": "../userdata/smind_provider/cache/"
+    "cache_path": "../userdata/smind_provider/cache/",
+    "is_shared": false
   },
   "logger": {
     "listeners": [

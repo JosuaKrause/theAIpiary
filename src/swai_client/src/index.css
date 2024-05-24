@@ -99,6 +99,7 @@ pre {
   padding: 0 5px;
   border: 1px solid silver;
   background-color: lightgray;
+  color: black;
 }
 
 .response-user pre {
