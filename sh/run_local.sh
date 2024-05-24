@@ -54,7 +54,7 @@ start_redis() {
     mkdir -p "${REDIS_PATH}"
     pushd "${REDIS_PATH}"
     redis-server \
-        "../${ROOT}/deploy/redis_mac/${REDIS_NAME}.conf" \
+        "../${ROOT}/deploy/redis_local/${REDIS_NAME}.conf" \
         --port "${REDIS_PORT}" \
         >> "redis-${DATE}.log" 2>&1 &
     popd
@@ -69,10 +69,10 @@ start_smind() {
     SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
         ${PYTHON} -u -m scattermind \
         --version-file "../${BASE}/version.txt" \
-        --config "../deploy/smind-config-mac.json" \
+        --config "../deploy/smind-config-local.json" \
         --device "${DEVICE}" \
         worker \
-        --graph "../deploy/graphs_mac/" \
+        --graph "../deploy/graphs_local/" \
         >> "../${BASE}/smind/smind-${DATE}.log" 2>&1 &
     popd
 }
@@ -84,7 +84,7 @@ start_provider() {
     SWAI_USER="${SWAI_USER}" \
     SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
     HISTORY_PATH="../${BASE}/.cmd_history" \
-    CONFIG_PATH="../mac.config.json" \
+    CONFIG_PATH="../local.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
     PUBLIC_PATH="../public/" \
         ${PYTHON} -u -m swai_provider \

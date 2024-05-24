@@ -114,8 +114,8 @@ lint-all: \
 compose-server:
 	./sh/compose_server.sh
 
-run-mac:
-	./sh/run_mac.sh
+run-local:
+	./sh/run_local.sh
 
 run-server:
 	BOOTSTRAP_USERS=$(BOOTSTRAP_USERS) ./sh/run_server.sh

@@ -1,6 +1,6 @@
 {
-  "smind": "../deploy/smind-config-mac.json",
-  "graphs": "../deploy/graphs_mac/",
+  "smind": "../deploy/smind-config-local.json",
+  "graphs": "../deploy/graphs_local/",
   "user_mng": {
     "name": "redis",
     "cfg": {
