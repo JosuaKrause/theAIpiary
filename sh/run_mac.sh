@@ -21,7 +21,7 @@
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
 #
-set -ex
+set -x
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
