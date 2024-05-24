@@ -70,7 +70,8 @@ start_provider() {
     CONFIG_PATH="../mac.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
     PUBLIC_PATH="../public/" \
-        ${PYTHON} -u -m swai_provider
+        ${PYTHON} -u -m swai_provider \
+        >> "../${BASE}/swai/swai_provider-${DATE}.log" 2>&1
     popd
 }
 

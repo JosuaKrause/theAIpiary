@@ -76,7 +76,10 @@ def task_loop() -> None:
     while not done:
         maybe_task = task_hnd.task_bid(graphs, timeout=DEFAULT_TIMEOUT)
         if maybe_task is None:
+            print("no task to pick up!")
             continue  # NOTE: no sleep!
         graph, task_id, input_data = maybe_task
+        print(f"picked up {graph=} {task_id=}")
         response = execute_task(task_id, input_data, graph_profile=graph)
         task_hnd.task_finish(task_id, response)
+        print("done")

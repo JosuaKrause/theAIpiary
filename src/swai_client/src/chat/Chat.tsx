@@ -264,6 +264,7 @@ class Chat extends PureComponent<ChatProps, ChatState> {
   };
 
   setThinking = (isThinking: boolean) => {
+    console.log('setThinking', isThinking);
     this.setState({ isThinking });
   };
 
@@ -322,6 +323,7 @@ class Chat extends PureComponent<ChatProps, ChatState> {
   render(): ReactNode {
     const { messages, isThinking } = this.state;
     const revMessages = [...messages].reverse();
+    console.log('isThinking', isThinking);
     return (
       <VMain>
         <Response isThinking={isThinking}>
