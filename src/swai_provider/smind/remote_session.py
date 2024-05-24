@@ -30,14 +30,13 @@ T = TypeVar('T')
 class RemoteSessionStore(SessionStore):
     def __init__(
             self,
-            api_url: str,
             cache_path: str,
             is_shared: bool) -> None:
         # FIXME: use timeouts
         super().__init__(cache_path=cache_path, is_shared=is_shared)
         self._name = UName(envload_str("SWAI_USER"))
         self._worker_token: WorkerToken = envload_str("SWAI_WORKER_TOKEN")
-        self._api_url = api_url
+        self._api_url = envload_str("SWAI_API_URL")
         self._api = requests.Session()
 
     @staticmethod
