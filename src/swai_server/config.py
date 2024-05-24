@@ -54,9 +54,9 @@ def config_template() -> Config:
         "task_queue": {
             "host": "INVALID",
             "passwd": "",
-            "path": "swai_server/queue/redis",
+            "path": "swai_server/tasks/redis",
             "port": 6379,
-            "prefix": "sessions",
+            "prefix": "tasks",
         },
         "session_store": {
             "name": "redis",

@@ -3,6 +3,7 @@ deploy/
 data/
 notebooks/
 userdata/
+userdata*/
 test-results/
 study/
 config.json

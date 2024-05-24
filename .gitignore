@@ -16,6 +16,7 @@ venv
 .mypy_cache/
 /models/
 /userdata/
+/userdata*/
 /out.txt
 /buildtmp/
 /deploy/default.env
