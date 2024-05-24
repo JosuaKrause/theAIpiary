@@ -133,7 +133,7 @@ fi
 
 make install-ts
 make ts-build
-cp -R "src/swai_client/build/" "${BUILDTMP}/build"
+mv "src/swai_client/build/" "${BUILDTMP}/build"
 
 docker_build() {
     ARGS=("$@")
