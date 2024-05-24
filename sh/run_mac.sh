@@ -50,7 +50,10 @@ start_smind() {
     DEVICE=$1
     mkdir -p "${BASE}/smind/"
     pushd "src/"
-    ${PYTHON} -u -m scattermind \
+    SWAI_API_URL="http://localhost:3000/api" \
+    SWAI_USER="admin" \
+    SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
+        ${PYTHON} -u -m scattermind \
         --version-file "../${BASE}/version.txt" \
         --config "../deploy/smind-config-mac.json" \
         --device "${DEVICE}" \

@@ -6,7 +6,7 @@
       "port": 6381,
       "passwd": "",
       "prefix": "swai",
-      "path": "../userdata/rmain"
+      "path": "../userdata/provider/rmain"
     }
   },
   "data_store": {
@@ -16,7 +16,7 @@
       "port": 6382,
       "passwd": "",
       "prefix": "swai",
-      "path": "../userdata/rbody"
+      "path": "../userdata/provider/rbody"
     },
     "mode": "size"
   },
@@ -31,7 +31,7 @@
       "port": 6381,
       "passwd": "",
       "prefix": "heartbeat",
-      "path": "../userdata/rmain"
+      "path": "../userdata/provider/rmain"
     }
   },
   "queue_pool": {
@@ -41,7 +41,7 @@
       "port": 6383,
       "passwd": "",
       "prefix": "swai",
-      "path": "../userdata/rdata"
+      "path": "../userdata/provider/rdata"
     },
     "check_assertions": false
   },
@@ -52,7 +52,7 @@
       "port": 6384,
       "passwd": "",
       "prefix": "swai",
-      "path": "../userdata/rcache"
+      "path": "../userdata/provider/rcache"
     },
     "use_defer": true
   },
@@ -66,11 +66,11 @@
   },
   "readonly_access": {
     "name": "ram",
-    "scratch": "../userdata/smind_cache/"
+    "scratch": "../userdata/provider/smind_cache/"
   },
   "sessions": {
     "name": "swai_provider.smind.remote_session",
-    "cache_path": "../userdata/smind_provider/cache/",
+    "cache_path": "../userdata/provider/smind/cache/",
     "is_shared": false
   },
   "logger": {
