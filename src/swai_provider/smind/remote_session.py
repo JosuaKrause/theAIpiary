@@ -126,7 +126,7 @@ class RemoteSessionStore(SessionStore):
             self, session_id: SessionId, key: str, index: int) -> str | None:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        obj["op"] = "set"
+        obj["op"] = "get"
         obj["key"] = key
         obj["index"] = index
         resp = self._api.post(self._url("/value"), json=obj)
