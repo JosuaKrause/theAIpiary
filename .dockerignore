@@ -4,6 +4,7 @@ data/
 notebooks/
 userdata/
 userdata*/
+models/
 test-results/
 study/
 config.json
@@ -12,4 +13,8 @@ test*.json
 *.log
 *.csv
 requirements.docker.txt
+out.txt
 **/__pycache__
+**/.DS_Store
+src/swai_client/node_modules
+logo/
