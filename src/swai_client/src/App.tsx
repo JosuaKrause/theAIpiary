@@ -8,6 +8,7 @@ import ChatActions from './chat/ChatActions';
 import { setSession } from './chat/ChatStateSlice';
 import { RootState } from './store';
 import Login from './users/Login';
+import Profile from './users/Profile';
 import ResetPassword from './users/ResetPassword';
 import UserActions from './users/UserActions';
 
@@ -132,6 +133,10 @@ class App extends PureComponent<AppProps, AppState> {
               <Route
                 path="/reset-password"
                 element={<ResetPassword userActions={this.userActions} />}
+              />
+              <Route
+                path="/profile"
+                element={<Profile userActions={this.userActions} />}
               />
             </Routes>
           </BrowserRouter>

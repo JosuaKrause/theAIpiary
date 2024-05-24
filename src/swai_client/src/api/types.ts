@@ -25,6 +25,7 @@ export type Password = string & { _password: void };
 export type SessionId = string & { _sessionId: void };
 export type TaskId = string & { _taskId: void };
 export type ResetToken = string & { _resetToken: void };
+export type WorkerToken = string & { _workerToken: void };
 
 export type Role = 'assistant' | 'user';
 
@@ -99,6 +100,10 @@ export type ApiPasswordResetTokenResponse = {
 export type PasswordResetTokenResponse = {
   name: Readonly<UserName>;
   resetToken: Readonly<ResetToken>;
+};
+
+export type ApiWorkerTokenResponse = {
+  worker_token: Readonly<WorkerToken>;
 };
 
 const NO_CAPABILITIES: Readonly<UserCapabilities> = {

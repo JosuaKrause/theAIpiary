@@ -109,7 +109,10 @@ compose:
 	./sh/compose.sh
 
 run-mac:
-	BOOTSTRAP_USERS=$(BOOTSTRAP_USERS) ./sh/run_mac.sh
+	SWAI_WORKER_TOKEN=$(SWAI_WORKER_TOKEN) ./sh/run_mac.sh
+
+run-server:
+	BOOTSTRAP_USERS=$(BOOTSTRAP_USERS) ./sh/run_server.sh
 
 run-ts:
 	yarn --cwd $(TS_ROOT) start

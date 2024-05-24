@@ -25,7 +25,10 @@ set -ex
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-mkdir -p "userdata/"
+BASE="userdata/provider"
+ROOT="../.."
+
+mkdir -p "${BASE}/"
 
 PYTHON="${PYTHON:-python}"
 DATE=$(date "+%Y-%m-%d")
@@ -33,11 +36,11 @@ DATE=$(date "+%Y-%m-%d")
 start_redis() {
     REDIS_NAME=$1
     REDIS_PORT=$2
-    REDIS_PATH="userdata/${REDIS_NAME}/"
+    REDIS_PATH="${BASE}/${REDIS_NAME}/"
     mkdir -p "${REDIS_PATH}"
     pushd "${REDIS_PATH}"
     redis-server \
-        "../../deploy/redis_mac/${REDIS_NAME}.conf" \
+        "../${ROOT}/deploy/redis_mac/${REDIS_NAME}.conf" \
         --port "${REDIS_PORT}" \
         >> "redis-${DATE}.log" 2>&1 &
     popd
@@ -45,32 +48,35 @@ start_redis() {
 
 start_smind() {
     DEVICE=$1
-    mkdir -p "userdata/smind/"
+    mkdir -p "${BASE}/smind/"
     pushd "src/"
     ${PYTHON} -m scattermind \
-        --version-file "../userdata/version.txt" \
+        --version-file "../${BASE}/version.txt" \
         --config "../deploy/smind-config-mac.json" \
         --device "${DEVICE}" \
         worker \
         --graph "../deploy/graphs_mac/" \
-        >> "../userdata/smind/smind-${DATE}.log" 2>&1 &
+        >> "../${BASE}/smind/smind-${DATE}.log" 2>&1 &
     popd
 }
 
 start_provider() {
-    mkdir -p "userdata/swai/"
+    mkdir -p "${BASE}/swai/"
     pushd "src/"
-    HISTORY_PATH="../userdata/.cmd_history" \
+    SWAI_API_URL="http://localhost:3000/" \
+    SWAI_USER="test" \
+    SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
+    HISTORY_PATH="../${BASE}/.cmd_history" \
     CONFIG_PATH="../mac.config.json" \
-    VERSION_PATH="../userdata/version.txt" \
+    VERSION_PATH="../${BASE}/version.txt" \
     PUBLIC_PATH="../public/" \
-        ${PYTHON} -m swai_provider --dedicated \
-        >> "../userdata/swai/swai_provider-${DATE}.log" 2>&1 &
+        ${PYTHON} -m swai_provider \
+        >> "../${BASE}/swai/swai_provider-${DATE}.log" 2>&1 &
     popd
 }
 
 make -s version-file
-mv version.txt userdata/version.txt
+mv version.txt "${BASE}/version.txt"
 
 start_redis rmain 6381
 start_redis rbody 6382
@@ -81,5 +87,3 @@ DEVICE="${DEVICE:-auto}"
 
 start_smind "${DEVICE}"
 start_provider
-
-make run-ts

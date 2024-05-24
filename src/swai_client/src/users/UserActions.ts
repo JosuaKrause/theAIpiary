@@ -1,5 +1,11 @@
 import { DEFAULT_LOGIN_API, LoginApiProvider } from '../api/login';
-import { Password, ResetToken, User, UserName } from '../api/types';
+import {
+  Password,
+  ResetToken,
+  User,
+  UserName,
+  WorkerToken,
+} from '../api/types';
 
 type UserCallback = (user: Readonly<User> | null) => void;
 
@@ -36,5 +42,12 @@ export default class UserActions {
   async logout(updateUser: UserCallback) {
     const user = await this.api.logout();
     updateUser(user);
+  }
+
+  async getWorkerToken(
+    updateToken: (workerToken: Readonly<WorkerToken>) => void,
+  ) {
+    const workerToken = await this.api.getWorkerToken();
+    updateToken(workerToken);
   }
 } // UserActions
