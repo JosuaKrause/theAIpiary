@@ -40,7 +40,6 @@ if [ ${MAJOR} -eq 3 ] && [ ${MINOR} -lt 11 ] || [ ${MAJOR} -lt 3 ]; then
 fi
 
 # see https://github.com/abetlen/llama-cpp-python?tab=readme-ov-file#installation-configuration
-# TODO: use pre-built images for CUDA if available
 
 ! read -r -d '' PY_TORCH_VERIFY <<'EOF'
 import sys
@@ -76,6 +75,7 @@ else
         ${PYTHON} -m pip install --progress-bar off torch torchvision torchaudio
     fi
 fi
+${PYTHON} -c 'import torch;print(torch.__version__)'
 
 ${PYTHON} -m pip install --progress-bar off --upgrade pip
 if [ -z "${MODE}" ]; then

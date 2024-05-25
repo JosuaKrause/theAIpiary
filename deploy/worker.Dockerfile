@@ -1,7 +1,6 @@
 FROM pytorch/manylinux-cuda124:latest
-RUN apt-get update && apt-get -y upgrade \
-  && apt-get install -y --no-install-recommends \
-  git \
+RUN yum update -y && yum upgrade -y \
+  && yum install -y \
   libpq-dev \
   gcc \
   linux-libc-dev \
@@ -9,7 +8,7 @@ RUN apt-get update && apt-get -y upgrade \
   build-essential \
   make
 WORKDIR /usr/src/app
-RUN pip install --progress-bar off --no-cache-dir 'torch~=2.2.0' torchvision torchaudio
+ENV PYTHON=python3
 COPY Makefile .
 ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
@@ -20,12 +19,12 @@ COPY LICENSE .
 COPY sh/ sh/
 COPY src/swai swai/
 COPY src/swai_provider swai_provider/
-RUN python -m compileall .
+RUN "${PYTHON}" -m compileall .
 COPY version.txt .
 ARG SMIND_GRAPHS
 ARG SMIND_CONFIG
 COPY "${SMIND_CONFIG}" smind-config.json
 COPY "${SMIND_GRAPHS}" graphs/
-HEALTHCHECK --interval=30s --timeout=30s --start-period=20s --retries=3 CMD ["/bin/bash", "-l", "-c", "python -u -m scattermind --config smind-config.json healthcheck"]
+HEALTHCHECK --interval=30s --timeout=30s --start-period=20s --retries=3 CMD ["/bin/bash", "-l", "-c", "${PYTHON} -u -m scattermind --config smind-config.json healthcheck"]
 ENTRYPOINT ["/bin/bash", "-l", "-c"]
-CMD [". /swai/.env_provider && python -u -m scattermind --boot --version-file version.txt --config smind-config.json worker --graph graphs/"]
+CMD [". /swai/.env_provider && ${PYTHON} -u -m scattermind --boot --version-file version.txt --config smind-config.json worker --graph graphs/"]

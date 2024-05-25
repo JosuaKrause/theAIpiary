@@ -50,7 +50,7 @@ start_server() {
     mkdir -p "${BASE}/swai/"
     pushd "src/"
     HISTORY_PATH="../${BASE}/.cmd_history" \
-    CONFIG_PATH="../server.config.json" \
+    CONFIG_PATH="../local/server.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
         ${PYTHON} -u -m swai_server --dedicated \
         >> "../${BASE}/swai/swai_server-${DATE}.log" 2>&1 &

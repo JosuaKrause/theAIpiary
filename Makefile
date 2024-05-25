@@ -32,8 +32,8 @@ help:
 export LC_ALL=C
 export LANG=C
 
-PYTHON=python
-TS_ROOT=src/swai_client/
+PYTHON?=python
+TS_ROOT?=src/swai_client/
 
 build-provider:
 	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) ./sh/build_provider.sh
