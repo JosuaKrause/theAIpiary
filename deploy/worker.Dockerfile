@@ -10,9 +10,6 @@ RUN apt-get update \
   build-essential \
   make
 WORKDIR /usr/src/app
-RUN conda update -n base -c defaults conda \
-  && conda install -y python=3.11
-RUN conda install pytorch==2.3.0 torchvision torchaudio -c pytorch
 COPY Makefile .
 ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
