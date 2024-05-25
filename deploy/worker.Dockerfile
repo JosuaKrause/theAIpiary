@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
+FROM pytorch/manylinux-cuda124:latest
 RUN apt-get update && apt-get -y upgrade \
   && apt-get install -y --no-install-recommends \
   git \
