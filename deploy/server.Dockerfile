@@ -1,5 +1,6 @@
 FROM continuumio/miniconda3:24.1.2-0
-RUN apt-get update && apt-get -y upgrade \
+RUN apt-get update \
+  && apt-get -y upgrade \
   && apt-get install -y --no-install-recommends \
   git \
   libpq-dev \
@@ -9,7 +10,7 @@ RUN apt-get update && apt-get -y upgrade \
   build-essential \
   make
 WORKDIR /usr/src/app
-RUN pip install --progress-bar off --no-cache-dir 'torch~=2.2.0' torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --progress-bar off --no-cache-dir 'torch==2.3.0' torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 COPY Makefile .
 ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"

@@ -20,10 +20,10 @@ venv
 /out.txt
 /buildtmp_provider/
 /buildtmp_server/
-/deploy/default.env
+/deploy/default.provider.env
 /deploy/default.server.env
 /version.txt
+/docker-compose.provider.dev.yml
+/docker-compose.provider.yml
 /docker-compose.server.dev.yml
 /docker-compose.server.yml
-/docker-compose.dev.yml
-/docker-compose.yml

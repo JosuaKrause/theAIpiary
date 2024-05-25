@@ -77,7 +77,7 @@ else
 fi
 ${PYTHON} -c 'import torch;print(torch.__version__)'
 
-${PYTHON} -m pip install --progress-bar off --upgrade pip
+${PYTHON} -m pip install --progress-bar off "pip>=24.0"
 if [ -z "${MODE}" ]; then
     REQUIREMENTS_PATH="${REQUIREMENTS_PATH:-requirements.txt}"
     ${PYTHON} -m pip install --progress-bar off --upgrade -r "${REQUIREMENTS_PATH}"
@@ -127,9 +127,10 @@ fi
 LLAMA_CMAKE_ARGS=$(${PYTHON} -c "${PY_TORCH_VERIFY}")
 
 if grep -q "METAL" <<< "${LLAMA_CMAKE_ARGS}"; then
-    ${PYTHON} -m pip install llama-cpp-python==0.2.68 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/metal
+    ${PYTHON} -m pip install llama-cpp-python==0.2.68 --extra-index-url "https://abetlen.github.io/llama-cpp-python/whl/metal"
 elif grep -q "CUDA" <<< "${LLAMA_CMAKE_ARGS}"; then
-    ${PYTHON} -m pip install llama-cpp-python==0.2.68 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
+    CUDA_VERSION_SHORT="${CUDA_VERSION_SHORT:-cu121}"
+    ${PYTHON} -m pip install llama-cpp-python==0.2.68 --extra-index-url "https://abetlen.github.io/llama-cpp-python/whl/${CUDA_VERSION_SHORT}"
 else
     CMAKE_ARGS="${LLAMA_CMAKE_ARGS}" ${PYTHON} -m pip install --progress-bar off llama-cpp-python==0.2.68
 fi
