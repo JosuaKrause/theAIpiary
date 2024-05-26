@@ -63,6 +63,9 @@ SessionToken: TypeAlias = str
 
 
 class UserManager:
+    def __init__(self) -> None:
+        pass
+
     def login(self, name: UName, password: str) -> SessionToken | None:
         raise NotImplementedError()
 
