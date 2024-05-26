@@ -306,6 +306,7 @@ def setup(
             }
         cookie = SimpleCookie()
         cookie["user_session"] = user_session
+        cookie["user_session"]["path"] = "/"
         cookie["user_session"]["max-age"] = 90*24*60*60
         req.send_cookie(cookie)
         return {
