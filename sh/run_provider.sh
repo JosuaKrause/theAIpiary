@@ -25,8 +25,8 @@ set -x
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-ENV_FILE="${ENV_FILE:-provider.env}"
 BASE="userdata/provider"
+ENV_FILE="${ENV_FILE:-${BASE}/swai/provider.env}"
 ROOT="../.."
 
 mkdir -p "${BASE}/"
@@ -35,6 +35,7 @@ PYTHON="${PYTHON:-python}"
 DATE=$(date "+%Y-%m-%d")
 
 if [ ! -f "${ENV_FILE}" ]; then
+    mkdir -p "$(dirname -- ${ENV_FILE})"
     cp "provider.env.sample" "${ENV_FILE}"
     echo "created env file at ${ENV_FILE} please fill in all values and run again"
     exit 1
