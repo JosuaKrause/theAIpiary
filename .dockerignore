@@ -5,6 +5,7 @@ notebooks/
 userdata/
 userdata*/
 models/
+local/
 test-results/
 study/
 config.json
