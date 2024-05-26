@@ -10,11 +10,12 @@ RUN apt-get update \
   build-essential \
   make
 WORKDIR /usr/src/app
+ENV CUDA_VERSION_SHORT=cu121
 # FIXME remove with 311 image *****
 ENV PATH="/usr/local/nvidia/bin:${PATH}"
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=all
-RUN canda update -y pip setuptools wheel conda filelock \
+RUN conda update -y pip setuptools wheel conda filelock \
   && conda install -y python=3.11
 # *****
 COPY Makefile .
@@ -22,7 +23,6 @@ ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
 RUN mkdir sh
 COPY sh/install.sh sh
-ENV CUDA_VERSION_SHORT=cu121
 # FIXME remove with 311 image
 ENV FORCE_CUDA=1
 RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-worker
