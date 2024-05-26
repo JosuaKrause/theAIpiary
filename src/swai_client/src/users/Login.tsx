@@ -33,9 +33,11 @@ const VMain = styled.div`
   height: 100vh;
   max-height: 100vh;
   max-width: 60vw;
+  width: auto;
 
   @media (hover: none) and (max-width: 480px) {
     justify-content: start;
+    max-width: 100vw;
   }
 `;
 

@@ -186,7 +186,7 @@ class RedisUserManager(UserManager):
         userhash = self._is_logged_in(token)
         if userhash is None:
             return None
-        res = self._redis.hget(self._key_userhash_info(userhash), "name")
+        res = self._redis.hget(self._key_userhash_info(userhash), "email")
         if res is None:
             return None
         return UName(res)
@@ -220,7 +220,7 @@ class RedisUserManager(UserManager):
     def do_list_users(self) -> Iterable[UName]:
         pat = f"{self._key_userhash_info(None)}*"
         for key in sorted(self._redis.keys(match=pat, block=False)):
-            name = self._redis.hget(key, "name")
+            name = self._redis.hget(key, "email")
             if name is None:
                 continue
             yield UName(name)

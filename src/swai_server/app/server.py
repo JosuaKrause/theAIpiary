@@ -118,7 +118,7 @@ def setup(
         versions: VersionDict) -> tuple[QuickServer, str]:
     prefix = "/api"
 
-    # server.suppress_noise = True
+    server.suppress_noise = True
 
     server.register_shutdown()
 
