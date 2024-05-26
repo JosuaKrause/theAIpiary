@@ -21,6 +21,7 @@
 import argparse
 import traceback
 
+from dotenv import load_dotenv
 from quick_server import setup_shutdown
 from redipy.util import python_module
 
@@ -46,6 +47,10 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help="the port of the SWAI API server")
     parser.add_argument(
+        "--env",
+        default=None,
+        help="loads the given env file at startup")
+    parser.add_argument(
         "--dedicated",
         default=False,
         action="store_true",
@@ -55,6 +60,9 @@ def parse_args() -> argparse.Namespace:
 
 def run() -> None:
     args = parse_args()
+    env_file: str | None = args.env
+    if env_file:
+        load_dotenv(env_file)
     versions = get_version_strs()
     print(f"python version: {versions['python_version_detail']}")
     print(f"app version: {versions['app_version']}")

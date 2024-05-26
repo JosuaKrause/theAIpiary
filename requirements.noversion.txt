@@ -10,6 +10,7 @@ pycodestyle
 pylint
 pytest
 pytest-cov
+python-dotenv
 quick-server
 redipy
 requests

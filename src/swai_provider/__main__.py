@@ -20,6 +20,7 @@
 # all copies or substantial portions of the software.
 import argparse
 
+from dotenv import load_dotenv
 from quick_server import setup_shutdown
 from redipy.util import python_module
 
@@ -30,11 +31,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog=f"python -m {python_module()}",
         description="Run the provider worker")
+    parser.add_argument(
+        "--env",
+        default=None,
+        help="loads the given env file at startup")
     return parser.parse_args()
 
 
 def run() -> None:
-    parse_args()
+    args = parse_args()
+    env_file: str | None = args.env
+    if env_file:
+        load_dotenv(env_file)
     versions = get_version_strs()
     print(f"python version: {versions['python_version']}")
     print(f"app version: {versions['app_version']}")
