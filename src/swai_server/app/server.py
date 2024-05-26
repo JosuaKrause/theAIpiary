@@ -155,7 +155,7 @@ def setup(
         admin_pw = None
     else:
         admin_email = UName(admin_email_str)
-        print(f"admin is {admin_email}")
+        print(f"admin is {admin_email.get()}")
 
     session_store = create_session_store(config)
     task_queue = TaskQueue(session_store, config["task_queue"])
