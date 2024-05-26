@@ -33,7 +33,7 @@ const VMain = styled.div`
   height: 100vh;
   max-height: 100vh;
   max-width: 60vw;
-  width: auto;
+  width: fit-content;
 
   @media (hover: none) and (max-width: 480px) {
     justify-content: start;
@@ -41,11 +41,15 @@ const VMain = styled.div`
   }
 `;
 
+const LoginForm = styled.form`
+  width: fit-content;
+`;
+
 const LoginElement = styled.div`
   padding: 5px;
   margin: 5px;
   clear: both;
-  width: 100%;
+  width: fit-content;
 `;
 
 const LoginLabel = styled.label`
@@ -148,7 +152,7 @@ export default class Login extends PureComponent<
     const { message } = this.state;
     return (
       <VMain>
-        <form onSubmit={this.handleSubmit}>
+        <LoginForm onSubmit={this.handleSubmit}>
           <LoginElement>
             <LoginLabel htmlFor="username">Email:</LoginLabel>
             <LoginInputText
@@ -173,7 +177,7 @@ export default class Login extends PureComponent<
               value="Login"
             />
           </LoginElement>
-        </form>
+        </LoginForm>
         {message ? <LoginElement>{message}</LoginElement> : null}
       </VMain>
     );

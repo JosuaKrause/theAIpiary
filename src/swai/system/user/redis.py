@@ -60,6 +60,8 @@ class RedisUserManager(UserManager):
             cfg: RedisConfig) -> None:
         super().__init__(admin_email=admin_email, admin_pw=admin_pw)
         self._redis = Redis("redis", cfg=cfg, redis_module="users")
+        self._admin_hash = (
+            None if admin_email is None else self._userhash(admin_email))
 
     @staticmethod
     def _userhash(email: UName) -> UserHash:
@@ -114,6 +116,8 @@ class RedisUserManager(UserManager):
         }
 
     def _get_user_info(self, email: UName) -> UserInfo:
+        if self.is_admin(email):
+            raise ValueError("cannot read info for admin")
         res = self._redis.hgetall(self._key_user_info(email))
         return {
             "email": res["email"],
@@ -122,8 +126,10 @@ class RedisUserManager(UserManager):
         }
 
     def _set_user_info(self, info: UserInfo) -> None:
-        name = UName(info["email"])
-        self._redis.hset(self._key_user_info(name), cast(dict, info))
+        email = UName(info["email"])
+        if self.is_admin(email):
+            raise ValueError("cannot set info for admin")
+        self._redis.hset(self._key_user_info(email), cast(dict, info))
 
     def do_login(self, email: UName) -> SessionToken | None:
         token = self._session_token(email)
@@ -137,7 +143,7 @@ class RedisUserManager(UserManager):
     def get_sessions_for_user(self, email: UName) -> Iterable[SessionToken]:
         yield from sorted(self._redis.smembers(self._key_user_session(email)))
 
-    def create_user(self, email: UName, display_name: str) -> bool:
+    def do_create_user(self, email: UName, display_name: str) -> bool:
         # FIXME: make script to avoid race condition
         key = self._key_user_info(email)
         if self._redis.exists(key):
@@ -145,7 +151,7 @@ class RedisUserManager(UserManager):
         self._set_user_info(self._new_user_info(email, display_name))
         return True
 
-    def generate_reset_token(self, email: UName) -> ResetToken:
+    def do_generate_reset_token(self, email: UName) -> ResetToken:
         reset_token = uuid.uuid4().hex
         self._redis.set_value(
             self._key_pw_reset(reset_token),
@@ -183,6 +189,8 @@ class RedisUserManager(UserManager):
         return userhash
 
     def get_email(self, token: SessionToken) -> UName | None:
+        if self._extract_userhash(token) == self._admin_hash:
+            return self.get_admin()
         userhash = self._is_logged_in(token)
         if userhash is None:
             return None
@@ -191,7 +199,7 @@ class RedisUserManager(UserManager):
             return None
         return UName(res)
 
-    def get_display_name(self, email: UName) -> str | None:
+    def do_get_display_name(self, email: UName) -> str | None:
         return self._redis.hget(self._key_user_info(email), "display_name")
 
     def do_has_capability(

@@ -346,6 +346,8 @@ def setup(
         user_name: str = args["name"]
         reset_token = sec_ctx.generate_reset_token(
             user_session, UName(user_name))
+        if reset_token is None:
+            raise ValueError(f"cannot create reset token for {user_name}")
         return {
             "user_name": user_name,
             "reset_token": reset_token,

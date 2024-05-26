@@ -33,7 +33,7 @@ const VMain = styled.div`
   height: 100vh;
   max-height: 100vh;
   max-width: 60vw;
-  width: auto;
+  width: fit-content;
 
   @media (hover: none) and (max-width: 480px) {
     justify-content: start;
@@ -41,11 +41,15 @@ const VMain = styled.div`
   }
 `;
 
+const ResetPasswordForm = styled.form`
+  width: fit-content;
+`;
+
 const ResetPasswordElement = styled.div`
   padding: 5px;
   margin: 5px;
   clear: both;
-  width: 100%;
+  width: fit-content;
 `;
 
 const ResetPasswordLabel = styled.label`
@@ -139,7 +143,7 @@ export default class ResetPassword extends PureComponent<
     const { message } = this.state;
     return (
       <VMain>
-        <form onSubmit={this.handleSubmit}>
+        <ResetPasswordForm onSubmit={this.handleSubmit}>
           <ResetPasswordElement>
             <ResetPasswordLabel htmlFor="new-password">
               New Password:
@@ -168,7 +172,7 @@ export default class ResetPassword extends PureComponent<
               value="Login"
             />
           </ResetPasswordElement>
-        </form>
+        </ResetPasswordForm>
         {message ? (
           <ResetPasswordElement>{message}</ResetPasswordElement>
         ) : null}

@@ -126,7 +126,8 @@ class SecureContext:
         self.ensure_can_act(who, email=None, admin_capability=CAP_CREATE_USER)
         return self._user_mng.create_user(email, display_name)
 
-    def generate_reset_token(self, who: SessionToken, email: UName) -> str:
+    def generate_reset_token(
+            self, who: SessionToken, email: UName) -> ResetToken | None:
         self.ensure_can_act(
             who,
             email=email,

@@ -126,9 +126,19 @@ class UserManager:
         raise NotImplementedError()
 
     def create_user(self, email: UName, display_name: str) -> bool:
+        if self.is_admin(email):
+            return False
+        return self.do_create_user(email, display_name)
+
+    def do_create_user(self, email: UName, display_name: str) -> bool:
         raise NotImplementedError()
 
-    def generate_reset_token(self, email: UName) -> ResetToken:
+    def generate_reset_token(self, email: UName) -> ResetToken | None:
+        if self.is_admin(email):
+            return None
+        return self.do_generate_reset_token(email)
+
+    def do_generate_reset_token(self, email: UName) -> ResetToken:
         raise NotImplementedError()
 
     def get_email_for_reset_token(
@@ -159,6 +169,11 @@ class UserManager:
         raise NotImplementedError()
 
     def get_display_name(self, email: UName) -> str | None:
+        if self.is_admin(email):
+            return "admin"
+        return self.do_get_display_name(email)
+
+    def do_get_display_name(self, email: UName) -> str | None:
         raise NotImplementedError()
 
     def get_user_id(self, email: UName) -> UserId:
