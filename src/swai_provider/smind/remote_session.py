@@ -57,7 +57,7 @@ class RemoteSessionStore(SessionStore):
         super().__init__(cache_path=cache_path, is_shared=is_shared)
         self._name = UName(envload_str("SWAI_USER"))
         self._worker_token: WorkerToken = envload_str("SWAI_WORKER_TOKEN")
-        self._api_url = envload_str("SWAI_API_URL")
+        self._api_url = envload_str("SWAI_API_URL").removesuffix("/")
         self._api = requests.Session()
 
     @staticmethod
@@ -65,7 +65,7 @@ class RemoteSessionStore(SessionStore):
         return L_REMOTE
 
     def _url(self, path: str) -> str:
-        return f"{self._api_url}/smind{path}"
+        return f"{self._api_url}/api/smind{path}"
 
     def _json(self) -> dict[str, str | int | float | list[str] | None]:
         return {}
