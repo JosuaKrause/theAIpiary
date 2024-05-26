@@ -22,6 +22,7 @@
  */
 import { DEFAULT_LOGIN_API, LoginApiProvider } from '../api/login';
 import {
+  LoginInfo,
   Password,
   ResetToken,
   User,
@@ -29,7 +30,7 @@ import {
   WorkerToken,
 } from '../api/types';
 
-type UserCallback = (user: Readonly<User> | null) => void;
+type UserCallback = (user: Readonly<User> | Readonly<LoginInfo>) => void;
 
 export default class UserActions {
   private readonly api: LoginApiProvider;

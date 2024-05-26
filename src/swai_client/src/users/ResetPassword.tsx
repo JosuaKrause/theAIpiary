@@ -39,10 +39,22 @@ const VMain = styled.div`
   }
 `;
 
+const ResetPasswordElement = styled.div`
+  padding: 5px;
+  margin: 5px;
+  clear: both;
+  width: 100%;
+`;
+
+const ResetPasswordLabel = styled.label`
+  float: left;
+`;
+
 const ResetPasswordInputText = styled.input`
   appearance: none;
   border-radius: var(--item-radius);
   padding: var(--item-padding);
+  float: right;
 `;
 
 const ResetPasswordSubmit = styled.input`
@@ -52,6 +64,7 @@ const ResetPasswordSubmit = styled.input`
   cursor: pointer;
   color: var(--main-text);
   background-color: var(--button-background);
+  float: right;
 
   &:hover {
     background-color: var(--button-hover);
@@ -64,18 +77,20 @@ const ResetPasswordSubmit = styled.input`
 type ResetPasswordProps = {
   userActions: UserActions;
 };
-type ResetPasswordState = Record<string, void>;
+type ResetPasswordState = {
+  message: string | null;
+};
 
 export default class ResetPassword extends PureComponent<
-  ResetPasswordProps,
-  ResetPasswordState
+  Readonly<ResetPasswordProps>,
+  Readonly<ResetPasswordState>
 > {
   private readonly newPasswordRef: React.RefObject<HTMLInputElement>;
   private readonly confirmPasswordRef: React.RefObject<HTMLInputElement>;
 
   constructor(props: Readonly<ResetPasswordProps>) {
     super(props);
-    this.state = {};
+    this.state = { message: null };
     this.newPasswordRef = React.createRef();
     this.confirmPasswordRef = React.createRef();
   }
@@ -85,59 +100,76 @@ export default class ResetPassword extends PureComponent<
     const params = new URL(window.location.href).searchParams;
     const resetToken = params.get('token') as ResetToken | undefined;
     if (!resetToken) {
+      this.setState({
+        message: 'No reset token set!',
+      });
       return;
     }
     const newPasswordInput = this.newPasswordRef.current;
     const confirmPasswordInput = this.confirmPasswordRef.current;
     if (!newPasswordInput || !confirmPasswordInput) {
+      this.setState({
+        message: 'Please provide your new password in both fields!',
+      });
       return;
     }
     const newPassword = newPasswordInput.value as Password;
     const confirmPassword = confirmPasswordInput.value as Password;
     if (newPassword !== confirmPassword) {
+      this.setState({
+        message: 'The entered passwords do not match!',
+      });
       return;
     }
     const { userActions } = this.props;
     userActions.changePassword(resetToken, newPassword, (user) => {
-      if (user) {
+      if (user.name) {
         window.location.href = `/login?user=${user.name}`;
+      } else {
+        this.setState({
+          message: user.message,
+        });
       }
     });
   };
 
   render() {
+    const { message } = this.state;
     return (
       <VMain>
         <form onSubmit={this.handleSubmit}>
-          <div>
-            <label>
-              New Password:&nbsp;
-              <ResetPasswordInputText
-                autoComplete="new-password"
-                name="new-password"
-                type="password"
-                ref={this.newPasswordRef}
-              />
-            </label>
-          </div>
-          <div>
-            <label>
-              Confirm Password:&nbsp;
-              <ResetPasswordInputText
-                autoComplete="new-password"
-                name="confirm-password"
-                type="password"
-                ref={this.confirmPasswordRef}
-              />
-            </label>
-          </div>
-          <div>
+          <ResetPasswordElement>
+            <ResetPasswordLabel htmlFor="new-password">
+              New Password:
+            </ResetPasswordLabel>
+            <ResetPasswordInputText
+              autoComplete="new-password"
+              name="new-password"
+              type="password"
+              ref={this.newPasswordRef}
+            />
+          </ResetPasswordElement>
+          <ResetPasswordElement>
+            <ResetPasswordLabel htmlFor="confirm-password">
+              Confirm Password:
+            </ResetPasswordLabel>
+            <ResetPasswordInputText
+              autoComplete="new-password"
+              name="confirm-password"
+              type="password"
+              ref={this.confirmPasswordRef}
+            />
+          </ResetPasswordElement>
+          <ResetPasswordElement>
             <ResetPasswordSubmit
               type="submit"
               value="Login"
             />
-          </div>
+          </ResetPasswordElement>
         </form>
+        {message ? (
+          <ResetPasswordElement>{message}</ResetPasswordElement>
+        ) : null}
       </VMain>
     );
   }

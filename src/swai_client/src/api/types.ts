@@ -77,6 +77,10 @@ export type User = {
   name: Readonly<UserName>;
   capabilities: Readonly<UserCapabilities>;
 };
+export type LoginInfo = {
+  name: null;
+  message: string;
+};
 
 type ApiUserCapability =
   | 'change_capabilities'
@@ -91,6 +95,7 @@ export type ApiLoginResponse = {
   user_name: Readonly<UserName> | undefined;
   logged: boolean;
   capabilities: Readonly<ApiUserCapability[]>;
+  message: string | undefined;
 };
 
 export type ApiPasswordResetTokenResponse = {
@@ -117,12 +122,12 @@ const NO_CAPABILITIES: Readonly<UserCapabilities> = {
   readChat: false,
 };
 
-export function toUser(
+export function toUserOrMessage(
   userResp: Readonly<ApiLoginResponse>,
-): Readonly<User> | null {
-  const { logged, user_name, capabilities: caps, ...rest } = userResp;
+): Readonly<User> | LoginInfo {
+  const { logged, user_name, capabilities: caps, message, ...rest } = userResp;
   if (!logged || !user_name) {
-    return null;
+    return { name: null, message: message ?? 'invalid response' };
   }
   const capabilities: UserCapabilities = { ...NO_CAPABILITIES };
   caps.forEach((cap) => {

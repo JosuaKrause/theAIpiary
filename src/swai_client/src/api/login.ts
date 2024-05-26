@@ -25,29 +25,30 @@ import {
   ApiLoginResponse,
   ApiPasswordResetTokenResponse,
   ApiWorkerTokenResponse,
+  LoginInfo,
   Password,
   PasswordResetTokenResponse,
   ResetToken,
   User,
   UserName,
   WorkerToken,
-  toUser,
+  toUserOrMessage,
 } from './types';
 
 export type LoginApiProvider = {
-  getUser: () => Promise<Readonly<User> | null>;
+  getUser: () => Promise<Readonly<User> | Readonly<LoginInfo>>;
   loginUser: (
     name: Readonly<UserName>,
     password: Readonly<Password>,
-  ) => Promise<Readonly<User> | null>;
+  ) => Promise<Readonly<User> | Readonly<LoginInfo>>;
   getResetPasswordToken: (
     name: Readonly<UserName>,
   ) => Promise<Readonly<PasswordResetTokenResponse>>;
   resetPassword: (
     resetToken: Readonly<ResetToken>,
     password: Readonly<Password>,
-  ) => Promise<Readonly<User> | null>;
-  logout: () => Promise<Readonly<User> | null>;
+  ) => Promise<Readonly<User> | Readonly<LoginInfo>>;
+  logout: () => Promise<Readonly<User> | Readonly<LoginInfo>>;
   getWorkerToken: () => Promise<Readonly<WorkerToken>>;
 };
 
@@ -66,7 +67,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
       );
     }
     const obj = (await res.json()) as ApiLoginResponse;
-    return toUser(obj);
+    return toUserOrMessage(obj);
   },
   loginUser: async (name, password) => {
     const res = await fetch(`${URL_PREFIX}/login`, {
@@ -86,7 +87,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
       );
     }
     const obj = (await res.json()) as ApiLoginResponse;
-    return toUser(obj);
+    return toUserOrMessage(obj);
   },
   getResetPasswordToken: async (name) => {
     const res = await fetch(`${URL_PREFIX}/reset_password_token`, {
@@ -129,7 +130,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
       );
     }
     const obj = (await res.json()) as ApiLoginResponse;
-    return toUser(obj);
+    return toUserOrMessage(obj);
   },
   logout: async () => {
     const res = await fetch(`${URL_PREFIX}/logout`, {
@@ -146,7 +147,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
       );
     }
     const obj = (await res.json()) as ApiLoginResponse;
-    return toUser(obj);
+    return toUserOrMessage(obj);
   },
   getWorkerToken: async () => {
     const res = await fetch(`${URL_PREFIX}/create_worker_token`, {

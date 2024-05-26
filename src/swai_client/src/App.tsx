@@ -24,6 +24,7 @@ import { PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import styled from 'styled-components';
+import Welcome from './Welcome';
 import { SessionId } from './api/types';
 import Chat from './chat/Chat';
 import ChatActions from './chat/ChatActions';
@@ -159,6 +160,10 @@ class App extends PureComponent<AppProps, AppState> {
               <Route
                 path="/profile"
                 element={<Profile userActions={this.userActions} />}
+              />
+              <Route
+                path="/"
+                element={<Welcome />}
               />
             </Routes>
           </BrowserRouter>
