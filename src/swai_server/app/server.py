@@ -411,9 +411,7 @@ def setup(
         nss = [GNamespace(ns) for ns in args["nss"]]
         timeout = float(args["timeout"])
         assert timeout > 0.0
-        print(f"start bid {nss} {timeout}")
         task = task_queue.pop_task(nss, timeout=timeout)
-        print(f"bid {task=}")
         if task is None:
             return {
                 "ns": None,
