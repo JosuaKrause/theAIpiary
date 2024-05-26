@@ -46,21 +46,22 @@ const LoginForm = styled.form`
 `;
 
 const LoginElement = styled.div`
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
   padding: 5px;
   margin: 5px;
-  clear: both;
-  width: fit-content;
 `;
 
 const LoginLabel = styled.label`
-  float: left;
+  flex-grow: 0;
 `;
 
 const LoginInputText = styled.input`
   appearance: none;
   border-radius: var(--item-radius);
   padding: var(--item-padding);
-  float: right;
+  flex-grow: 0;
 `;
 
 const LoginSubmit = styled.input`
@@ -70,7 +71,7 @@ const LoginSubmit = styled.input`
   cursor: pointer;
   color: var(--main-text);
   background-color: var(--button-background);
-  float: right;
+  flex-grow: 0;
 
   &:hover {
     background-color: var(--button-hover);

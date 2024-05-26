@@ -46,21 +46,22 @@ const ResetPasswordForm = styled.form`
 `;
 
 const ResetPasswordElement = styled.div`
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
   padding: 5px;
   margin: 5px;
-  clear: both;
-  width: fit-content;
 `;
 
 const ResetPasswordLabel = styled.label`
-  float: left;
+  flex-grow: 0;
 `;
 
 const ResetPasswordInputText = styled.input`
   appearance: none;
   border-radius: var(--item-radius);
   padding: var(--item-padding);
-  float: right;
+  flex-grow: 0;
 `;
 
 const ResetPasswordSubmit = styled.input`
@@ -70,7 +71,7 @@ const ResetPasswordSubmit = styled.input`
   cursor: pointer;
   color: var(--main-text);
   background-color: var(--button-background);
-  float: right;
+  flex-grow: 0;
 
   &:hover {
     background-color: var(--button-hover);
