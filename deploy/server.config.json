@@ -2,7 +2,7 @@
   "session_store": {
     "cache_path": "/session/cache",
     "cfg": {
-      "host": "localhost",
+      "host": "rserver",
       "passwd": "",
       "path": "/swai/redis",
       "port": 6379,
@@ -13,7 +13,7 @@
     "name": "redis"
   },
   "task_queue": {
-    "host": "localhost",
+    "host": "rserver",
     "passwd": "",
     "path": "/swai/redis",
     "port": 6379,
@@ -21,7 +21,7 @@
   },
   "user_mng": {
     "cfg": {
-      "host": "localhost",
+      "host": "rserver",
       "passwd": "",
       "path": "/swai/redis",
       "port": 6379,

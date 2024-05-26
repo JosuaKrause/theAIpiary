@@ -168,7 +168,6 @@ def setup(
     server.bind_path("/", public_path)
 
     def file_fallback(_: str) -> str:
-        print(f"path {_}")
         return os.path.join(public_path, "index.html")
 
     server.set_file_fallback_hook(file_fallback)
