@@ -38,7 +38,7 @@ UserManagerModule = RedisUserManagerModule
 def load_user_manager(
         module: UserManagerModule,
         *,
-        admin_email: UName,
+        admin_email: UName | None,
         admin_pw: RawPassword | None) -> UserManager:
     # pylint: disable=import-outside-toplevel
     if module["name"] == "redis":

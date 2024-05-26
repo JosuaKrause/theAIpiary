@@ -89,7 +89,7 @@ class UserManager:
     def __init__(
             self,
             *,
-            admin_email: UName,
+            admin_email: UName | None,
             admin_pw: RawPassword | None) -> None:
         self._admin_email = admin_email
         self._admin_pw = admin_pw

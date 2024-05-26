@@ -55,7 +55,7 @@ class RedisUserManager(UserManager):
     def __init__(
             self,
             *,
-            admin_email: UName,
+            admin_email: UName | None,
             admin_pw: str | None,
             cfg: RedisConfig) -> None:
         super().__init__(admin_email=admin_email, admin_pw=admin_pw)

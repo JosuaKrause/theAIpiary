@@ -148,12 +148,13 @@ def setup(
 
     config = get_config()
 
-    admin_email = UName(envload_str("ADMIN_EMAIL", default=""))
+    admin_email_str = envload_str("ADMIN_EMAIL", default="")
     admin_pw: HashPassword | None = envload_str("ADMIN_PW", default="")
-    if not admin_email.get() or not admin_pw:
-        admin_email = UName("")
+    if not admin_email_str or not admin_pw:
+        admin_email = None
         admin_pw = None
     else:
+        admin_email = UName(admin_email_str)
         print(f"admin is {admin_email}")
 
     session_store = create_session_store(config)
