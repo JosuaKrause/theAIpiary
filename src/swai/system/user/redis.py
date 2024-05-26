@@ -18,24 +18,20 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
-import hmac
 import uuid
 from collections.abc import Iterable
 from typing import cast, TypeAlias, TypedDict
 
-import bcrypt
 from redipy import Redis, RedisConfig
 from scattermind.system.base import UserId
 from scattermind.system.names import UName
-from scattermind.system.util import (
-    get_short_hash,
-    get_text_hash,
-    short_hash_size,
-)
+from scattermind.system.util import get_short_hash, short_hash_size
 
 from swai.system.user.manager import (
     as_capability,
     CapabilityName,
+    HashPassword,
+    ResetToken,
     SessionToken,
     UserManager,
     WorkerToken,
@@ -46,8 +42,8 @@ UserHash: TypeAlias = str
 
 
 UserInfo = TypedDict('UserInfo', {
-    "name": str,
     "email": str,
+    "display_name": str,
     "hashpw": str,
 })
 
@@ -55,44 +51,46 @@ UserInfo = TypedDict('UserInfo', {
 PW_RESET_EXPIRE = 24.0 * 60.0 * 60.0  # 24h
 
 
-INVALID_WORKER_TOKEN: WorkerToken = uuid.UUID(
-    "87f3fabee0ca4feaa42d8f40e5cdc303").hex
-
-
 class RedisUserManager(UserManager):
-    def __init__(self, *, cfg: RedisConfig) -> None:
+    def __init__(
+            self,
+            *,
+            admin_email: UName,
+            admin_pw: str | None,
+            cfg: RedisConfig) -> None:
+        super().__init__(admin_email=admin_email, admin_pw=admin_pw)
         self._redis = Redis("redis", cfg=cfg, redis_module="users")
 
     @staticmethod
-    def _userhash(name: UName) -> UserHash:
-        return get_short_hash(name.get())
+    def _userhash(email: UName) -> UserHash:
+        return get_short_hash(email.get())
 
     @classmethod
-    def _key_user_info(cls, name: UName) -> str:
-        return cls._key_userhash_info(cls._userhash(name))
+    def _key_user_info(cls, email: UName) -> str:
+        return cls._key_userhash_info(cls._userhash(email))
 
     @staticmethod
     def _key_userhash_info(userhash: UserHash | None) -> str:
         return f"info:{'' if userhash is None else userhash}"
 
     @classmethod
-    def _key_user_perm(cls, name: UName) -> str:
-        return cls._key_userhash_perm(cls._userhash(name))
+    def _key_user_perm(cls, email: UName) -> str:
+        return cls._key_userhash_perm(cls._userhash(email))
 
     @staticmethod
     def _key_userhash_perm(userhash: UserHash) -> str:
         return f"perm:{userhash}"
 
     @classmethod
-    def _key_user_session(cls, name: UName) -> str:
-        return cls._key_userhash_session(cls._userhash(name))
+    def _key_user_session(cls, email: UName) -> str:
+        return cls._key_userhash_session(cls._userhash(email))
 
     @staticmethod
     def _key_userhash_session(userhash: UserHash) -> str:
         return f"sess:{userhash}"
 
     @classmethod
-    def _key_pw_reset(cls, reset_token: str) -> str:
+    def _key_pw_reset(cls, reset_token: ResetToken) -> str:
         return f"reset:{reset_token}"
 
     @staticmethod
@@ -100,89 +98,82 @@ class RedisUserManager(UserManager):
         return f"worker:{user_id.to_parseable()}"
 
     @classmethod
-    def _session_token(cls, name: UName) -> SessionToken:
-        return f"{cls._userhash(name)}{uuid.uuid4().hex}"
+    def _session_token(cls, email: UName) -> SessionToken:
+        return f"{cls._userhash(email)}{uuid.uuid4().hex}"
 
     @staticmethod
     def _extract_userhash(token: SessionToken) -> UserHash:
         return token[:short_hash_size()]
 
     @staticmethod
-    def _new_user_info(name: UName, email: str) -> UserInfo:
+    def _new_user_info(email: UName, display_name: str) -> UserInfo:
         return {
-            "name": name.get(),
-            "email": email,
+            "email": email.get(),
+            "display_name": display_name,
             "hashpw": "",
         }
 
-    def _get_user_info(self, name: UName) -> UserInfo:
-        res = self._redis.hgetall(self._key_user_info(name))
+    def _get_user_info(self, email: UName) -> UserInfo:
+        res = self._redis.hgetall(self._key_user_info(email))
         return {
-            "name": res["name"],
             "email": res["email"],
+            "display_name": res["display_name"],
             "hashpw": res["hashpw"],
         }
 
     def _set_user_info(self, info: UserInfo) -> None:
-        name = UName(info["name"])
+        name = UName(info["email"])
         self._redis.hset(self._key_user_info(name), cast(dict, info))
 
-    @staticmethod
-    def _hashpw(password: str) -> str:
-        return bcrypt.hashpw(
-            get_text_hash(password).encode("utf-8"),
-            bcrypt.gensalt(12)).decode("utf-8")
-
-    @staticmethod
-    def _check_pw(password: str, hashpw: str | None) -> bool:
-        if not hashpw:
-            return False
-        return bcrypt.checkpw(
-            get_text_hash(password).encode("utf-8"),
-            hashpw.encode("utf-8"))
-
-    def login(self, name: UName, password: str) -> SessionToken | None:
-        hashpw = self._redis.hget(self._key_user_info(name), "hashpw")
-        if not self._check_pw(password, hashpw):
-            return None
-        token = self._session_token(name)
-        self._redis.sadd(self._key_user_session(name), token)
+    def do_login(self, email: UName) -> SessionToken | None:
+        token = self._session_token(email)
+        self._redis.sadd(self._key_user_session(email), token)
         return token
 
     def logout(self, token: SessionToken) -> None:
         userhash = self._extract_userhash(token)
         self._redis.srem(self._key_userhash_session(userhash), token)
 
-    def get_sessions_for_user(self, name: UName) -> Iterable[SessionToken]:
-        yield from sorted(self._redis.smembers(self._key_user_session(name)))
+    def get_sessions_for_user(self, email: UName) -> Iterable[SessionToken]:
+        yield from sorted(self._redis.smembers(self._key_user_session(email)))
 
-    def create_user(self, name: UName, email: str) -> bool:
+    def create_user(self, email: UName, display_name: str) -> bool:
         # FIXME: make script to avoid race condition
-        key = self._key_user_info(name)
+        key = self._key_user_info(email)
         if self._redis.exists(key):
             return False
-        self._set_user_info(self._new_user_info(name, email))
+        self._set_user_info(self._new_user_info(email, display_name))
         return True
 
-    def generate_reset_token(self, name: UName) -> str:
+    def generate_reset_token(self, email: UName) -> ResetToken:
         reset_token = uuid.uuid4().hex
         self._redis.set_value(
             self._key_pw_reset(reset_token),
-            name.get(),
+            email.get(),
             expire_in=PW_RESET_EXPIRE)
         return reset_token
 
-    def set_password(self, password: str, reset_token: str) -> UName | None:
+    def get_email_for_reset_token(
+            self, reset_token: ResetToken) -> UName | None:
         reset_key = self._key_pw_reset(reset_token)
         raw_name = self._redis.get_value(reset_key)
         if raw_name is None:
             return None
-        name = UName(raw_name)
+        return UName(raw_name)
+
+    def set_password_hash(
+            self,
+            email: UName,
+            hashpw: HashPassword,
+            reset_token: ResetToken) -> None:
+        reset_key = self._key_pw_reset(reset_token)
         self._redis.delete(reset_key)
-        info = self._get_user_info(name)
-        info["hashpw"] = self._hashpw(password)
+        info = self._get_user_info(email)
+        info["hashpw"] = hashpw
         self._set_user_info(info)
-        return name
+
+    def get_password_hash(self, email: UName) -> HashPassword | None:
+        return self._redis.hget(self._key_user_info(email), "hashpw")
 
     def _is_logged_in(self, token: SessionToken) -> UserHash | None:
         userhash = self._extract_userhash(token)
@@ -191,7 +182,7 @@ class RedisUserManager(UserManager):
             return None
         return userhash
 
-    def get_name(self, token: SessionToken) -> UName | None:
+    def get_email(self, token: SessionToken) -> UName | None:
         userhash = self._is_logged_in(token)
         if userhash is None:
             return None
@@ -200,33 +191,33 @@ class RedisUserManager(UserManager):
             return None
         return UName(res)
 
-    def get_email(self, name: UName) -> str | None:
-        return self._redis.hget(self._key_user_info(name), "email")
+    def get_display_name(self, email: UName) -> str | None:
+        return self._redis.hget(self._key_user_info(email), "display_name")
 
-    def get_user_id(self, name: UName) -> UserId:
-        return UserId.create(name)
-
-    def has_capability(self, name: UName, capability: CapabilityName) -> bool:
-        return self._redis.sismember(self._key_user_perm(name), capability)
-
-    def set_capability(
+    def do_has_capability(
             self,
-            name: UName,
+            email: UName,
+            capability: CapabilityName) -> bool:
+        return self._redis.sismember(self._key_user_perm(email), capability)
+
+    def do_set_capability(
+            self,
+            email: UName,
             capability: CapabilityName,
             *,
             has: bool) -> None:
         if has:
-            self._redis.sadd(self._key_user_perm(name), capability)
+            self._redis.sadd(self._key_user_perm(email), capability)
         else:
-            self._redis.srem(self._key_user_perm(name), capability)
+            self._redis.srem(self._key_user_perm(email), capability)
 
-    def list_capabilities(self, name: UName) -> set[CapabilityName]:
+    def do_list_capabilities(self, email: UName) -> set[CapabilityName]:
         return {
             as_capability(cap)
-            for cap in self._redis.smembers(self._key_user_perm(name))
+            for cap in self._redis.smembers(self._key_user_perm(email))
         }
 
-    def list_users(self) -> Iterable[UName]:
+    def do_list_users(self) -> Iterable[UName]:
         pat = f"{self._key_userhash_info(None)}*"
         for key in sorted(self._redis.keys(match=pat, block=False)):
             name = self._redis.hget(key, "name")
@@ -234,22 +225,9 @@ class RedisUserManager(UserManager):
                 continue
             yield UName(name)
 
-    def create_worker_token(self, name: UName) -> WorkerToken:
-        user_id = self.get_user_id(name)
-        worker_token: WorkerToken | None = None
-        while worker_token is None:
-            worker_token = uuid.uuid4().hex
-            if hmac.compare_digest(INVALID_WORKER_TOKEN, worker_token):
-                worker_token = None
+    def store_worker_token(
+            self, user_id: UserId, worker_token: WorkerToken) -> None:
         self._redis.set_value(self._key_worker(user_id), worker_token)
-        return worker_token
 
-    def is_correct_worker_token(
-            self, name: UName, worker_token: WorkerToken) -> bool:
-        user_id = self.get_user_id(name)
-        expected_token: WorkerToken | None = self._redis.get_value(
-            self._key_worker(user_id))
-        if expected_token is None:
-            # NOTE: no shortcut for missing tokens
-            expected_token = INVALID_WORKER_TOKEN
-        return hmac.compare_digest(expected_token, worker_token)
+    def get_worker_token(self, user_id: UserId) -> WorkerToken | None:
+        return self._redis.get_value(self._key_worker(user_id))

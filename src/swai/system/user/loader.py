@@ -21,8 +21,9 @@
 from typing import Literal, TypedDict
 
 from redipy import RedisConfig
+from scattermind.system.names import UName
 
-from swai.system.user.manager import UserManager
+from swai.system.user.manager import RawPassword, UserManager
 
 
 RedisUserManagerModule = TypedDict('RedisUserManagerModule', {
@@ -34,9 +35,14 @@ RedisUserManagerModule = TypedDict('RedisUserManagerModule', {
 UserManagerModule = RedisUserManagerModule
 
 
-def load_user_manager(module: UserManagerModule) -> UserManager:
+def load_user_manager(
+        module: UserManagerModule,
+        *,
+        admin_email: UName,
+        admin_pw: RawPassword | None) -> UserManager:
     # pylint: disable=import-outside-toplevel
     if module["name"] == "redis":
         from swai.system.user.redis import RedisUserManager
-        return RedisUserManager(cfg=module["cfg"])
+        return RedisUserManager(
+            cfg=module["cfg"], admin_email=admin_email, admin_pw=admin_pw)
     raise ValueError(f"unknown session store: {module['name']}")

@@ -18,14 +18,26 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
+import hmac
+import uuid
 from collections.abc import Iterable
 from typing import cast, get_args, Literal, TypeAlias
 
+import bcrypt
 from scattermind.system.base import UserId
 from scattermind.system.names import UName
+from scattermind.system.util import get_text_hash
 
 
+SessionToken: TypeAlias = str
+ResetToken: TypeAlias = str
+RawPassword: TypeAlias = str
+HashPassword: TypeAlias = str
 WorkerToken: TypeAlias = str
+
+
+INVALID_WORKER_TOKEN: WorkerToken = uuid.UUID(
+    "87f3fabee0ca4feaa42d8f40e5cdc303").hex
 
 
 CapabilityName = Literal[
@@ -40,7 +52,7 @@ CapabilityName = Literal[
     "register_own_worker",
     "register_other_worker",
 ]
-CAPABILITIES = get_args(CapabilityName)
+CAPABILITIES: tuple[CapabilityName] = get_args(CapabilityName)
 CAP_CHANGE_CAPABILITIES: CapabilityName = "change_capabilities"
 CAP_RESET_OWN_PW: CapabilityName = "reset_own_password"
 CAP_RESET_OTHER_PW: CapabilityName = "reset_other_password"
@@ -59,60 +71,167 @@ def as_capability(capability: str) -> CapabilityName:
     return cast(CapabilityName, capability)
 
 
-SessionToken: TypeAlias = str
+def hash_password(password: RawPassword) -> HashPassword:
+    return bcrypt.hashpw(
+        get_text_hash(password).encode("utf-8"),
+        bcrypt.gensalt(12)).decode("utf-8")
+
+
+def check_password(password: RawPassword, hashpw: HashPassword | None) -> bool:
+    if not hashpw:
+        return False
+    return bcrypt.checkpw(
+        get_text_hash(password).encode("utf-8"),
+        hashpw.encode("utf-8"))
 
 
 class UserManager:
-    def __init__(self) -> None:
-        pass
+    def __init__(
+            self,
+            *,
+            admin_email: UName,
+            admin_pw: RawPassword | None) -> None:
+        self._admin_email = admin_email
+        self._admin_pw = admin_pw
 
-    def login(self, name: UName, password: str) -> SessionToken | None:
+    def get_admin(self) -> UName | None:
+        if not self._admin_pw:
+            return None
+        return self._admin_email
+
+    def is_admin(self, email: UName) -> bool:
+        return bool(self._admin_pw) and self._admin_email == email
+
+    def is_admin_login(self, email: UName, password: RawPassword) -> bool:
+        if not self.is_admin(email):
+            return False
+        return check_password(password, self._admin_pw)
+
+    def login(
+            self, email: UName, password: RawPassword) -> SessionToken | None:
+        if self.is_admin_login(email, password):
+            return self.do_login(email)
+        hashpw = self.get_password_hash(email)
+        if not check_password(password, hashpw):
+            return None
+        return self.do_login(email)
+
+    def do_login(self, email: UName) -> SessionToken | None:
         raise NotImplementedError()
 
     def logout(self, token: SessionToken) -> None:
         raise NotImplementedError()
 
-    def get_sessions_for_user(self, name: UName) -> Iterable[SessionToken]:
+    def get_sessions_for_user(self, email: UName) -> Iterable[SessionToken]:
         raise NotImplementedError()
 
-    def create_user(self, name: UName, email: str) -> bool:
+    def create_user(self, email: UName, display_name: str) -> bool:
         raise NotImplementedError()
 
-    def generate_reset_token(self, name: UName) -> str:
+    def generate_reset_token(self, email: UName) -> ResetToken:
         raise NotImplementedError()
 
-    def set_password(self, password: str, reset_token: str) -> UName | None:
+    def get_email_for_reset_token(
+            self, reset_token: ResetToken) -> UName | None:
         raise NotImplementedError()
 
-    def get_name(self, token: SessionToken) -> UName | None:
+    def set_password(
+            self,
+            password: RawPassword,
+            reset_token: ResetToken) -> UName | None:
+        email = self.get_email_for_reset_token(reset_token)
+        if email is None:
+            return None
+        self.set_password_hash(email, hash_password(password), reset_token)
+        return email
+
+    def set_password_hash(
+            self,
+            email: UName,
+            hashpw: HashPassword,
+            reset_token: ResetToken) -> None:
         raise NotImplementedError()
 
-    def get_email(self, name: UName) -> str | None:
+    def get_password_hash(self, email: UName) -> HashPassword | None:
         raise NotImplementedError()
 
-    def get_user_id(self, name: UName) -> UserId:
+    def get_email(self, token: SessionToken) -> UName | None:
         raise NotImplementedError()
 
-    def has_capability(self, name: UName, capability: CapabilityName) -> bool:
+    def get_display_name(self, email: UName) -> str | None:
+        raise NotImplementedError()
+
+    def get_user_id(self, email: UName) -> UserId:
+        return UserId.create(email)
+
+    def has_capability(self, email: UName, capability: CapabilityName) -> bool:
+        if self.is_admin(email):
+            return True
+        return self.do_has_capability(email, capability)
+
+    def do_has_capability(
+            self,
+            email: UName,
+            capability: CapabilityName) -> bool:
         raise NotImplementedError()
 
     def set_capability(
             self,
-            name: UName,
+            email: UName,
+            capability: CapabilityName,
+            *,
+            has: bool) -> None:
+        if self.is_admin(email):
+            return
+        self.do_set_capability(email, capability, has=has)
+
+    def do_set_capability(
+            self,
+            email: UName,
             capability: CapabilityName,
             *,
             has: bool) -> None:
         raise NotImplementedError()
 
-    def list_capabilities(self, name: UName) -> set[CapabilityName]:
+    def list_capabilities(self, email: UName) -> set[CapabilityName]:
+        if self.is_admin(email):
+            return set(CAPABILITIES)
+        return self.do_list_capabilities(email)
+
+    def do_list_capabilities(self, email: UName) -> set[CapabilityName]:
         raise NotImplementedError()
 
     def list_users(self) -> Iterable[UName]:
+        admin_email = self.get_admin()
+        if admin_email is not None:
+            yield admin_email
+        yield from self.do_list_users()
+
+    def do_list_users(self) -> Iterable[UName]:
         raise NotImplementedError()
 
-    def create_worker_token(self, name: UName) -> WorkerToken:
-        raise NotImplementedError()
+    def create_worker_token(self, email: UName) -> WorkerToken:
+        user_id = self.get_user_id(email)
+        worker_token: WorkerToken | None = None
+        while worker_token is None:
+            worker_token = uuid.uuid4().hex
+            if hmac.compare_digest(INVALID_WORKER_TOKEN, worker_token):
+                worker_token = None
+        self.store_worker_token(user_id, worker_token)
+        return worker_token
 
     def is_correct_worker_token(
-            self, name: UName, worker_token: WorkerToken) -> bool:
+            self, email: UName, worker_token: WorkerToken) -> bool:
+        user_id = self.get_user_id(email)
+        expected_token = self.get_worker_token(user_id)
+        if expected_token is None:
+            # NOTE: no shortcut for missing tokens
+            expected_token = INVALID_WORKER_TOKEN
+        return hmac.compare_digest(expected_token, worker_token)
+
+    def store_worker_token(
+            self, user_id: UserId, worker_token: WorkerToken) -> None:
+        raise NotImplementedError()
+
+    def get_worker_token(self, user_id: UserId) -> WorkerToken | None:
         raise NotImplementedError()

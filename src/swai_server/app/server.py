@@ -57,16 +57,17 @@ from swai.server_response_types import (
     WorkerValueResponse,
 )
 from swai.system.user.loader import load_user_manager
-from swai.system.user.manager import SessionToken, WorkerToken
+from swai.system.user.manager import (
+    HashPassword,
+    RawPassword,
+    ResetToken,
+    SessionToken,
+    WorkerToken,
+)
 from swai.system.user.secure import SecureContext
 from swai_server.auction.queue import TaskQueue
 from swai_server.config import get_config
-from swai_server.env import (
-    envload_bool,
-    envload_int,
-    envload_path,
-    envload_str,
-)
+from swai_server.env import envload_int, envload_path, envload_str
 from swai_server.smind.server_api import (
     create_session_store,
     init_llama,
@@ -147,15 +148,19 @@ def setup(
 
     config = get_config()
 
+    admin_email = UName(envload_str("ADMIN_EMAIL", default=""))
+    admin_pw: HashPassword | None = envload_str("ADMIN_PW", default="")
+    if not admin_email.get() or not admin_pw:
+        admin_email = UName("")
+        admin_pw = None
+    else:
+        print(f"admin is {admin_email}")
+
     session_store = create_session_store(config)
     task_queue = TaskQueue(session_store, config["task_queue"])
-    sec_ctx = SecureContext(load_user_manager(config["user_mng"]))
+    sec_ctx = SecureContext(load_user_manager(
+        config["user_mng"], admin_email=admin_email, admin_pw=admin_pw))
     model_ns = GNamespace("llama")
-
-    if envload_bool("BOOTSTRAP_USERS", default=False):
-        admin_reset_token = sec_ctx.force_maybe_create_admin()
-        if admin_reset_token is not None:
-            print(f"user 'admin' created! reset token: {admin_reset_token}")
 
     public_path = envload_path("UI_PATH", default="build/")
     server.bind_path("/", public_path)
@@ -169,7 +174,7 @@ def setup(
         if session_cookie is None:
             return okay
         user_session = session_cookie.value
-        user_name = sec_ctx.get_name(user_session)
+        user_name = sec_ctx.get_email(user_session)
         if user_name is None:
             return okay
         rargs["meta"]["user_session"] = user_session
@@ -182,7 +187,7 @@ def setup(
         user_session = rargs["meta"].get("user_session")
         if user_session is None:
             return Response("must be logged in", 401)
-        user_name = rargs["meta"].get("user_name")
+        user_name: UName | None = rargs["meta"].get("user_name")
         if user_name is None:
             # FIXME: clear cookie
             return Response("must be logged in", 401)
@@ -276,8 +281,8 @@ def setup(
     @server.json_post(f"{prefix}/login")
     def _post_login(req: QSRH, rargs: ReqArgs) -> LoginResponse:
         args = rargs["post"]
-        user_name = args["name"]
-        password = args["password"]
+        user_name: str = args["name"]
+        password: RawPassword = args["password"]
         user_session = sec_ctx.login(UName(user_name), password)
         if user_session is None:
             return {
@@ -285,7 +290,7 @@ def setup(
                 "logged": False,
                 "capabilities": [],
             }
-        login_name = sec_ctx.get_name(user_session)
+        login_name = sec_ctx.get_email(user_session)
         if login_name is None:
             return {
                 "user_name": None,
@@ -294,7 +299,7 @@ def setup(
             }
         cookie = SimpleCookie()
         cookie["user_session"] = user_session
-        cookie["user_session"]["expires"] = 90*24*60*60
+        cookie["user_session"]["max-age"] = 90*24*60*60
         req.send_cookie(cookie)
         return {
             "user_name": login_name.get(),
@@ -333,13 +338,17 @@ def setup(
         }
 
     @server.json_post(f"{prefix}/reset_password")
-    def _post_reset_password(_req: QSRH, rargs: ReqArgs) -> LoginResponse:
+    def _post_reset_password(req: QSRH, rargs: ReqArgs) -> LoginResponse:
         args = rargs["post"]
-        password = args["password"]
-        reset_token = args["reset_token"]
+        password: RawPassword = args["password"]
+        reset_token: ResetToken = args["reset_token"]
         user_name = sec_ctx.set_password(password, reset_token)
         if user_name is not None:
             sec_ctx.force_logout_user(user_name)
+            cookie = SimpleCookie()
+            cookie["user_session"] = ""
+            cookie["user_session"]["max-age"] = 0
+            req.send_cookie(cookie)
         return {
             "user_name": None if user_name is None else user_name.get(),
             "logged": False,
@@ -348,16 +357,19 @@ def setup(
 
     @server.json_post(f"{prefix}/logout")
     @server.middleware(verify_user_session)
-    def _post_logout(_req: QSRH, rargs: ReqArgs) -> LoginResponse:
+    def _post_logout(req: QSRH, rargs: ReqArgs) -> LoginResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
         args = rargs["post"]
-        user_name = args.get("name")
+        user_name: str | None = args.get("name")
 
         if user_name is not None:
             sec_ctx.logout_user(user_session, UName(user_name))
         else:
             sec_ctx.logout(user_session)
-            # FIXME: clear cookie
+            cookie = SimpleCookie()
+            cookie["user_session"] = ""
+            cookie["user_session"]["max-age"] = 0
+            req.send_cookie(cookie)
         return {
             "user_name": None,
             "logged": False,
@@ -460,7 +472,7 @@ def setup(
             _req: QSRH, rargs: ReqArgs) -> WorkerValueResponse:
         args = rargs["post"]
         session_id = SessionId.parse(args["session"])
-        key = args["key"]
+        key: str = args["key"]
         index = int(args.get("index", 0))
         value: str | None = args.get("value")
         op = args["op"]
@@ -514,7 +526,7 @@ def setup(
             _req: QSRH, rargs: ReqArgs) -> WorkerSignalResponse:
         args = rargs["post"]
         session_id = SessionId.parse(args["session"])
-        key = args["key"]
+        key: str = args["key"]
         session_store.notify_signal(session_id, key)
         return {
             "signal": True,
@@ -526,7 +538,7 @@ def setup(
             _req: QSRH, rargs: ReqArgs) -> WorkerSignalResponse:
         args = rargs["post"]
         session_id = SessionId.parse(args["session"])
-        key = args["key"]
+        key: str = args["key"]
         timeout = float(args["timeout"])
         assert timeout > 0.0
 
@@ -544,7 +556,7 @@ def setup(
     def _put_smind_upload(_req: QSRH, rargs: ReqArgs) -> WorkerUploadResponse:
         args = rargs["post"]
         session_id = SessionId.parse(args["session"])
-        blob = args["blob"]
+        blob: str = args["blob"]
         files = rargs["files"]
         with session_store.open_blob_write(session_id, blob) as fout:
             shutil.copyfileobj(files["blob"], fout)  # type: ignore
@@ -557,7 +569,7 @@ def setup(
     def _post_smind_blob(req: QSRH, rargs: ReqArgs) -> Response:
         args = rargs["post"]
         session_id = SessionId.parse(args["session"])
-        blob = args["blob"]
+        blob: str = args["blob"]
         bout = io.BytesIO()
         with session_store.open_blob_read(session_id, blob) as fin:
             shutil.copyfileobj(fin, bout)

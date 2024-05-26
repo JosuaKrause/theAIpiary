@@ -31,11 +31,12 @@ EnvPath = Literal[
     "VERSION_PATH",
 ]
 EnvStr = Literal[
+    "ADMIN_EMAIL",
+    "ADMIN_PW",
     "HOST",
     "REDIS_HOST",
     "REDIS_PREFIX",
     "REDIS_PW",
-    "ADMIN_PW",
 ]
 EnvInt = Literal[
     "PORT",
