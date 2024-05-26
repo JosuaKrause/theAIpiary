@@ -35,6 +35,7 @@ from scattermind.system.response import redis_to_response
 from scattermind.system.session.session import Session
 from scattermind.system.util import get_time_str
 
+from swai.auth import parse_authorization
 from swai.clean import sanity_check
 from swai.server_response_types import (
     ChatInitResponse,
@@ -63,7 +64,6 @@ from swai.system.user.manager import (
     RawPassword,
     ResetToken,
     SessionToken,
-    WorkerToken,
 )
 from swai.system.user.secure import SecureContext
 from swai_server.auction.queue import TaskQueue
@@ -238,10 +238,11 @@ def setup(
         return okay
 
     def verify_worker_token(
-            _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
-        args = rargs["post"]
-        worker_token: WorkerToken = args["worker_token"]
-        name = UName(args["name"])
+            req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
+        auth = req.headers.get("authorization")
+        if auth is None:
+            return Response("must include authorization header", 401)
+        name, worker_token = parse_authorization(auth)
         sec_ctx.ensure_worker_token(name, worker_token)
         rargs["meta"]["user_name"] = name
         return okay
@@ -394,7 +395,6 @@ def setup(
             "message": "successfully logged out",
         }
 
-    # FIXME: use authorization headers
     # TODO:
     # - create user
     # - list users (+reset +logout +email)
@@ -411,7 +411,9 @@ def setup(
         nss = [GNamespace(ns) for ns in args["nss"]]
         timeout = float(args["timeout"])
         assert timeout > 0.0
+        print(f"start bid {nss} {timeout}")
         task = task_queue.pop_task(nss, timeout=timeout)
+        print(f"bid {task=}")
         if task is None:
             return {
                 "ns": None,

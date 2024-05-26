@@ -24,6 +24,7 @@ from scattermind.system.base import TaskId
 from scattermind.system.names import GNamespace, UName
 from scattermind.system.response import response_to_redis, ResponseObject
 
+from swai.auth import get_authorization
 from swai.server_response_types import TaskBidResponse, TaskFinishResponse
 from swai.system.user.manager import WorkerToken
 from swai_provider.env import envload_str
@@ -41,9 +42,11 @@ class TaskHandler:
         return f"{self._api_url}/task{path}"
 
     def _json(self) -> dict[str, str | int | float | list[str] | None]:
+        return {}
+
+    def _headers(self) -> dict[str, str]:
         return {
-            "name": self._name.get(),
-            "worker_token": self._worker_token,
+            "authorization": get_authorization(self._name, self._worker_token),
         }
 
     def task_bid(
@@ -59,7 +62,8 @@ class TaskHandler:
         obj = self._json()
         obj["nss"] = [ns.get() for ns in graph_ns.keys()]
         obj["timeout"] = timeout
-        resp = self._api.post(self._url("/bid"), json=obj)
+        resp = self._api.post(
+            self._url("/bid"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: TaskBidResponse = resp.json()
         out_ns = res["ns"]
@@ -78,7 +82,8 @@ class TaskHandler:
         obj = self._json()
         obj["task_id"] = task_id.to_parseable()
         obj["response"] = response_to_redis(response)
-        resp = self._api.post(self._url("/finish"), json=obj)
+        resp = self._api.post(
+            self._url("/finish"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: TaskFinishResponse = resp.json()
         assert res["well_done"]
