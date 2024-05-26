@@ -120,8 +120,8 @@ compose-server:
 compose-provider:
 	./sh/compose_provider.sh
 
-run-local:
-	./sh/run_local.sh
+run-provider:
+	./sh/run_provider.sh
 
 run-server:
 	BOOTSTRAP_USERS=$(BOOTSTRAP_USERS) ./sh/run_server.sh

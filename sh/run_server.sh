@@ -49,7 +49,7 @@ start_redis() {
     mkdir -p "${REDIS_PATH}"
     pushd "${REDIS_PATH}"
     redis-server \
-        "../${ROOT}/deploy/redis_local/${REDIS_NAME}.conf" \
+        "../${ROOT}/local/redis/${REDIS_NAME}.conf" \
         --port "${REDIS_PORT}" \
         >> "redis-${DATE}.log" 2>&1 &
     popd
