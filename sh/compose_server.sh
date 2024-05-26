@@ -27,6 +27,7 @@ cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
 ENV_FILE=userdata/server/swai/server.env
 if [ ! -f "${ENV_FILE}" ]; then
+    mkdir -p "$(dirname -- ${ENV_FILE})"
     cp "server.env.sample" "${ENV_FILE}"
     echo "created env file at ${ENV_FILE} please fill in all values and run again"
     exit 1
