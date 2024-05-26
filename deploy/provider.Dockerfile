@@ -33,4 +33,4 @@ ENV CONFIG_PATH=-
 ENV VERSION_PATH=version.txt
 EXPOSE ${PORT}
 ENTRYPOINT ["/bin/bash", "-l", "-c"]
-CMD [". /swai/.env_provider && python -u -m swai_provider --dedicated"]
+CMD [". /swai/provider.env && python -u -m swai_provider --dedicated"]

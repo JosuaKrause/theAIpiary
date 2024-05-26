@@ -198,3 +198,6 @@ allapps:
 	| xargs grep '__name__ == "__main__"' \
 	| cut -d: -f1 \
 	| sed -e 's/^.\///' -e 's/\/__main__.py$$//' -e 's/.py$$//'
+
+create-admin-pw:
+	cd src && $(PYTHON) -m swai.system.user

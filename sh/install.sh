@@ -125,6 +125,9 @@ else
 fi
 
 LLAMA_CMAKE_ARGS=$(${PYTHON} -c "${PY_TORCH_VERIFY}")
+if [ ! -z "${FORCE_CUDA}" ]; then
+    LLAMA_CMAKE_ARGS="-DLLAMA_CUDA=on"
+fi
 
 if grep -q "METAL" <<< "${LLAMA_CMAKE_ARGS}"; then
     ${PYTHON} -m pip install llama-cpp-python==0.2.68 --extra-index-url "https://abetlen.github.io/llama-cpp-python/whl/metal"

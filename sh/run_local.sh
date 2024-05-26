@@ -25,7 +25,7 @@ set -x
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-ENV_FILE="${ENV_FILE:-.env.provider}"
+ENV_FILE="${ENV_FILE:-provider.env}"
 BASE="userdata/provider"
 ROOT="../.."
 
@@ -35,7 +35,7 @@ PYTHON="${PYTHON:-python}"
 DATE=$(date "+%Y-%m-%d")
 
 if [ ! -f "${ENV_FILE}" ]; then
-    cp "env_provider_sample" "${ENV_FILE}"
+    cp "provider.env.sample" "${ENV_FILE}"
     echo "created env file at ${ENV_FILE} please fill in all values and run again"
     exit 1
 else

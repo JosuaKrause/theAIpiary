@@ -25,6 +25,7 @@ set -x
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
+ENV_FILE="${ENV_FILE:-server.env}"
 BASE="userdata/server"
 ROOT="../.."
 
@@ -32,6 +33,14 @@ mkdir -p "${BASE}/"
 
 PYTHON="${PYTHON:-python}"
 DATE=$(date "+%Y-%m-%d")
+
+if [ ! -f "${ENV_FILE}" ]; then
+    cp "server.env.sample" "${ENV_FILE}"
+    echo "created env file at ${ENV_FILE} please fill in all values and run again"
+    exit 1
+else
+    source "${ENV_FILE}"
+fi
 
 start_redis() {
     REDIS_NAME=$1
