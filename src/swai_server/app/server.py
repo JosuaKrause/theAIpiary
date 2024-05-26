@@ -270,6 +270,7 @@ def setup(
                 "user_name": None,
                 "logged": False,
                 "capabilities": [],
+                "message": "not logged in",
             }
         login_name: UName | None = rargs["meta"].get("user_name")
         if login_name is None:
@@ -277,12 +278,14 @@ def setup(
                 "user_name": None,
                 "logged": False,
                 "capabilities": [],
+                "message": f"no user in {user_session=}",
             }
         return {
             "user_name": login_name.get(),
             "logged": True,
             "capabilities": sorted(sec_ctx.list_capabilities(
                 user_session, login_name)),
+            "message": None,
         }
 
     @server.json_post(f"{prefix}/login")
@@ -296,6 +299,7 @@ def setup(
                 "user_name": None,
                 "logged": False,
                 "capabilities": [],
+                "message": "username or password is incorrect",
             }
         login_name = sec_ctx.get_email(user_session)
         if login_name is None:
@@ -303,6 +307,7 @@ def setup(
                 "user_name": None,
                 "logged": False,
                 "capabilities": [],
+                "message": f"invalid {user_session=}",
             }
         cookie = SimpleCookie()
         cookie["user_session"] = user_session
@@ -314,6 +319,7 @@ def setup(
             "logged": True,
             "capabilities": sorted(sec_ctx.list_capabilities(
                 user_session, login_name)),
+            "message": None,
         }
 
     @server.json_post(f"{prefix}/create_worker_token")
@@ -361,6 +367,7 @@ def setup(
             "user_name": None if user_name is None else user_name.get(),
             "logged": False,
             "capabilities": [],
+            "message": "password set",
         }
 
     @server.json_post(f"{prefix}/logout")
@@ -382,6 +389,7 @@ def setup(
             "user_name": None,
             "logged": False,
             "capabilities": [],
+            "message": "successfully logged out",
         }
 
     # FIXME: use authorization headers

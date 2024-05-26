@@ -28,6 +28,7 @@ LoginResponse = TypedDict('LoginResponse', {
     "user_name": str | None,
     "logged": bool,
     "capabilities": list[CapabilityName],
+    "message": str | None,
 })
 TaskBidResponse = TypedDict('TaskBidResponse', {
     "ns": str | None,
