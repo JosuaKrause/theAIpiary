@@ -43,17 +43,11 @@ const ResetPasswordInputText = styled.input`
   appearance: none;
   border-radius: var(--item-radius);
   padding: var(--item-padding);
-  border-right-style: none;
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
 `;
 
 const ResetPasswordSubmit = styled.input`
   appearance: none;
   border-radius: var(--item-radius);
-  border-left-style: none;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
   padding: var(--item-padding);
   cursor: pointer;
   color: var(--main-text);
@@ -115,28 +109,34 @@ export default class ResetPassword extends PureComponent<
     return (
       <VMain>
         <form onSubmit={this.handleSubmit}>
-          <label>
-            New Password:&nbsp;
-            <ResetPasswordInputText
-              autoComplete="new-password"
-              name="new-password"
-              type="password"
-              ref={this.newPasswordRef}
+          <div>
+            <label>
+              New Password:&nbsp;
+              <ResetPasswordInputText
+                autoComplete="new-password"
+                name="new-password"
+                type="password"
+                ref={this.newPasswordRef}
+              />
+            </label>
+          </div>
+          <div>
+            <label>
+              Confirm Password:&nbsp;
+              <ResetPasswordInputText
+                autoComplete="new-password"
+                name="confirm-password"
+                type="password"
+                ref={this.confirmPasswordRef}
+              />
+            </label>
+          </div>
+          <div>
+            <ResetPasswordSubmit
+              type="submit"
+              value="Login"
             />
-          </label>
-          <label>
-            Confirm Password:&nbsp;
-            <ResetPasswordInputText
-              autoComplete="new-password"
-              name="confirm-password"
-              type="password"
-              ref={this.confirmPasswordRef}
-            />
-          </label>
-          <ResetPasswordSubmit
-            type="submit"
-            value="Login"
-          />
+          </div>
         </form>
       </VMain>
     );

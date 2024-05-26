@@ -43,17 +43,11 @@ const LoginInputText = styled.input`
   appearance: none;
   border-radius: var(--item-radius);
   padding: var(--item-padding);
-  border-right-style: none;
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
 `;
 
 const LoginSubmit = styled.input`
   appearance: none;
   border-radius: var(--item-radius);
-  border-left-style: none;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
   padding: var(--item-padding);
   cursor: pointer;
   color: var(--main-text);
@@ -127,28 +121,34 @@ export default class Login extends PureComponent<LoginProps, LoginState> {
     return (
       <VMain>
         <form onSubmit={this.handleSubmit}>
-          <label>
-            Name:&nbsp;
-            <LoginInputText
-              autoComplete="username"
-              name="username"
-              type="text"
-              ref={this.nameRef}
+          <div>
+            <label>
+              Email:&nbsp;
+              <LoginInputText
+                autoComplete="username"
+                name="username"
+                type="text"
+                ref={this.nameRef}
+              />
+            </label>
+          </div>
+          <div>
+            <label>
+              Password:&nbsp;
+              <LoginInputText
+                autoComplete="password"
+                name="password"
+                type="password"
+                ref={this.passwordRef}
+              />
+            </label>
+          </div>
+          <div>
+            <LoginSubmit
+              type="submit"
+              value="Login"
             />
-          </label>
-          <label>
-            Password:&nbsp;
-            <LoginInputText
-              autoComplete="password"
-              name="password"
-              type="password"
-              ref={this.passwordRef}
-            />
-          </label>
-          <LoginSubmit
-            type="submit"
-            value="Login"
-          />
+          </div>
         </form>
       </VMain>
     );
