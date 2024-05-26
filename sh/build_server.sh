@@ -135,10 +135,6 @@ fi
 make install-ts
 make ts-build
 mv "src/swai_client/build/" "${BUILDTMP}/build/"
-cp "${BUILDTMP}/build/index.html" "${BUILDTMP}/build/chat"
-cp "${BUILDTMP}/build/index.html" "${BUILDTMP}/build/login"
-cp "${BUILDTMP}/build/index.html" "${BUILDTMP}/build/reset-password"
-cp "${BUILDTMP}/build/index.html" "${BUILDTMP}/build/profile"
 
 docker_build() {
     ARGS=("$@")

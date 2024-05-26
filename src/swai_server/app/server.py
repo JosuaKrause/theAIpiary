@@ -19,6 +19,7 @@
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
 import io
+import os
 import shutil
 import sys
 import threading
@@ -165,6 +166,12 @@ def setup(
 
     public_path = envload_path("UI_PATH", default="build/")
     server.bind_path("/", public_path)
+
+    def file_fallback(_: str) -> str:
+        print(f"path {_}")
+        return os.path.join(public_path, "index.html")
+
+    server.set_file_fallback_hook(file_fallback)
 
     def maybe_user_session(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
