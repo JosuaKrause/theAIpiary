@@ -13,5 +13,6 @@ pytest-cov
 quick-server
 redipy
 requests
+scattermind
 torch
 types-requests
