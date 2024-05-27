@@ -30,12 +30,7 @@ from quick_server import create_server, QuickServer
 from quick_server import QuickServerRequestHandler as QSRH
 from quick_server import ReqArgs, ReqNext, Response
 from scattermind.system.base import SessionId, TaskId, UserId
-from scattermind.system.io import (
-    open_readb,
-    open_writeb,
-    remove_file,
-    TMP_POSTFIX,
-)
+from scattermind.system.io import open_readb, open_writeb, remove_file
 from scattermind.system.names import GNamespace, UName
 from scattermind.system.response import redis_to_response
 from scattermind.system.session.session import Session
@@ -592,8 +587,7 @@ def setup(
         scratch = session_store.scratch_folder()
 
         def get_fragment_fname(pos: int) -> str:
-            return os.path.join(
-                scratch, f"{blob_short}.{pos}{TMP_POSTFIX}")
+            return os.path.join(scratch, f"{blob_short}.{pos}.chunk")
 
         fragment_fname = get_fragment_fname(fragment)
         with open_writeb(fragment_fname) as fout:
