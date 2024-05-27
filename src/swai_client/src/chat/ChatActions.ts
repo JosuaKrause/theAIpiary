@@ -21,7 +21,7 @@
  * all copies or substantial portions of the software.
  */
 import { ChatApiProvider, DEFAULT_CHAT_API } from '../api/chat';
-import { Message, SessionId, TaskId } from '../api/types';
+import { Message, SessionId, TaskId, Thinking } from '../api/types';
 
 export default class ChatActions {
   private readonly api: ChatApiProvider;
@@ -37,7 +37,7 @@ export default class ChatActions {
     session: Readonly<SessionId> | undefined,
     setMessages: (messages: Readonly<Message[]>) => void,
     setSession: (session: Readonly<SessionId>) => void,
-    setThinking: (isThinking: boolean) => void,
+    setThinking: (isThinking: Thinking) => void,
     appendMessage: (msg: Readonly<Message>) => void,
   ) {
     this.responseNum = 0;
@@ -60,20 +60,26 @@ export default class ChatActions {
   async readResponse(
     session: Readonly<SessionId>,
     task: Readonly<TaskId>,
-    setThinking: (isThinking: boolean) => void,
+    setThinking: (isThinking: Thinking) => void,
     appendMessage: (msg: Readonly<Message>) => void,
   ) {
     let index = 0;
-    setThinking(true);
+    setThinking('thinking');
 
     for (;;) {
       this.responseNum += 1;
       const responseNum = this.responseNum;
-      const { diff, nextTask, nextIndex } = await this.api.response(
+      const { diff, nextTask, nextIndex, status } = await this.api.response(
         session,
         task,
         index,
       );
+      if (status === 'error') {
+        setThinking('error');
+      }
+      if (status === 'wait') {
+        setThinking('queued');
+      }
       if (responseNum !== this.responseNum) {
         break;
       }
@@ -81,7 +87,9 @@ export default class ChatActions {
         appendMessage({ role: 'assistant', content: diff });
       }
       if (nextIndex === undefined || !nextTask) {
-        setThinking(false);
+        if (status !== 'error') {
+          setThinking('inactive');
+        }
         break;
       }
       index = nextIndex;
@@ -92,15 +100,15 @@ export default class ChatActions {
   async sendMessage(
     session: Readonly<SessionId>,
     prompt: Readonly<string>,
-    setThinking: (isThinking: boolean) => void,
+    setThinking: (isThinking: Thinking) => void,
     appendMessage: (msg: Readonly<Message>) => void,
   ) {
     if (!prompt) {
       return;
     }
-    appendMessage({ role: 'user', content: prompt });
     const { task } = await this.api.prompt(prompt, session);
     if (task) {
+      appendMessage({ role: 'user', content: prompt });
       await this.readResponse(session, task, setThinking, appendMessage);
     } else {
       appendMessage({ role: 'assistant', content: 'ERROR!' });

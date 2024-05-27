@@ -658,6 +658,7 @@ def setup(
         return {
             "messages": messages,
             "task": None if task_id is None else task_id.to_parseable(),
+            "status": task_queue.get_status(task_id),
         }
 
     @server.json_post(f"{prefix}/prompt")
@@ -670,6 +671,7 @@ def setup(
         task_id = start_llama_response(task_queue, model_ns, prompt, session)
         return {
             "task": task_id.to_parseable(),
+            "status": task_queue.get_status(task_id),
         }
 
     @server.json_post(f"{prefix}/response")
@@ -690,6 +692,7 @@ def setup(
             "diff": diff,
             "task": None if task_out is None else task_out.to_parseable(),
             "next_index": next_index,
+            "status": task_queue.get_status(task_out),
         }
 
     return server, prefix

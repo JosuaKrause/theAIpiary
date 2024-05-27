@@ -26,7 +26,7 @@ import { SpecialComponents } from 'react-markdown/lib/ast-to-react';
 import { NormalComponents } from 'react-markdown/lib/complex-types';
 import { ConnectedProps, connect } from 'react-redux';
 import styled, { css } from 'styled-components';
-import { Message, Role, SessionId } from '../api/types';
+import { Message, Role, SessionId, Thinking } from '../api/types';
 import { RootState } from '../store';
 import ChatActions from './ChatActions';
 import { setSession } from './ChatStateSlice';
@@ -46,12 +46,38 @@ const VMain = styled.div`
 `;
 
 type ResponseProps = {
-  isThinking: boolean;
+  isThinking: Thinking;
 };
 
-function styleResponse(isThinking: boolean) {
-  if (!isThinking) {
+function styleResponse(isThinking: Thinking) {
+  if (isThinking === 'inactive') {
     return css``;
+  }
+  if (isThinking === 'queued') {
+    return css`
+      &:before {
+        display: block;
+        font-weight: 500;
+        content: 'queued';
+        width: 100%;
+        float: right;
+        clear: both;
+        text-align: right;
+      }
+    `;
+  }
+  if (isThinking === 'error') {
+    return css`
+      &:before {
+        display: block;
+        font-weight: 500;
+        content: 'error';
+        width: 100%;
+        float: right;
+        clear: both;
+        text-align: right;
+      }
+    `;
   }
   return css`
     &:before {
@@ -190,7 +216,7 @@ type EmptyChatProps = {
 
 type ChatState = {
   messages: Readonly<Message[]>;
-  isThinking: boolean;
+  isThinking: Thinking;
 };
 
 const MD_COMPONENTS: Partial<
@@ -206,7 +232,7 @@ class Chat extends PureComponent<ChatProps, ChatState> {
     super(props);
     this.state = {
       messages: [],
-      isThinking: false,
+      isThinking: 'inactive',
     };
     this.inputRef = React.createRef();
   }
@@ -263,7 +289,7 @@ class Chat extends PureComponent<ChatProps, ChatState> {
     dispatch(setSession({ session }));
   };
 
-  setThinking = (isThinking: boolean) => {
+  setThinking = (isThinking: Thinking) => {
     this.setState({ isThinking });
   };
 
@@ -310,13 +336,14 @@ class Chat extends PureComponent<ChatProps, ChatState> {
     if (!prompt || !session) {
       return;
     }
-    chatActions.sendMessage(
-      session,
-      prompt,
-      this.setThinking,
-      this.appendMessage,
-    );
-    inputText.value = '';
+    let first = true;
+    chatActions.sendMessage(session, prompt, this.setThinking, (msg) => {
+      this.appendMessage(msg);
+      if (first) {
+        inputText.value = '';
+        first = false;
+      }
+    });
   };
 
   render(): ReactNode {

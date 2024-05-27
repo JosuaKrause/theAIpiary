@@ -68,11 +68,13 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
         diff,
         task: nextTask,
         next_index: nextIndex,
+        status,
       } = (await res.json()) as ApiChatTextResponse;
       return {
         diff,
         nextTask,
         nextIndex,
+        status,
       };
     } catch (err) {
       console.error(err);
@@ -81,6 +83,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
         diff: '',
         nextTask: task,
         nextIndex: index,
+        status: 'unknown',
       };
     }
   },
@@ -93,11 +96,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
       },
       body: JSON.stringify({}),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const { model_session, messages } =
       (await res.json()) as ApiChatInitResponse;
     return {

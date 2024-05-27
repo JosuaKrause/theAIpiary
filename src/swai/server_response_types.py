@@ -20,6 +20,8 @@
 # all copies or substantial portions of the software.
 from typing import NotRequired, TypedDict
 
+from scattermind.system.response import TaskStatus
+
 from swai.smind.llama_session import VisibleMessage
 from swai.system.user.manager import CapabilityName, WorkerToken
 
@@ -89,12 +91,15 @@ ChatInitResponse = TypedDict('ChatInitResponse', {
 ChatRecoverResponse = TypedDict('ChatRecoverResponse', {
     "messages": list[VisibleMessage],
     "task": str | None,
+    "status": TaskStatus,
 })
 ChatPromptResponse = TypedDict('ChatPromptResponse', {
     "task": str,
+    "status": TaskStatus,
 })
 ChatTextResponse = TypedDict('ChatTextResponse', {
     "diff": str,
     "task": str | None,
     "next_index": int | None,
+    "status": TaskStatus,
 })

@@ -60,7 +60,9 @@ start_server() {
     HISTORY_PATH="../${BASE}/.cmd_history" \
     CONFIG_PATH="../local/server.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
-        ${PYTHON} -u -m swai_server --dedicated --env "${ENV_FILE}" \
+        ${PYTHON} -u -m swai_server \
+        --dedicated \
+        --env "../${ENV_FILE}" \
         >> "../${BASE}/swai/swai_server-${DATE}.log" 2>&1 &
     popd
 }

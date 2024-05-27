@@ -29,6 +29,18 @@ export type WorkerToken = string & { _workerToken: void };
 
 export type Role = 'assistant' | 'user';
 
+export type TaskStatus =
+  | 'init'
+  | 'wait'
+  | 'busy'
+  | 'ready'
+  | 'done'
+  | 'deferred'
+  | 'error'
+  | 'unknown';
+
+export type Thinking = 'inactive' | 'thinking' | 'queued' | 'error';
+
 export type Message = {
   role: Role;
   content: string;
@@ -46,21 +58,25 @@ export type ChatInitResponse = {
 export type ChatRecoverResponse = {
   messages: Message[];
   task: TaskId | undefined;
+  status: TaskStatus;
 };
 
 export type ChatPromptResponse = {
   task: TaskId | undefined;
+  status: TaskStatus;
 };
 
 export type ApiChatTextResponse = {
   diff: string;
   task: Readonly<TaskId> | undefined;
   next_index: number | undefined;
+  status: TaskStatus;
 };
 export type ChatTextResponse = {
   diff: string;
   nextTask: Readonly<TaskId> | undefined;
   nextIndex: number | undefined;
+  status: TaskStatus;
 };
 
 type UserCapabilities = {

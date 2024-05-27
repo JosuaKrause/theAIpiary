@@ -102,7 +102,9 @@ class TaskQueue:
 
         return redis.wait_for(queue_channel, get_task, timeout=timeout)
 
-    def get_status(self, task_id: TaskId) -> TaskStatus:
+    def get_status(self, task_id: TaskId | None) -> TaskStatus:
+        if task_id is None:
+            return TASK_STATUS_UNKNOWN
         res = self._redis.get_value(self.status_key(task_id))
         if res is None:
             return TASK_STATUS_UNKNOWN
