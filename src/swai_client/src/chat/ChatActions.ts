@@ -76,9 +76,10 @@ export default class ChatActions {
       );
       if (status === 'error') {
         setThinking('error');
-      }
-      if (status === 'wait') {
+      } else if (status === 'wait') {
         setThinking('queued');
+      } else {
+        setThinking('thinking');
       }
       if (responseNum !== this.responseNum) {
         break;
