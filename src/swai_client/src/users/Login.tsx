@@ -89,6 +89,7 @@ type EmptyLoginProps = {
 };
 type LoginState = {
   message: string | null;
+  redirectPath: string | null;
 };
 
 export default class Login extends PureComponent<
@@ -100,27 +101,39 @@ export default class Login extends PureComponent<
 
   constructor(props: Readonly<LoginProps>) {
     super(props);
-    this.state = { message: null };
+    this.state = { message: null, redirectPath: null };
     this.nameRef = React.createRef();
     this.passwordRef = React.createRef();
   }
 
   componentDidMount(): void {
-    this.componentDidUpdate({ userActions: null }, { message: null });
+    this.componentDidUpdate(
+      { userActions: null },
+      { message: null, redirectPath: null },
+    );
   }
 
   componentDidUpdate(
     _prevProps: Readonly<LoginProps> | EmptyLoginProps,
     _prevState: Readonly<LoginState>,
   ) {
+    const { redirectPath } = this.state;
     const nameInput = this.nameRef.current;
     if (nameInput) {
       const params = new URL(window.location.href).searchParams;
+      const newParams = new URLSearchParams(params);
       const user = params.get('user');
+      let update = false;
       if (user) {
         nameInput.value = user;
-        const newParams = new URLSearchParams(params);
         newParams.delete('user');
+        update = true;
+      }
+      const path = params.get('path');
+      if (path && !redirectPath) {
+        this.setState({ redirectPath: path });
+      }
+      if (update) {
         const url = new URL(window.location.href);
         url.search = newParams.toString();
         history.replaceState(history.state, '', url);
@@ -139,8 +152,9 @@ export default class Login extends PureComponent<
     const password = passwordInput.value as Password;
     const { userActions } = this.props;
     userActions.login(userName, password, (user) => {
+      const { redirectPath } = this.state;
       if (user.name) {
-        window.location.href = '/profile';
+        window.location.href = redirectPath ?? '/profile';
       } else {
         this.setState({
           message: user.message,

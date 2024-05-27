@@ -39,8 +39,6 @@ if [ ! -f "${ENV_FILE}" ]; then
     cp "provider.env.sample" "${ENV_FILE}"
     echo "created env file at ${ENV_FILE} please fill in all values and run again"
     exit 1
-else
-    source "${ENV_FILE}"
 fi
 
 if [ -z "${SWAI_WORKER_TOKEN}" ] || [ -z "${SWAI_USER}" ] || [ -z "${SWAI_API_URL}" ]; then
@@ -69,6 +67,7 @@ start_smind() {
     SWAI_USER="${SWAI_USER}" \
     SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
         ${PYTHON} -u -m scattermind \
+        --env "${ENV_FILE}" \
         --version-file "../${BASE}/version.txt" \
         --config "../local/smind-config.json" \
         --device "${DEVICE}" \
@@ -87,6 +86,7 @@ start_provider() {
     CONFIG_PATH="../local/provider.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
         ${PYTHON} -u -m swai_provider \
+        --env "${ENV_FILE}" \
         >> "../${BASE}/swai/swai_provider-${DATE}.log" 2>&1
     popd
 }

@@ -321,6 +321,7 @@ class Chat extends PureComponent<ChatProps, ChatState> {
 
   render(): ReactNode {
     const { messages, isThinking } = this.state;
+    console.log(messages);
     const revMessages = [...messages].reverse();
     return (
       <VMain>

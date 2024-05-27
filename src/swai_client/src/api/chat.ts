@@ -31,6 +31,7 @@ import {
   ChatTextResponse,
   SessionId,
   TaskId,
+  checkResponse,
 } from './types';
 
 export type ChatApiProvider = {
@@ -62,11 +63,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           index,
         }),
       });
-      if (!res.ok) {
-        throw new Error(
-          `Error in request ${res} (${res.status}): ${res.statusText}`,
-        );
-      }
+      checkResponse(res);
       const {
         diff,
         task: nextTask,
@@ -120,11 +117,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           model_session: session,
         }),
       });
-      if (!res.ok) {
-        throw new Error(
-          `Error in request ${res} (${res.status}): ${res.statusText}`,
-        );
-      }
+      checkResponse(res);
       return await res.json();
     } catch (err) {
       console.error(err);
@@ -148,11 +141,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           prompt,
         }),
       });
-      if (!res.ok) {
-        throw new Error(
-          `Error in request ${res} (${res.status}): ${res.statusText}`,
-        );
-      }
+      checkResponse(res);
       return await res.json();
     } catch (err) {
       console.error(err);

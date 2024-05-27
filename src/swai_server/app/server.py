@@ -127,11 +127,8 @@ def setup(
             path: str,
             duration: float,
             complete: bool) -> None:
-        if complete:
-            duration_str = f" ({duration}s)"
-        else:
-            duration_str = " pending"
-        print(f"slow request {method_str} {path}{duration_str}")
+        duration_str = f"({duration}s)" if complete else "pending"
+        print(f"slow request {method_str} {path} {duration_str}")
 
     max_upload = 120 * 1024 * 1024  # 120MiB
     server_timeout = 10 * 60

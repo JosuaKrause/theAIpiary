@@ -39,8 +39,6 @@ if [ ! -f "${ENV_FILE}" ]; then
     cp "server.env.sample" "${ENV_FILE}"
     echo "created env file at ${ENV_FILE} please fill in all values and run again"
     exit 1
-else
-    source "${ENV_FILE}"
 fi
 
 start_redis() {
@@ -62,7 +60,7 @@ start_server() {
     HISTORY_PATH="../${BASE}/.cmd_history" \
     CONFIG_PATH="../local/server.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
-        ${PYTHON} -u -m swai_server --dedicated \
+        ${PYTHON} -u -m swai_server --dedicated --env "${ENV_FILE}" \
         >> "../${BASE}/swai/swai_server-${DATE}.log" 2>&1 &
     popd
 }

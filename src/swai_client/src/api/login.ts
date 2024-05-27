@@ -32,6 +32,7 @@ import {
   User,
   UserName,
   WorkerToken,
+  checkResponse,
   toUserOrMessage,
 } from './types';
 
@@ -61,11 +62,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
         'Content-Type': 'application/json',
       },
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const obj = (await res.json()) as ApiLoginResponse;
     return toUserOrMessage(obj);
   },
@@ -81,11 +78,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
         password,
       }),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const obj = (await res.json()) as ApiLoginResponse;
     return toUserOrMessage(obj);
   },
@@ -100,11 +93,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
         name,
       }),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const { user_name, reset_token } =
       (await res.json()) as ApiPasswordResetTokenResponse;
     return {
@@ -124,11 +113,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
         password,
       }),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const obj = (await res.json()) as ApiLoginResponse;
     return toUserOrMessage(obj);
   },
@@ -141,11 +126,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
       },
       body: JSON.stringify({}),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const obj = (await res.json()) as ApiLoginResponse;
     return toUserOrMessage(obj);
   },
@@ -158,11 +139,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
       },
       body: JSON.stringify({}),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const { worker_token: workerToken } =
       (await res.json()) as ApiWorkerTokenResponse;
     return workerToken;
