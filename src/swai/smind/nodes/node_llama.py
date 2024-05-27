@@ -18,6 +18,7 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
+import os
 from typing import cast
 
 from llama_cpp import CreateChatCompletionStreamResponse, Llama, LlamaDiskCache
@@ -99,7 +100,6 @@ class LlamaNode(Node):
             cache_dir: str,
             session: Session,
             task_id: TaskId) -> str:
-        model.set_cache(LlamaDiskCache(cache_dir))
         # FIXME: use state
         # if not load_state(model, cache_dir):
         if True:  # pylint: disable=using-constant-test
@@ -150,6 +150,9 @@ class LlamaNode(Node):
         sessions = inputs.get_sessions()
         prompts = inputs.get_data("prompt")
         tasks = inputs.get_current_tasks()
+        scratch_folder = inputs.get_session_scratch_folder()
+        model.set_cache(LlamaDiskCache(
+            os.path.join(scratch_folder, self.get_id().to_parseable())))
         with Session.get_local_folders(sessions) as cache_dirs:
             for cache_dir, session, prompt, task in zip(
                     cache_dirs, sessions, prompts.iter_values(), tasks):
