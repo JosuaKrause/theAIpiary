@@ -59,6 +59,7 @@ WorkerValueResponse = TypedDict('WorkerValueResponse', {
 })
 WorkerUploadResponse = TypedDict('WorkerUploadResponse', {
     "done": bool,
+    "missing": list[int],
 })
 WorkerBlobListResponse = TypedDict('WorkerBlobListResponse', {
     "blobs": list[str],

@@ -227,23 +227,46 @@ class RemoteSessionStore(SessionStore):
         bout = io.BytesIO()
         yield bout
         bout.seek(0, io.SEEK_SET)
-        obj = self._json()
-        obj["session"] = session_id.to_parseable()
-        obj["blob"] = name
-        resp = self._api.put(
-            self._url("/blob"),
-            data=obj,
-            files={
-                "blob": (
-                    "blob",
-                    bout,
-                    "application/octet-stream",
-                ),
-            },
-            headers=self._headers())
-        resp.raise_for_status()
-        res: WorkerUploadResponse = resp.json()
-        assert res["done"]
+        chunk_size = 1024 * 10  # 10kiB
+        # FIXME: parallelize and use the missing field
+
+        def send_chunk(
+                chunk_ix: int, bchunk: IO[bytes], *, complete: bool) -> None:
+            obj = self._json()
+            obj["session"] = session_id.to_parseable()
+            obj["blob"] = name
+            obj["fragment"] = chunk_ix
+            obj["complete"] = complete
+            bchunk.seek(0, io.SEEK_SET)
+            resp = self._api.put(
+                self._url("/blob"),
+                data=obj,
+                files={
+                    "blob": (
+                        "blob",
+                        bchunk,
+                        "application/octet-stream",
+                    ),
+                },
+                headers=self._headers())
+            resp.raise_for_status()
+            res: WorkerUploadResponse = resp.json()
+            assert res["done"]
+            assert not res["missing"]
+
+        ix = 0
+        bchunk: io.BytesIO | None = None
+        while True:
+            cur = bout.read(chunk_size)
+            complete = not cur
+            if bchunk is not None:
+                send_chunk(ix, bchunk, complete=complete)
+            if complete:
+                break
+            bchunk = io.BytesIO(cur)
+            ix += 1
+        if bchunk is None:
+            send_chunk(ix, io.BytesIO(), complete=True)
 
     @contextmanager
     def open_blob_read(
