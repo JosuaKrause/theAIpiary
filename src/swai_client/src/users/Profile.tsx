@@ -21,8 +21,11 @@
  * all copies or substantial portions of the software.
  */
 import { MouseEventHandler, PureComponent } from 'react';
+import { ConnectedProps, connect } from 'react-redux';
 import styled from 'styled-components';
 import { WorkerToken } from '../api/types';
+import { redirectWelcome } from '../misc/common';
+import { RootState } from '../store';
 import UserActions from './UserActions';
 
 const VMain = styled.div`
@@ -39,23 +42,22 @@ const VMain = styled.div`
   }
 `;
 
-type ProfileProps = {
+const Row = styled.div``;
+
+interface ProfileProps extends ConnectProfile {
   userActions: UserActions;
-};
+}
 type ProfileState = {
   workerToken: Readonly<WorkerToken> | null;
 };
 
-export default class Profile extends PureComponent<
-  ProfileProps,
-  ProfileState
-> {
+class Profile extends PureComponent<ProfileProps, ProfileState> {
   constructor(props: Readonly<ProfileProps>) {
     super(props);
     this.state = { workerToken: null };
   }
 
-  handleClick: MouseEventHandler<HTMLInputElement> = (e) => {
+  handleWorkerTokenClick: MouseEventHandler<HTMLInputElement> = (e) => {
     e.preventDefault();
     const { userActions } = this.props;
     userActions.getWorkerToken((workerToken) => {
@@ -63,20 +65,52 @@ export default class Profile extends PureComponent<
     });
   };
 
+  handleLogoutClick: MouseEventHandler<HTMLInputElement> = (e) => {
+    e.preventDefault();
+    const { userActions } = this.props;
+    userActions.logout((user) => {
+      if (!user.name) {
+        redirectWelcome();
+      }
+    });
+  };
+
   render() {
+    const { user } = this.props;
     const { workerToken } = this.state;
     return (
       <VMain>
-        <input
-          name="workertoken"
-          type="button"
-          value="Get Worker Token"
-          onClick={this.handleClick}
-        />
-        <div>
-          Worker Token: <pre>{workerToken}</pre>
-        </div>
+        {user ? <Row>User: {user?.name}</Row> : null}
+        <Row>
+          <input
+            name="workertoken"
+            type="button"
+            value="Get Worker Token"
+            onClick={this.handleWorkerTokenClick}
+          />
+          {workerToken ? (
+            <div>
+              Worker Token: <pre>{workerToken}</pre>
+            </div>
+          ) : null}
+        </Row>
+        <Row>
+          <input
+            name="logout"
+            type="button"
+            value="Logout"
+            onClick={this.handleLogoutClick}
+          />
+        </Row>
       </VMain>
     );
   }
-} // Login
+} // Profile
+
+const connector = connect((state: RootState) => ({
+  user: state.userState.currentUser,
+}));
+
+export default connector(Profile);
+
+type ConnectProfile = ConnectedProps<typeof connector>;

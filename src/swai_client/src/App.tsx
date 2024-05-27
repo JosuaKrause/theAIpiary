@@ -24,16 +24,17 @@ import { PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import styled from 'styled-components';
-import Welcome from './Welcome';
 import { SessionId } from './api/types';
 import Chat from './chat/Chat';
 import ChatActions from './chat/ChatActions';
 import { setSession } from './chat/ChatStateSlice';
+import Welcome from './general/Welcome';
 import { RootState } from './store';
 import Login from './users/Login';
 import Profile from './users/Profile';
 import ResetPassword from './users/ResetPassword';
 import UserActions from './users/UserActions';
+import UserButton from './users/UserButton';
 
 const Main = styled.div`
   text-align: center;
@@ -60,7 +61,9 @@ const HMain = styled.div`
   }
 `;
 
-type AppProps = ConnectApp;
+interface AppProps extends ConnectApp {
+  appName: string;
+}
 
 type AppState = {
   ready: boolean;
@@ -134,6 +137,7 @@ class App extends PureComponent<AppProps, AppState> {
   }
 
   render() {
+    const { appName } = this.props;
     const { ready } = this.state;
     return (
       <Main>
@@ -143,10 +147,15 @@ class App extends PureComponent<AppProps, AppState> {
               <Route
                 path="/chat"
                 element={
-                  <Chat
-                    ready={ready}
-                    chatActions={this.chatActions}
-                  />
+                  <UserButton
+                    userActions={this.userActions}
+                    redirect={true}
+                    show={true}>
+                    <Chat
+                      ready={ready}
+                      chatActions={this.chatActions}
+                    />
+                  </UserButton>
                 }
               />
               <Route
@@ -159,11 +168,25 @@ class App extends PureComponent<AppProps, AppState> {
               />
               <Route
                 path="/profile"
-                element={<Profile userActions={this.userActions} />}
+                element={
+                  <UserButton
+                    userActions={this.userActions}
+                    redirect={true}
+                    show={false}>
+                    <Profile userActions={this.userActions} />
+                  </UserButton>
+                }
               />
               <Route
                 path="/"
-                element={<Welcome />}
+                element={
+                  <UserButton
+                    userActions={this.userActions}
+                    redirect={false}
+                    show={false}>
+                    <Welcome appName={appName} />
+                  </UserButton>
+                }
               />
             </Routes>
           </BrowserRouter>

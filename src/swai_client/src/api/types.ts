@@ -1,3 +1,5 @@
+import { redirectLogin } from '../misc/common';
+
 /**
  * Copyright (c) 2024 Josua Krause - All Rights Reserved
  *
@@ -186,13 +188,7 @@ export function checkResponse(res: Response) {
     return;
   }
   if (res.status === 401) {
-    const url = new URL(window.location.href);
-    const newParams = new URLSearchParams();
-    newParams.set('path', `${url.pathname}${url.search}${url.hash}`);
-    url.pathname = '/login';
-    url.search = newParams.toString();
-    console.log(url.toString());
-    window.location.href = url.toString();
+    redirectLogin();
   }
   throw new Error(
     `Error in request ${res} (${res.status}): ${res.statusText}`,

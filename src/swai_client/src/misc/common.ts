@@ -20,16 +20,16 @@
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the software.
  */
-import { PureComponent } from 'react';
+export function redirectLogin() {
+  const url = new URL(window.location.href);
+  const newParams = new URLSearchParams();
+  newParams.set('path', `${url.pathname}${url.search}${url.hash}`);
+  url.pathname = '/login';
+  url.search = newParams.toString();
+  console.log(url.toString());
+  window.location.href = url.toString();
+}
 
-type WelcomeProps = Record<string, void>;
-type WelcomeState = Record<string, void>;
-
-export default class Welcome extends PureComponent<
-  WelcomeProps,
-  WelcomeState
-> {
-  render() {
-    return <div>Welcome to the AIpiary!</div>;
-  }
+export function redirectWelcome() {
+  window.location.href = '/';
 }

@@ -61,6 +61,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({}),
     });
     checkResponse(res);
     const obj = (await res.json()) as ApiLoginResponse;
