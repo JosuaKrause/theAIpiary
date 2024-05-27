@@ -34,7 +34,7 @@ from scattermind.system.io import open_readb, open_writeb, remove_file
 from scattermind.system.names import GNamespace, UName
 from scattermind.system.response import redis_to_response
 from scattermind.system.session.session import Session
-from scattermind.system.util import get_short_hash, get_time_str
+from scattermind.system.util import get_time_str, to_bool
 
 from swai.auth import parse_authorization
 from swai.clean import sanity_check
@@ -576,21 +576,21 @@ def setup(
 
     @server.json_put(f"{prefix}/smind/blob")
     @server.middleware(verify_worker_token)
-    def _put_smind_upload(_req: QSRH, rargs: ReqArgs) -> WorkerUploadResponse:
+    def _put_smind_blob(_req: QSRH, rargs: ReqArgs) -> WorkerUploadResponse:
+        # NOTE: file uploads convert all values to strings!
         args = rargs["post"]
         session_id = SessionId.parse(args["session"])
         blob: str = args["blob"]
-        blob_short = get_short_hash(blob)
+        upload_id: str = args["upload_id"]
         fragment = int(args["fragment"])
-        complete = bool(args["complete"])
+        complete = to_bool(args["complete"])
         files = rargs["files"]
         scratch = session_store.scratch_folder()
 
         def get_fragment_fname(pos: int) -> str:
-            return os.path.join(scratch, f"{blob_short}.{pos}.chunk")
+            return os.path.join(scratch, f"{upload_id}.{pos}.chunk")
 
-        fragment_fname = get_fragment_fname(fragment)
-        with open_writeb(fragment_fname) as fout:
+        with open_writeb(get_fragment_fname(fragment)) as fout:
             shutil.copyfileobj(files["blob"], fout)  # type: ignore
 
         if complete:
@@ -613,6 +613,7 @@ def setup(
                         shutil.copyfileobj(fin, fout)  # type: ignore
             for cur in fnames:
                 remove_file(cur)
+
         return {
             "done": True,
             "missing": [],

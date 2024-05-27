@@ -20,6 +20,7 @@
 # all copies or substantial portions of the software.
 import io
 import time
+import uuid
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from typing import IO, TypeVar
@@ -227,6 +228,7 @@ class RemoteSessionStore(SessionStore):
         bout = io.BytesIO()
         yield bout
         bout.seek(0, io.SEEK_SET)
+        upload_id = uuid.uuid4().hex
         chunk_size = 1024 * 10  # 10kiB
         # FIXME: parallelize and use the missing field
 
@@ -235,6 +237,7 @@ class RemoteSessionStore(SessionStore):
             obj = self._json()
             obj["session"] = session_id.to_parseable()
             obj["blob"] = name
+            obj["upload_id"] = upload_id
             obj["fragment"] = chunk_ix
             obj["complete"] = complete
             bchunk.seek(0, io.SEEK_SET)
@@ -255,16 +258,18 @@ class RemoteSessionStore(SessionStore):
             assert not res["missing"]
 
         ix = 0
+        complete = False
         bchunk: io.BytesIO | None = None
         while True:
             cur = bout.read(chunk_size)
-            complete = not cur
+            if not cur:
+                complete = True
             if bchunk is not None:
                 send_chunk(ix, bchunk, complete=complete)
+                ix += 1
             if complete:
                 break
             bchunk = io.BytesIO(cur)
-            ix += 1
         if bchunk is None:
             send_chunk(ix, io.BytesIO(), complete=True)
 
