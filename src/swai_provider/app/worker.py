@@ -119,12 +119,19 @@ def task_loop() -> None:
                 with cond:
                     cond.wait(hb_sleep)
         task_hnd.task_heartbeat(worker_status=get_status())
+        # FIXME: what to do if the heartbeat fails / errors out?
 
     th = threading.Thread(target=heartbeat, daemon=True)
     th.start()
 
-    while not done:
-        maybe_task = task_hnd.task_bid(graphs, timeout=DEFAULT_TIMEOUT)
-        if maybe_task is None:
-            continue  # NOTE: no sleep!
-        compute_task(maybe_task)
+    try:
+        while not done:
+            maybe_task = task_hnd.task_bid(graphs, timeout=DEFAULT_TIMEOUT)
+            if maybe_task is None:
+                continue  # NOTE: no sleep!
+            compute_task(maybe_task)
+    finally:
+        done = True
+        with cond:
+            cond.notify_all()
+        task_hnd.task_heartbeat(worker_status=get_status())

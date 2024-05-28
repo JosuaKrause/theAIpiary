@@ -380,8 +380,13 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
             {workers.map(({ own, workerId, email, status }) => (
               <Row key={`${workerId}`}>
                 <RowSpan>
-                  {own ? <strong>{workerId}</strong> : workerId} (
-                  <AutoHide title="@">{email}</AutoHide>)
+                  {own ? <strong>{workerId}</strong> : workerId}
+                  {email ? (
+                    <React.Fragment>
+                      {' '}
+                      (<AutoHide title="@">{email}</AutoHide>)
+                    </React.Fragment>
+                  ) : null}
                 </RowSpan>
                 <RowSpan>
                   {status} <Status status={status} />
@@ -395,6 +400,8 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
             <GroupTitle>Add Worker Bees</GroupTitle>
             <Row>
               <AutoHide title="Get Worker Token">
+                Creating a new worker token will disconnect all your current
+                worker bees!
                 <Button
                   name="workertoken"
                   type="button"

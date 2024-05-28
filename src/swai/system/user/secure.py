@@ -87,11 +87,24 @@ class SecureContext:
         if can_act != "ok":
             raise RuntimeError(f"invalid response {can_act=}")
 
+    def is_allowed(
+            self,
+            who: SessionToken,
+            *,
+            email: UName | None,
+            own_capability: CapabilityName | None = None,
+            admin_capability: CapabilityName | None = None) -> bool:
+        return self.can_act(
+            who,
+            email=email,
+            own_capability=own_capability,
+            admin_capability=admin_capability) == "ok"
+
     def ensure_can_act(
             self,
             who: SessionToken,
-            email: UName | None,
             *,
+            email: UName | None,
             own_capability: CapabilityName | None = None,
             admin_capability: CapabilityName | None = None) -> None:
         self._handle_can_act(self.can_act(
@@ -108,7 +121,8 @@ class SecureContext:
         self._user_mng.logout(token)
 
     def logout_user(self, who: SessionToken, email: UName) -> None:
-        self.ensure_can_act(who, email, admin_capability=CAP_LOGOUT_OTHER_USER)
+        self.ensure_can_act(
+            who, email=email, admin_capability=CAP_LOGOUT_OTHER_USER)
         self.force_logout_user(email)
 
     def get_active_users(
@@ -165,7 +179,7 @@ class SecureContext:
         own_user_id = user_mng.get_user_id(email)
         if (
                 user_id != own_user_id
-                and not self.can_act(
+                and not self.is_allowed(
                     who, email=None, admin_capability=CAP_READ_OTHER_CHAT)):
             return "denied"
         return "ok"
@@ -183,7 +197,7 @@ class SecureContext:
         own_user_id = user_mng.get_user_id(email)
         if (
                 user_id != own_user_id
-                and not self.can_act(
+                and not self.is_allowed(
                     who, email=None, admin_capability=CAP_WRITE_OTHER_CHAT)):
             return "denied"
         return "ok"
@@ -199,7 +213,7 @@ class SecureContext:
             capability: CapabilityName) -> bool:
         self.ensure_can_act(
             who,
-            email,
+            email=email,
             own_capability=CAP_CHANGE_CAPABILITIES,
             admin_capability=CAP_CHANGE_CAPABILITIES)
         return self._user_mng.has_capability(email, capability)
@@ -213,7 +227,7 @@ class SecureContext:
             has: bool) -> None:
         self.ensure_can_act(
             who,
-            email,
+            email=email,
             own_capability=CAP_CHANGE_CAPABILITIES,
             admin_capability=CAP_CHANGE_CAPABILITIES)
         self.force_capability(email, capability, has=has)
@@ -232,20 +246,20 @@ class SecureContext:
             email: UName) -> set[CapabilityName]:
         self.ensure_can_act(
             who,
-            email,
+            email=email,
             own_capability=CAP_CHANGE_CAPABILITIES,
             admin_capability=CAP_CHANGE_CAPABILITIES)
         return self._user_mng.list_capabilities(email)
 
     def list_users(self, who: SessionToken) -> list[UName]:
-        self.ensure_can_act(who, None, admin_capability=CAP_LIST_USERS)
+        self.ensure_can_act(who, email=None, admin_capability=CAP_LIST_USERS)
         return list(self._user_mng.list_users())
 
     def create_worker_token(
             self, who: SessionToken, email: UName) -> WorkerToken:
         self.ensure_can_act(
             who,
-            email,
+            email=email,
             own_capability=CAP_REGISTER_OWN_WORKER,
             admin_capability=CAP_REGISTER_OTHER_WORKER)
         return self._user_mng.create_worker_token(email)
@@ -259,3 +273,9 @@ class SecureContext:
         user_mng = self._user_mng
         for session_token in user_mng.get_sessions_for_user(email):
             user_mng.logout(session_token)
+
+    def secure_email(
+            self, who: SessionToken, email: UName | None) -> UName | None:
+        if self.is_allowed(who, email=email, admin_capability=CAP_LIST_USERS):
+            return email
+        return None

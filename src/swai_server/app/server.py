@@ -462,11 +462,16 @@ def setup(
     @server.json_post(f"{prefix}/task/workers")
     @server.middleware(verify_user_session)
     def _post_task_workers(_req: QSRH, rargs: ReqArgs) -> WorkerInfoResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
         user_email: UName = rargs["meta"]["user_email"]
         status_mapping = STATUS_MAPPING
 
         def convert(info: WorkerInfo) -> WorkerInfoJSON:
-            email_str = None if info["email"] is None else info["email"].get()
+            email = sec_ctx.secure_email(user_session, info["email"])
+            if email is None:
+                email_str = None
+            else:
+                email_str = email.get()
             return {
                 "worker_id": info["worker_id"],
                 "email": email_str,
