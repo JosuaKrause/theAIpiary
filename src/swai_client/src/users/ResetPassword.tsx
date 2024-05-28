@@ -35,11 +35,22 @@ const VMain = styled.div`
   @media (hover: none) and (max-width: 480px) {
     justify-content: start;
     max-width: 100vw;
+    width: 100vw;
+  }
+`;
+
+const ResetPasswordHeader = styled.h3`
+  @media (hover: none) and (max-width: 480px) {
+    padding-left: 5px;
   }
 `;
 
 const ResetPasswordForm = styled.form`
   width: 100%;
+
+  @media (hover: none) and (max-width: 480px) {
+    width: 100vw;
+  }
 `;
 
 const ResetPasswordElement = styled.div`
@@ -212,7 +223,7 @@ export default class ResetPassword extends PureComponent<
     return (
       <VMain>
         <ResetPasswordElement>
-          <h3>Reset Password</h3>
+          <ResetPasswordHeader>Reset Password</ResetPasswordHeader>
         </ResetPasswordElement>
         {resetToken ? (
           <ResetPasswordForm onSubmit={this.handleResetTokenSubmit}>

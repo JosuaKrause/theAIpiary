@@ -41,10 +41,12 @@ import UserActions from './UserActions';
 const VMain = styled.div`
   min-width: 40vw;
   max-width: 60vw;
+  height: fit-content;
+  padding-bottom: 40px;
 
   @media (hover: none) and (max-width: 480px) {
     justify-content: start;
-    max-width: 100%;
+    max-width: 100vw;
   }
 `;
 
@@ -52,6 +54,11 @@ const Header = styled.h3`
   margin: 20px 0;
   padding-top: 20px;
   text-align: left;
+
+  @media (hover: none) and (max-width: 480px) {
+    padding-left: 5px;
+    margin-left: 5px;
+  }
 `;
 
 const Label = styled.label`
@@ -143,6 +150,12 @@ const Group = styled.fieldset<GroupProps>`
   width: 100%;
 
   ${({ maxHeight }) => styleGroup(maxHeight)}
+
+  @media (hover: none) and (max-width: 480px) {
+    width: calc(100vw - 10px);
+    padding-right: 0;
+    margin-right: 0;
+  }
 `;
 
 const GroupTitle = styled.legend`
@@ -158,6 +171,15 @@ const Row = styled.div`
 
 const RowSpan = styled.span`
   vertical-align: middle;
+`;
+
+const RowParagraph = styled.p`
+  text-align: left;
+  width: 19vw;
+
+  @media (hover: none) and (max-width: 480px) {
+    width: 47vw;
+  }
 `;
 
 interface ProfileProps extends ConnectProfile {
@@ -400,8 +422,10 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
             <GroupTitle>Add Worker Bees</GroupTitle>
             <Row>
               <AutoHide title="Get Worker Token">
-                Creating a new worker token will disconnect all your current
-                worker bees!
+                <RowParagraph>
+                  Creating a new worker token will disconnect all your current
+                  worker bees!
+                </RowParagraph>
                 <Button
                   name="workertoken"
                   type="button"

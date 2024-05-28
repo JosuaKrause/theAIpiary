@@ -37,7 +37,7 @@ const Paragraph = styled.p`
   max-width: 42vw;
 
   @media (hover: none) and (max-width: 480px) {
-    max-width: 100%;
+    max-width: 100vw;
   }
 `;
 

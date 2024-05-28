@@ -101,7 +101,9 @@ const Response = styled.div<ResponseProps>`
   flex-direction: column-reverse;
 
   @media (hover: none) and (max-width: 480px) {
-    width: 100vw;
+    width: calc(100vw - 5px);
+    flex-grow: 1;
+    padding-top: 65px;
   }
 
   ${({ isThinking }) => styleResponse(isThinking)}
@@ -177,7 +179,7 @@ const InputBar = styled.div`
   justify-content: end;
 
   @media (hover: none) and (max-width: 480px) {
-    width: 100vw;
+    width: calc(100vw - 5px);
     height: auto;
   }
 `;

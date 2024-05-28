@@ -29,11 +29,11 @@ export type SessionId = string & { _sessionId: void };
 export type TaskId = string & { _taskId: void };
 export type ResetToken = string & { _resetToken: void };
 export type WorkerToken = string & { _workerToken: void };
-export type WorkerId = string & { _workerId: void };
+type WorkerId = string & { _workerId: void };
 
 export type Role = 'assistant' | 'user';
 
-export type TaskStatus =
+type TaskStatus =
   | 'init'
   | 'wait'
   | 'busy'
@@ -144,7 +144,7 @@ export type ApiPasswordResetTokenResponse = {
   email: Readonly<UserEmail> | undefined;
 };
 
-export type ApiUserInfoResponse = {
+type ApiUserInfoResponse = {
   email: Readonly<UserEmail>;
   display_name: Readonly<DisplayName>;
 };
@@ -162,7 +162,7 @@ export type WorkerInfo = {
   status: WorkerStatus;
   own: boolean;
 };
-export type ApiWorkerInfo = {
+type ApiWorkerInfo = {
   worker_id: Readonly<WorkerId>;
   email: Readonly<UserEmail> | undefined;
   status: WorkerStatus;

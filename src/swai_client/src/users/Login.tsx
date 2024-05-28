@@ -35,11 +35,22 @@ const VMain = styled.div`
   @media (hover: none) and (max-width: 480px) {
     justify-content: start;
     max-width: 100vw;
+    width: 100vw;
+  }
+`;
+
+const LoginHeader = styled.h3`
+  @media (hover: none) and (max-width: 480px) {
+    padding-left: 5px;
   }
 `;
 
 const LoginForm = styled.form`
   width: fit-content;
+
+  @media (hover: none) and (max-width: 480px) {
+    width: 100vw;
+  }
 `;
 
 const LoginElement = styled.div`
@@ -190,7 +201,7 @@ export default class Login extends PureComponent<LoginProps, LoginState> {
     return (
       <VMain>
         <LoginElement>
-          <h3>Login</h3>
+          <LoginHeader>Login</LoginHeader>
         </LoginElement>
         <LoginForm onSubmit={this.handleSubmit}>
           <LoginElement>
