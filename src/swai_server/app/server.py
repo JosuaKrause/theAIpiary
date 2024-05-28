@@ -47,6 +47,8 @@ from swai.server_response_types import (
     ResetTokenResponse,
     TaskBidResponse,
     TaskFinishResponse,
+    UserInfoResponse,
+    UserListResponse,
     VersionResponse,
     WorkerBlobHashResponse,
     WorkerBlobListResponse,
@@ -349,6 +351,25 @@ def setup(
             "email": new_email.get(),
         }
 
+    @server.json_post(f"{prefix}/userlist")
+    @server.middleware(verify_user_session)
+    def _post_userlist(_req: QSRH, rargs: ReqArgs) -> UserListResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
+        user_list = sec_ctx.list_users(user_session)
+
+        def get_user_info(user: UName) -> UserInfoResponse:
+            info = sec_ctx.get_user_info(user_session, user)
+            return {
+                "email": info["email"].get(),
+                "display_name": info["display_name"],
+            }
+
+        return {
+            "users": [
+                get_user_info(user) for user in user_list
+            ],
+        }
+
     @server.json_post(f"{prefix}/create_worker_token")
     @server.middleware(verify_user_session)
     def _post_create_worker_token(
@@ -421,7 +442,6 @@ def setup(
         }
 
     # TODO:
-    # - create user
     # - list users (+reset +logout +email)
     # - edit capabilities
 

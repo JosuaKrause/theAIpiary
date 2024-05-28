@@ -24,6 +24,7 @@ import { URL_PREFIX } from '../misc/constants';
 import {
   ApiLoginResponse,
   ApiPasswordResetTokenResponse,
+  ApiUserListResponse,
   ApiWorkerTokenResponse,
   DisplayName,
   LoginInfo,
@@ -31,6 +32,7 @@ import {
   ResetToken,
   User,
   UserEmail,
+  UserInfo,
   WorkerToken,
   checkResponse,
   toUserOrMessage,
@@ -55,6 +57,7 @@ export type LoginApiProvider = {
   ) => Promise<Readonly<User> | Readonly<LoginInfo>>;
   logout: () => Promise<Readonly<User> | Readonly<LoginInfo>>;
   getWorkerToken: () => Promise<Readonly<WorkerToken>>;
+  listUsers: () => Promise<UserInfo[]>;
 };
 
 export const DEFAULT_LOGIN_API: LoginApiProvider = {
@@ -161,5 +164,21 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     const { worker_token: workerToken } =
       (await res.json()) as ApiWorkerTokenResponse;
     return workerToken;
+  },
+  listUsers: async () => {
+    const res = await fetch(`${URL_PREFIX}/userlist`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    checkResponse(res);
+    const { users } = (await res.json()) as ApiUserListResponse;
+    return users.map(({ email, display_name }) => ({
+      email,
+      displayName: display_name,
+    }));
   },
 };

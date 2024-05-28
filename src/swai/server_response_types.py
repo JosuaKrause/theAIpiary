@@ -37,6 +37,13 @@ UserNotLogged = TypedDict('UserNotLogged', {
     "message": str,
 })
 LoginResponse = UserLogged | UserNotLogged
+UserInfoResponse = TypedDict('UserInfoResponse', {
+    "email": str,
+    "display_name": str,
+})
+UserListResponse = TypedDict('UserListResponse', {
+    "users": list[UserInfoResponse],
+})
 TaskBidResponse = TypedDict('TaskBidResponse', {
     "ns": str | None,
     "task_id": str | None,

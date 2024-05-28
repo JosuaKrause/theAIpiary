@@ -22,8 +22,8 @@
  */
 import React, { MouseEventHandler, PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
-import styled from 'styled-components';
-import { DisplayName, UserEmail, WorkerToken } from '../api/types';
+import styled, { css } from 'styled-components';
+import { DisplayName, UserEmail, UserInfo, WorkerToken } from '../api/types';
 import { redirectWelcome } from '../misc/common';
 import { RootState } from '../store';
 import UserActions from './UserActions';
@@ -43,11 +43,32 @@ const VMain = styled.div`
   }
 `;
 
-const Group = styled.div`
+type GroupProps = {
+  maxHeight?: number;
+};
+
+function styleGroup(maxHeight: number | undefined) {
+  if (maxHeight === undefined) {
+    return css``;
+  }
+  return css`
+    max-height: ${maxHeight}px;
+    overflow: auto;
+  `;
+}
+
+const Group = styled.fieldset<GroupProps>`
   margin: 5px;
   padding: 5px;
   border: 1px solid darkgray;
   width: 100%;
+
+  ${({ maxHeight }) => styleGroup(maxHeight)}
+`;
+
+const GroupTitle = styled.legend`
+  text-align: left;
+  padding: 5px;
 `;
 
 const Row = styled.div`
@@ -59,8 +80,13 @@ const Row = styled.div`
 interface ProfileProps extends ConnectProfile {
   userActions: UserActions;
 }
+type EmptyProfileProps = {
+  userActions: undefined;
+};
 type ProfileState = {
-  createdUser: Readonly<UserEmail> | undefined;
+  initUsers: boolean;
+  users: UserInfo[];
+  createdUserMessage: string | null;
   workerToken: Readonly<WorkerToken> | null;
 };
 
@@ -70,9 +96,45 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
 
   constructor(props: Readonly<ProfileProps>) {
     super(props);
-    this.state = { createdUser: undefined, workerToken: null };
+    this.state = {
+      initUsers: false,
+      users: [],
+      createdUserMessage: null,
+      workerToken: null,
+    };
     this.createNameRef = React.createRef();
     this.createEmailRef = React.createRef();
+  }
+
+  componentDidMount(): void {
+    this.componentDidUpdate(
+      { userActions: undefined },
+      {
+        initUsers: false,
+        users: [],
+        createdUserMessage: null,
+        workerToken: null,
+      },
+    );
+  }
+
+  componentDidUpdate(
+    _prevProps: Readonly<ProfileProps> | EmptyProfileProps,
+    _prevState: Readonly<ProfileState>,
+  ): void {
+    const { userActions, user } = this.props;
+    const { initUsers } = this.state;
+    if (!initUsers && user && user.capabilities.listUsers) {
+      this.setState(
+        {
+          initUsers: true,
+        },
+        () =>
+          userActions.getUsers((users) => {
+            this.setState({ users });
+          }),
+      );
+    }
   }
 
   handleWorkerTokenClick: MouseEventHandler<HTMLInputElement> = (e) => {
@@ -103,28 +165,45 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
     }
     const email = emailInput.value as UserEmail;
     const displayName = nameInput.value as DisplayName;
-    if (!email || !displayName) {
+    if (!email || !email.length || !displayName || !displayName.length) {
+      this.setState({
+        createdUserMessage: 'Please provide an email and a name!',
+      });
       return;
     }
     userActions.createUser(email, displayName, (newEmail) => {
-      emailInput.value = '';
-      nameInput.value = '';
-      this.setState({ createdUser: newEmail });
+      if (newEmail) {
+        emailInput.value = '';
+        nameInput.value = '';
+        this.setState({ createdUserMessage: `Sent email to: ${newEmail}` });
+      } else {
+        this.setState({ createdUserMessage: 'Could not create user!' });
+      }
     });
   };
 
   render() {
     const { user } = this.props;
-    const { workerToken, createdUser } = this.state;
+    const { workerToken, createdUserMessage, users } = this.state;
     return (
       <VMain>
         <Group>
           {user ? <Row>User: {user.displayName}</Row> : null}
           {user ? <Row>Email: {user.email}</Row> : null}
         </Group>
+        {users.length ? (
+          <Group maxHeight={100}>
+            <GroupTitle>Users</GroupTitle>
+            {users.map(({ email, displayName }) => (
+              <Row key={email as unknown as string}>
+                {displayName} ({email})
+              </Row>
+            ))}
+          </Group>
+        ) : null}
         {user && user.capabilities.createUser ? (
           <Group>
-            <Row>Create User:</Row>
+            <GroupTitle>Create User</GroupTitle>
             <Row>
               <label htmlFor="createemail">New User Email:</label>
               <input
@@ -151,12 +230,12 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
                 onClick={this.handleCreateUserClick}
               />
             </Row>
-            {createdUser ? <Row>Sent email to: {createdUser}</Row> : null}
+            {createdUserMessage ? <Row>{createdUserMessage}</Row> : null}
           </Group>
         ) : null}
         {user && user.capabilities.registerOwnWorker ? (
           <Group>
-            <Row>Add a Worker Bee</Row>
+            <GroupTitle>Add Worker Bees</GroupTitle>
             <Row>
               <input
                 name="workertoken"

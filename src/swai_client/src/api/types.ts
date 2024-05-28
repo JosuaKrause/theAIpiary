@@ -132,6 +132,18 @@ export type ApiPasswordResetTokenResponse = {
   email: Readonly<UserEmail> | undefined;
 };
 
+export type ApiUserInfoResponse = {
+  email: Readonly<UserEmail>;
+  display_name: Readonly<DisplayName>;
+};
+export type ApiUserListResponse = {
+  users: ApiUserInfoResponse[];
+};
+export type UserInfo = {
+  email: Readonly<UserEmail>;
+  displayName: Readonly<DisplayName>;
+};
+
 export type ApiWorkerTokenResponse = {
   worker_token: Readonly<WorkerToken>;
 };

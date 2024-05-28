@@ -28,11 +28,13 @@ import {
   ResetToken,
   User,
   UserEmail,
+  UserInfo,
   WorkerToken,
 } from '../api/types';
 
 type UserCallback = (user: Readonly<User> | Readonly<LoginInfo>) => void;
 type EmailOpCallback = (email: Readonly<UserEmail> | undefined) => void;
+type UserListCallback = (users: UserInfo[]) => void;
 
 export default class UserActions {
   private readonly api: LoginApiProvider;
@@ -88,5 +90,10 @@ export default class UserActions {
   ) {
     const workerToken = await this.api.getWorkerToken();
     updateToken(workerToken);
+  }
+
+  async getUsers(updateUsers: UserListCallback) {
+    const users = await this.api.listUsers();
+    updateUsers(users);
   }
 } // UserActions
