@@ -113,9 +113,12 @@ type StatusProps = {
   status: WorkerStatus;
 };
 const Status = styled.span<StatusProps>`
-  width: 1em;
-  height: 1em;
-  border-radius: 0.5em;
+  display: inline-block;
+  width: 1.2em;
+  height: 1.2em;
+  border-radius: 0.6em;
+  vertical-align: middle;
+  transform: translate(0, -0.15em);
   background-color: ${({ status }) => STATUS_COLOR_MAP[status]};
 `;
 
@@ -151,6 +154,10 @@ const Row = styled.div`
   display: flex;
   flex-direction: row;
   justify-content: space-between;
+`;
+
+const RowSpan = styled.span`
+  vertical-align: middle;
 `;
 
 interface ProfileProps extends ConnectProfile {
@@ -328,9 +335,9 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
             <GroupTitle>Users</GroupTitle>
             {users.map(({ email, displayName }) => (
               <Row key={`${email}`}>
-                <span>
+                <RowSpan>
                   {displayName} (<AutoHide title="@">{email}</AutoHide>)
-                </span>
+                </RowSpan>
               </Row>
             ))}
           </Group>
@@ -367,28 +374,34 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
             {createdUserMessage ? <Row>{createdUserMessage}</Row> : null}
           </Group>
         ) : null}
-        <Group>
-          <GroupTitle>Worker Bees</GroupTitle>
-          {workers.map(({ own, workerId, email, status }) => (
-            <Row>
-              {own ? <strong>{workerId}</strong> : workerId} (
-              <AutoHide title="@">{email}</AutoHide>)
-              <span>
-                <Status status={status} /> {status}
-              </span>
-            </Row>
-          ))}
-        </Group>
+        {workers.length ? (
+          <Group maxHeight={200}>
+            <GroupTitle>Worker Bees</GroupTitle>
+            {workers.map(({ own, workerId, email, status }) => (
+              <Row key={`${workerId}`}>
+                <RowSpan>
+                  {own ? <strong>{workerId}</strong> : workerId} (
+                  <AutoHide title="@">{email}</AutoHide>)
+                </RowSpan>
+                <RowSpan>
+                  {status} <Status status={status} />
+                </RowSpan>
+              </Row>
+            ))}
+          </Group>
+        ) : null}
         {user && user.capabilities.registerOwnWorker ? (
           <Group>
             <GroupTitle>Add Worker Bees</GroupTitle>
             <Row>
-              <Button
-                name="workertoken"
-                type="button"
-                value="Get Worker Token"
-                onClick={this.handleWorkerTokenClick}
-              />
+              <AutoHide title="Get Worker Token">
+                <Button
+                  name="workertoken"
+                  type="button"
+                  value="Replace Worker Token"
+                  onClick={this.handleWorkerTokenClick}
+                />
+              </AutoHide>
             </Row>
             {workerToken ? (
               <Row>
