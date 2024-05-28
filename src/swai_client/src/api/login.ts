@@ -22,6 +22,7 @@
  */
 import { URL_PREFIX } from '../misc/constants';
 import {
+  ApiChatSessionsResponse,
   ApiLoginResponse,
   ApiPasswordResetTokenResponse,
   ApiUserListResponse,
@@ -30,6 +31,7 @@ import {
   LoginInfo,
   Password,
   ResetToken,
+  SessionId,
   User,
   UserEmail,
   UserInfo,
@@ -58,11 +60,12 @@ export type LoginApiProvider = {
   logout: () => Promise<Readonly<User> | Readonly<LoginInfo>>;
   getWorkerToken: () => Promise<Readonly<WorkerToken>>;
   listUsers: () => Promise<UserInfo[]>;
+  listChats: () => Promise<SessionId[]>;
 };
 
 export const DEFAULT_LOGIN_API: LoginApiProvider = {
   getUser: async () => {
-    const res = await fetch(`${URL_PREFIX}/user`, {
+    const res = await fetch(`${URL_PREFIX}/user/current`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -75,7 +78,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     return toUserOrMessage(obj);
   },
   newUser: async (email, displayName) => {
-    const res = await fetch(`${URL_PREFIX}/create_user`, {
+    const res = await fetch(`${URL_PREFIX}/user/create`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -92,7 +95,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     return newEmail;
   },
   loginUser: async (name, password) => {
-    const res = await fetch(`${URL_PREFIX}/login`, {
+    const res = await fetch(`${URL_PREFIX}/user/login`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -108,7 +111,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     return toUserOrMessage(obj);
   },
   getResetPasswordToken: async (name) => {
-    const res = await fetch(`${URL_PREFIX}/reset_password_token`, {
+    const res = await fetch(`${URL_PREFIX}/user/reset_password_token`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -118,12 +121,15 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
         name,
       }),
     });
+    if (res.status === 403 || res.status === 401) {
+      return undefined;
+    }
     checkResponse(res);
     const { email } = (await res.json()) as ApiPasswordResetTokenResponse;
     return email;
   },
   resetPassword: async (resetToken, password) => {
-    const res = await fetch(`${URL_PREFIX}/reset_password`, {
+    const res = await fetch(`${URL_PREFIX}/user/reset_password`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -139,7 +145,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     return toUserOrMessage(obj);
   },
   logout: async () => {
-    const res = await fetch(`${URL_PREFIX}/logout`, {
+    const res = await fetch(`${URL_PREFIX}/user/logout`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -152,7 +158,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     return toUserOrMessage(obj);
   },
   getWorkerToken: async () => {
-    const res = await fetch(`${URL_PREFIX}/create_worker_token`, {
+    const res = await fetch(`${URL_PREFIX}/user/create_worker_token`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -166,7 +172,7 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     return workerToken;
   },
   listUsers: async () => {
-    const res = await fetch(`${URL_PREFIX}/userlist`, {
+    const res = await fetch(`${URL_PREFIX}/user/list`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -180,5 +186,19 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
       email,
       displayName: display_name,
     }));
+  },
+  listChats: async () => {
+    const res = await fetch(`${URL_PREFIX}/chat/list`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    checkResponse(res);
+    const { model_sessions: sessions } =
+      (await res.json()) as ApiChatSessionsResponse;
+    return sessions;
   },
 };

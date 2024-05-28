@@ -46,6 +46,11 @@ def create_session_store(config: Config) -> SessionStore:
     return load_session_store(config["session_store"])
 
 
+def list_sessions(
+        session_store: SessionStore, user_id: UserId) -> list[Session]:
+    return list(session_store.get_sessions(user_id))
+
+
 def init_llama(
         session_store: SessionStore,
         user_id: UserId) -> tuple[Session, list[VisibleMessage]]:

@@ -40,7 +40,6 @@ const Main = styled.div`
   text-align: center;
   margin: 0 auto;
   height: 100vh;
-  width: 100vw;
   display: flex;
   flex-direction: column;
   background-color: var(--main-background);
@@ -50,7 +49,6 @@ const Main = styled.div`
 const HMain = styled.div`
   display: flex;
   justify-content: center;
-  align-items: center;
   min-height: 100vh;
   max-width: 100vw;
 

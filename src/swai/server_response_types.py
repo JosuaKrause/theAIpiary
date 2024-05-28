@@ -96,6 +96,9 @@ VersionResponse = TypedDict('VersionResponse', {
     "start_date": str,
     "error": list[str] | None,
 })
+ChatListResponse = TypedDict('ChatListResponse', {
+    "model_sessions": list[str],
+})
 ChatInitResponse = TypedDict('ChatInitResponse', {
     "model_session": str,
     "messages": list[VisibleMessage],

@@ -25,12 +25,43 @@ import { ConnectedProps, connect } from 'react-redux';
 import styled from 'styled-components';
 import { RootState } from '../store';
 
+const Img = styled.img`
+  width: 30vw;
+  height: 30vw;
+`;
+
+const Paragraph = styled.p`
+  text-align: justify;
+  margin: 10px;
+  padding: 5px;
+  max-width: 42vw;
+
+  @media (hover: none) and (max-width: 480px) {
+    max-width: 100%;
+  }
+`;
+
+const LinkParagraph = styled.p`
+  margin: 10px;
+  padding: 5px;
+`;
+
 const Link = styled.a`
+  padding: 5px;
+  margin: 10px;
+  border-radius: 3px;
+  border: 1px solid silver;
+  font-weight: bold;
   color: silver;
   text-decoration: none;
 
   &:visited {
     color: silver;
+  }
+
+  &:hover {
+    color: lightgray;
+    background-color: var(--button-background);
   }
 `;
 
@@ -45,17 +76,23 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
     return (
       <div>
         <h3>Welcome to the {appName}!</h3>
-        <p>
-          The {appName} is a swarm based inference engine with all compute
-          provided by their members.
-        </p>
-        <p>
+        <Paragraph>
+          The <strong>{appName}</strong> is a unique swarm-based inference
+          engine. Here, members can contribute their spare computational power
+          to create a collective intelligence. It&apos;s like a beehive buzzing
+          with activity, where every bee plays a part in the success of the
+          whole. But even those with limited computational resources can tap
+          into the hive&apos;s collective power, making advanced AI accessible
+          to all. Dive in and experience the power of swarm intelligence!
+        </Paragraph>
+        <LinkParagraph>
           {user ? (
             <Link href="/profile">Profile</Link>
           ) : (
             <Link href="/login">Login</Link>
           )}
-        </p>
+        </LinkParagraph>
+        <Img src="/logo_inv_lg.png" />
       </div>
     );
   }

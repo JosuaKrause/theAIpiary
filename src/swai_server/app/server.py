@@ -40,6 +40,7 @@ from swai.auth import parse_authorization
 from swai.clean import sanity_check
 from swai.server_response_types import (
     ChatInitResponse,
+    ChatListResponse,
     ChatPromptResponse,
     ChatRecoverResponse,
     ChatTextResponse,
@@ -76,6 +77,7 @@ from swai_server.env import envload_int, envload_path, envload_str
 from swai_server.smind.server_api import (
     create_session_store,
     init_llama,
+    list_sessions,
     recover_llama_chat,
     retrieve_llama_response,
     start_llama_response,
@@ -180,6 +182,20 @@ def setup(
 
     server.set_file_fallback_hook(file_fallback)
 
+    def send_login_cookie(req: QSRH, user_session: SessionToken) -> None:
+        cookie = SimpleCookie()
+        cookie["user_session"] = user_session
+        cookie["user_session"]["path"] = "/"
+        cookie["user_session"]["max-age"] = 90*24*60*60
+        req.send_cookie(cookie)
+
+    def send_logout_cookie(req: QSRH) -> None:
+        cookie = SimpleCookie()
+        cookie["user_session"] = ""
+        cookie["user_session"]["path"] = "/"
+        cookie["user_session"]["expires"] = "Thu, 01 Jan 1970 00:00:00 GMT"
+        req.send_cookie(cookie)
+
     def maybe_user_session(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
         cookie = rargs["cookie"]
@@ -273,9 +289,9 @@ def setup(
 
     # *** user management ***
 
-    @server.json_post(f"{prefix}/user")
+    @server.json_post(f"{prefix}/user/current")
     @server.middleware(maybe_user_session)
-    def _post_user(_req: QSRH, rargs: ReqArgs) -> LoginResponse:
+    def _post_user_current(_req: QSRH, rargs: ReqArgs) -> LoginResponse:
         user_session: SessionToken | None = rargs["meta"].get("user_session")
         if user_session is None:
             return {
@@ -296,8 +312,8 @@ def setup(
             "capabilities": sorted(user_info["capabilities"]),
         }
 
-    @server.json_post(f"{prefix}/login")
-    def _post_login(req: QSRH, rargs: ReqArgs) -> LoginResponse:
+    @server.json_post(f"{prefix}/user/login")
+    def _post_user_login(req: QSRH, rargs: ReqArgs) -> LoginResponse:
         args = rargs["post"]
         user_name: str = args["name"]
         password: RawPassword = args["password"]
@@ -313,11 +329,7 @@ def setup(
                 "logged": False,
                 "message": f"invalid {user_session=}",
             }
-        cookie = SimpleCookie()
-        cookie["user_session"] = user_session
-        cookie["user_session"]["path"] = "/"
-        cookie["user_session"]["max-age"] = 90*24*60*60
-        req.send_cookie(cookie)
+        send_login_cookie(req, user_session)
         user_info = sec_ctx.get_user_info(user_session, user_email)
         return {
             "logged": True,
@@ -326,9 +338,9 @@ def setup(
             "capabilities": sorted(user_info["capabilities"]),
         }
 
-    @server.json_post(f"{prefix}/create_user")
+    @server.json_post(f"{prefix}/user/create")
     @server.middleware(verify_user_session)
-    def _post_create_user(
+    def _post_user_create(
             _req: QSRH, rargs: ReqArgs) -> ResetTokenResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
         args = rargs["post"]
@@ -351,9 +363,9 @@ def setup(
             "email": new_email.get(),
         }
 
-    @server.json_post(f"{prefix}/userlist")
+    @server.json_post(f"{prefix}/user/list")
     @server.middleware(verify_user_session)
-    def _post_userlist(_req: QSRH, rargs: ReqArgs) -> UserListResponse:
+    def _post_user_list(_req: QSRH, rargs: ReqArgs) -> UserListResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
         user_list = sec_ctx.list_users(user_session)
 
@@ -370,9 +382,9 @@ def setup(
             ],
         }
 
-    @server.json_post(f"{prefix}/create_worker_token")
+    @server.json_post(f"{prefix}/user/create_worker_token")
     @server.middleware(verify_user_session)
-    def _post_create_worker_token(
+    def _post_user_create_worker_token(
             _req: QSRH, rargs: ReqArgs) -> WorkerTokenResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
         user_email: UName = rargs["meta"]["user_email"]
@@ -385,9 +397,9 @@ def setup(
             "worker_token": worker_token,
         }
 
-    @server.json_post(f"{prefix}/reset_password_token")
+    @server.json_post(f"{prefix}/user/reset_password_token")
     @server.middleware(verify_user_session)
-    def _post_reset_password_token(
+    def _post_user_reset_password_token(
             _req: QSRH, rargs: ReqArgs) -> ResetTokenResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
         args = rargs["post"]
@@ -404,26 +416,23 @@ def setup(
             "email": user_email.get(),
         }
 
-    @server.json_post(f"{prefix}/reset_password")
-    def _post_reset_password(req: QSRH, rargs: ReqArgs) -> LoginResponse:
+    @server.json_post(f"{prefix}/user/reset_password")
+    def _post_user_reset_password(req: QSRH, rargs: ReqArgs) -> LoginResponse:
         args = rargs["post"]
         password: RawPassword = args["password"]
         reset_token: ResetToken = args["reset_token"]
         user_email = sec_ctx.set_password(password, reset_token)
         if user_email is not None:
             sec_ctx.force_logout_user(user_email)
-            cookie = SimpleCookie()
-            cookie["user_session"] = ""
-            cookie["user_session"]["max-age"] = 0
-            req.send_cookie(cookie)
+            send_logout_cookie(req)
         return {
             "logged": False,
             "message": "password set",
         }
 
-    @server.json_post(f"{prefix}/logout")
+    @server.json_post(f"{prefix}/user/logout")
     @server.middleware(verify_user_session)
-    def _post_logout(req: QSRH, rargs: ReqArgs) -> LoginResponse:
+    def _post_user_logout(req: QSRH, rargs: ReqArgs) -> LoginResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
         args = rargs["post"]
         user_name: str | None = args.get("name")
@@ -432,17 +441,14 @@ def setup(
             sec_ctx.logout_user(user_session, UName(user_name))
         else:
             sec_ctx.logout(user_session)
-            cookie = SimpleCookie()
-            cookie["user_session"] = ""
-            cookie["user_session"]["max-age"] = 0
-            req.send_cookie(cookie)
+            send_logout_cookie(req)
         return {
             "logged": False,
             "message": "successfully logged out",
         }
 
     # TODO:
-    # - list users (+reset +logout +email)
+    # - add user mod (+reset +logout +email +delete)
     # - edit capabilities
 
     # *** worker API ***
@@ -712,8 +718,21 @@ def setup(
 
     # *** chat ***
 
-    @server.json_post(f"{prefix}/new")
-    def _post_new(_req: QSRH, rargs: ReqArgs) -> ChatInitResponse:
+    @server.json_post(f"{prefix}/chat/list")
+    def _post_chat_list(_req: QSRH, rargs: ReqArgs) -> ChatListResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
+        user_email: UName = rargs["meta"]["user_email"]
+        user_id = sec_ctx.get_user_id(user_session, user_email)
+        sessions = list_sessions(session_store, user_id)
+        return {
+            "model_sessions": [
+                session.get_session_id().to_parseable()
+                for session in sessions
+            ],
+        }
+
+    @server.json_post(f"{prefix}/chat/new")
+    def _post_chat_new(_req: QSRH, rargs: ReqArgs) -> ChatInitResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
         user_email: UName = rargs["meta"]["user_email"]
         user_id = sec_ctx.get_user_id(user_session, user_email)
@@ -723,9 +742,9 @@ def setup(
             "messages": messages,
         }
 
-    @server.json_post(f"{prefix}/recover")
+    @server.json_post(f"{prefix}/chat/recover")
     @server.middleware(verify_model_session_read)
-    def _post_recover(_req: QSRH, rargs: ReqArgs) -> ChatRecoverResponse:
+    def _post_chat_recover(_req: QSRH, rargs: ReqArgs) -> ChatRecoverResponse:
         meta = rargs["meta"]
         session: Session = meta["model_session"]
         try:
@@ -739,10 +758,10 @@ def setup(
             "status": task_queue.get_status(task_id),
         }
 
-    @server.json_post(f"{prefix}/prompt")
+    @server.json_post(f"{prefix}/chat/prompt")
     @server.middleware(verify_model_session_write)
     @server.middleware(verify_prompt)
-    def _post_prompt(_req: QSRH, rargs: ReqArgs) -> ChatPromptResponse:
+    def _post_chat_prompt(_req: QSRH, rargs: ReqArgs) -> ChatPromptResponse:
         meta = rargs["meta"]
         session: Session = meta["model_session"]
         prompt: str = meta["prompt"]
@@ -752,9 +771,9 @@ def setup(
             "status": task_queue.get_status(task_id),
         }
 
-    @server.json_post(f"{prefix}/response")
+    @server.json_post(f"{prefix}/chat/response")
     @server.middleware(verify_model_session_read)
-    def _post_response(_req: QSRH, rargs: ReqArgs) -> ChatTextResponse:
+    def _post_chat_response(_req: QSRH, rargs: ReqArgs) -> ChatTextResponse:
         args = rargs["post"]
         meta = rargs["meta"]
         session: Session = meta["model_session"]

@@ -82,6 +82,10 @@ export type ChatTextResponse = {
   status: TaskStatus;
 };
 
+export type ApiChatSessionsResponse = {
+  model_sessions: SessionId[];
+};
+
 type UserCapabilities = {
   changeCapabilities: Readonly<boolean>;
   resetOwnPassword: Readonly<boolean>;

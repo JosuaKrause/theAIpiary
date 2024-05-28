@@ -29,9 +29,6 @@ const VMain = styled.div`
   display: flex;
   justify-content: center;
   flex-direction: column;
-  flex-grow: 1;
-  height: 100vh;
-  max-height: 100vh;
   max-width: 60vw;
   width: fit-content;
 
@@ -42,7 +39,7 @@ const VMain = styled.div`
 `;
 
 const ResetPasswordForm = styled.form`
-  width: fit-content;
+  width: 100%;
 `;
 
 const ResetPasswordElement = styled.div`
@@ -51,22 +48,26 @@ const ResetPasswordElement = styled.div`
   justify-content: space-between;
   padding: 5px;
   margin: 5px;
+  min-width: 21vw;
+  min-height: 3em;
 `;
 
 const ResetPasswordLabel = styled.label`
   flex-grow: 0;
+  padding: 5px;
 `;
 
 const ResetPasswordInputText = styled.input`
   appearance: none;
-  border-radius: var(--item-radius);
   padding: var(--item-padding);
   flex-grow: 0;
+  padding: 5px;
+  margin: 2px;
 `;
 
 const ResetPasswordSubmit = styled.input`
   appearance: none;
-  border-radius: var(--item-radius);
+  border-radius: var(--item-padding);
   padding: var(--item-padding);
   cursor: pointer;
   color: var(--main-text);
@@ -210,6 +211,9 @@ export default class ResetPassword extends PureComponent<
     const { message, resetToken } = this.state;
     return (
       <VMain>
+        <ResetPasswordElement>
+          <h3>Reset Password</h3>
+        </ResetPasswordElement>
         {resetToken ? (
           <ResetPasswordForm onSubmit={this.handleResetTokenSubmit}>
             <ResetPasswordElement>
@@ -262,9 +266,7 @@ export default class ResetPassword extends PureComponent<
             </ResetPasswordElement>
           </ResetPasswordForm>
         )}
-        {message ? (
-          <ResetPasswordElement>{message}</ResetPasswordElement>
-        ) : null}
+        <ResetPasswordElement>{message}</ResetPasswordElement>
       </VMain>
     );
   }

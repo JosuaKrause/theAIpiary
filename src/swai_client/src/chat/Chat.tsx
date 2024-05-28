@@ -183,10 +183,13 @@ const InputBar = styled.div`
 `;
 
 const InputText = styled.textarea`
+  border-radius: 12px;
+  padding: 12px;
+  border-bottom-left-radius: 0;
+  width: 90%;
   outline: none;
-  min-height: 2.08em;
+  min-height: 6em;
   max-height: 30vh;
-  width: 100%;
   resize: vertical;
 `;
 
@@ -370,7 +373,7 @@ class Chat extends PureComponent<ChatProps, ChatState> {
           <InputText
             ref={this.inputRef}
             onKeyDown={this.onTextKeyDown}
-            rows={1}
+            rows={3}
             dir=""
             autoCapitalize="off"
             autoComplete="off"

@@ -26,6 +26,7 @@ import {
   LoginInfo,
   Password,
   ResetToken,
+  SessionId,
   User,
   UserEmail,
   UserInfo,
@@ -35,6 +36,7 @@ import {
 type UserCallback = (user: Readonly<User> | Readonly<LoginInfo>) => void;
 type EmailOpCallback = (email: Readonly<UserEmail> | undefined) => void;
 type UserListCallback = (users: UserInfo[]) => void;
+type ChatListCallback = (chats: SessionId[]) => void;
 
 export default class UserActions {
   private readonly api: LoginApiProvider;
@@ -95,5 +97,10 @@ export default class UserActions {
   async getUsers(updateUsers: UserListCallback) {
     const users = await this.api.listUsers();
     updateUsers(users);
+  }
+
+  async getChats(updateChats: ChatListCallback) {
+    const chats = await this.api.listChats();
+    updateChats(chats);
   }
 } // UserActions

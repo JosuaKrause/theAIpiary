@@ -49,6 +49,7 @@ const CircleLink = styled.a`
   width: 100%;
   height: 100%;
   text-decoration: none;
+  font-size: 30px;
 `;
 
 interface UserButtonProps extends ConnectUserButton {
@@ -101,11 +102,15 @@ class UserButton extends PureComponent<UserButtonProps, UserButtonState> {
   render() {
     const { children, user, show } = this.props;
     const { displayName } = this.state;
+    let initial = '';
+    if (displayName?.length) {
+      initial = displayName[0].toUpperCase();
+    }
     return (
       <React.Fragment>
         {user && show ? (
           <Circle>
-            <CircleLink href="/profile">{displayName}</CircleLink>
+            <CircleLink href="/profile">{initial}</CircleLink>
           </Circle>
         ) : null}
         {children}

@@ -29,9 +29,6 @@ const VMain = styled.div`
   display: flex;
   justify-content: center;
   flex-direction: column;
-  flex-grow: 1;
-  height: 100vh;
-  max-height: 100vh;
   max-width: 60vw;
   width: fit-content;
 
@@ -51,22 +48,50 @@ const LoginElement = styled.div`
   justify-content: space-between;
   padding: 5px;
   margin: 5px;
+  min-width: 21vw;
+  min-height: 3em;
 `;
 
 const LoginLabel = styled.label`
   flex-grow: 0;
+  padding: 5px;
 `;
 
 const LoginInputText = styled.input`
   appearance: none;
-  border-radius: var(--item-radius);
   padding: var(--item-padding);
   flex-grow: 0;
+  padding: 5px;
+  margin: 2px;
+`;
+
+const LoginLink = styled.a`
+  text-decoration: none;
+  border-radius: var(--item-padding);
+  padding: var(--item-padding);
+  cursor: pointer;
+  color: var(--main-text);
+  background-color: var(--button-background);
+  flex-grow: 0;
+
+  &:visited {
+    color: var(--main-text);
+    background-color: var(--button-background);
+  }
+
+  &:hover {
+    color: var(--main-text);
+    background-color: var(--button-hover);
+  }
+  &:active {
+    color: var(--main-text);
+    background-color: var(--button-active);
+  }
 `;
 
 const LoginSubmit = styled.input`
   appearance: none;
-  border-radius: var(--item-radius);
+  border-radius: var(--item-padding);
   padding: var(--item-padding);
   cursor: pointer;
   color: var(--main-text);
@@ -164,6 +189,9 @@ export default class Login extends PureComponent<LoginProps, LoginState> {
     const { message } = this.state;
     return (
       <VMain>
+        <LoginElement>
+          <h3>Login</h3>
+        </LoginElement>
         <LoginForm onSubmit={this.handleSubmit}>
           <LoginElement>
             <LoginLabel htmlFor="username">Email:</LoginLabel>
@@ -184,14 +212,14 @@ export default class Login extends PureComponent<LoginProps, LoginState> {
             />
           </LoginElement>
           <LoginElement>
-            <a href="/reset-password">Forgot Password</a>
+            <LoginLink href="/reset-password">Forgot Password</LoginLink>
             <LoginSubmit
               type="submit"
               value="Login"
             />
           </LoginElement>
         </LoginForm>
-        {message ? <LoginElement>{message}</LoginElement> : null}
+        <LoginElement>{message}</LoginElement>
       </VMain>
     );
   }

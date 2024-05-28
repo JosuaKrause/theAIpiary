@@ -23,23 +23,78 @@
 import React, { MouseEventHandler, PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
 import styled, { css } from 'styled-components';
-import { DisplayName, UserEmail, UserInfo, WorkerToken } from '../api/types';
+import {
+  DisplayName,
+  SessionId,
+  UserEmail,
+  UserInfo,
+  WorkerToken,
+} from '../api/types';
 import { redirectWelcome } from '../misc/common';
 import { RootState } from '../store';
+import AutoHide from './AutoHide';
 import UserActions from './UserActions';
 
 const VMain = styled.div`
-  display: flex;
-  justify-content: center;
-  flex-direction: column;
-  flex-grow: 1;
-  height: 100vh;
-  max-height: 100vh;
+  min-width: 40vw;
   max-width: 60vw;
-  width: fit-content;
 
   @media (hover: none) and (max-width: 480px) {
     justify-content: start;
+    max-width: 100%;
+  }
+`;
+
+const Header = styled.h3`
+  margin: 20px 0;
+  padding-top: 20px;
+  text-align: left;
+`;
+
+const Label = styled.label`
+  flex-grow: 0;
+  padding: 5px;
+`;
+
+const InputText = styled.input`
+  appearance: none;
+  padding: var(--item-padding);
+  flex-grow: 0;
+  padding: 5px;
+  margin: 2px;
+`;
+
+const Link = styled.a`
+  width: 100%;
+  font-weight: bold;
+  color: silver;
+  text-decoration: none;
+  text-align: left;
+
+  &:visited {
+    color: silver;
+  }
+
+  &:hover {
+    color: lightgray;
+    background-color: var(--button-background);
+  }
+`;
+
+const Button = styled.input`
+  appearance: none;
+  border-radius: var(--item-padding);
+  padding: var(--item-padding);
+  cursor: pointer;
+  color: var(--main-text);
+  background-color: var(--button-background);
+  flex-grow: 0;
+
+  &:hover {
+    background-color: var(--button-hover);
+  }
+  &:active {
+    background-color: var(--button-active);
   }
 `;
 
@@ -86,6 +141,8 @@ type EmptyProfileProps = {
 type ProfileState = {
   initUsers: boolean;
   users: UserInfo[];
+  initChats: boolean;
+  chats: SessionId[];
   createdUserMessage: string | null;
   workerToken: Readonly<WorkerToken> | null;
 };
@@ -99,6 +156,8 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
     this.state = {
       initUsers: false,
       users: [],
+      initChats: false,
+      chats: [],
       createdUserMessage: null,
       workerToken: null,
     };
@@ -112,6 +171,8 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
       {
         initUsers: false,
         users: [],
+        initChats: false,
+        chats: [],
         createdUserMessage: null,
         workerToken: null,
       },
@@ -123,7 +184,7 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
     _prevState: Readonly<ProfileState>,
   ): void {
     const { userActions, user } = this.props;
-    const { initUsers } = this.state;
+    const { initUsers, initChats } = this.state;
     if (!initUsers && user && user.capabilities.listUsers) {
       this.setState(
         {
@@ -132,6 +193,17 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
         () =>
           userActions.getUsers((users) => {
             this.setState({ users });
+          }),
+      );
+    }
+    if (!initChats) {
+      this.setState(
+        {
+          initChats: true,
+        },
+        () =>
+          userActions.getChats((chats) => {
+            this.setState({ chats });
           }),
       );
     }
@@ -175,7 +247,10 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
       if (newEmail) {
         emailInput.value = '';
         nameInput.value = '';
-        this.setState({ createdUserMessage: `Sent email to: ${newEmail}` });
+        this.setState({
+          createdUserMessage: `Sent email to: ${newEmail}`,
+          initUsers: false,
+        });
       } else {
         this.setState({ createdUserMessage: 'Could not create user!' });
       }
@@ -184,19 +259,36 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
 
   render() {
     const { user } = this.props;
-    const { workerToken, createdUserMessage, users } = this.state;
+    const { workerToken, createdUserMessage, users, chats } = this.state;
     return (
       <VMain>
+        <Header>
+          Welcome, {user?.displayName} (
+          <AutoHide title="@">{user?.email}</AutoHide>)
+        </Header>
+        {chats.length ? (
+          <Group maxHeight={200}>
+            <GroupTitle>Chats</GroupTitle>
+            {chats.map((chatId) => (
+              <Row key={`${chatId}`}>
+                <Link href={`/chat?session=${chatId}`}>Chat ({chatId})</Link>
+              </Row>
+            ))}
+          </Group>
+        ) : null}
         <Group>
-          {user ? <Row>User: {user.displayName}</Row> : null}
-          {user ? <Row>Email: {user.email}</Row> : null}
+          <Row>
+            <Link href={`/chat`}>Start New Chat...</Link>
+          </Row>
         </Group>
         {users.length ? (
-          <Group maxHeight={100}>
+          <Group maxHeight={200}>
             <GroupTitle>Users</GroupTitle>
             {users.map(({ email, displayName }) => (
-              <Row key={email as unknown as string}>
-                {displayName} ({email})
+              <Row key={`${email}`}>
+                <span>
+                  {displayName} (<AutoHide title="@">{email}</AutoHide>)
+                </span>
               </Row>
             ))}
           </Group>
@@ -205,8 +297,8 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
           <Group>
             <GroupTitle>Create User</GroupTitle>
             <Row>
-              <label htmlFor="createemail">New User Email:</label>
-              <input
+              <Label htmlFor="createemail">New User Email:</Label>
+              <InputText
                 autoComplete="off"
                 name="createemail"
                 type="text"
@@ -214,8 +306,8 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
               />
             </Row>
             <Row>
-              <label htmlFor="createdisplay">New User Display Name:</label>
-              <input
+              <Label htmlFor="createdisplay">New User Display Name:</Label>
+              <InputText
                 autoComplete="off"
                 name="createdisplay"
                 type="text"
@@ -223,7 +315,7 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
               />
             </Row>
             <Row>
-              <input
+              <Button
                 name="createuser"
                 type="button"
                 value="Create User"
@@ -237,7 +329,7 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
           <Group>
             <GroupTitle>Add Worker Bees</GroupTitle>
             <Row>
-              <input
+              <Button
                 name="workertoken"
                 type="button"
                 value="Get Worker Token"
@@ -253,7 +345,7 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
         ) : null}
         <Group>
           <Row>
-            <input
+            <Button
               name="logout"
               type="button"
               value="Logout"
