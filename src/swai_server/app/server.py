@@ -496,10 +496,11 @@ def setup(
         user_email: UName = rargs["meta"]["user_email"]
         args = rargs["post"]
         worker_name: str = args["worker_name"]
-        total_queues = int(args["total_queues"])
         worker_status = to_worker_status(args["status"])
         timeout = task_queue.heartbeat(
-            user_email, worker_name, total_queues, worker_status)
+            user_email=user_email,
+            worker_name=worker_name,
+            worker_status=worker_status)
         return {
             "timeout": timeout,
         }
@@ -514,7 +515,10 @@ def setup(
         timeout = float(args["timeout"])
         assert timeout > 0.0
         task = task_queue.pop_task(
-            nss, user_email, worker_name, timeout=timeout)
+            nss,
+            user_email=user_email,
+            worker_name=worker_name,
+            timeout=timeout)
         if task is None:
             return {
                 "ns": None,

@@ -20,7 +20,6 @@
 # all copies or substantial portions of the software.
 import sys
 import threading
-import time
 from typing import TypedDict
 
 from quick_server import add_shutdown_hook
@@ -28,6 +27,7 @@ from scattermind.api.api import InputTypes
 from scattermind.system.base import TaskId
 from scattermind.system.util import get_time_str
 
+from swai.system.base import WorkerStatus
 from swai_provider.app.task_hnd import TaskHandler
 from swai_provider.config import get_config
 from swai_provider.smind.worker_api import (
@@ -74,8 +74,21 @@ def task_loop() -> None:
     smind = load_smind(smind_config)
     graphs = [load_graph(config, smind, "graph_llama.json")]
     task_hnd = TaskHandler()
+    cond = threading.Condition()
     done = False
     is_busy = False
+
+    def get_status() -> WorkerStatus:
+        if done:
+            return "offline"
+        if is_busy:
+            return "busy"
+        total_queues = 0
+        for stats in get_queue_stats(smind):
+            total_queues += stats["queue_length"]
+        if total_queues > 0:
+            return "backedup"
+        return "idle"
 
     def compute_task(
             task: tuple[GraphProfile, TaskId, dict[str, InputTypes]]) -> None:
@@ -88,22 +101,24 @@ def task_loop() -> None:
         task_hnd.task_finish(task_id, response)
         print("done")
         is_busy = False
+        task_hnd.task_heartbeat(worker_status=get_status())
 
     def hook() -> None:
         nonlocal done
 
         done = True
+        with cond:
+            cond.notify_all()
 
     add_shutdown_hook(hook)
 
     def heartbeat() -> None:
         while not done:
-            total_queues = 0
-            for stats in get_queue_stats(smind):
-                total_queues += stats["queue_length"]
-            hb_sleep = task_hnd.task_heartbeat(total_queues, is_busy=is_busy)
+            hb_sleep = task_hnd.task_heartbeat(worker_status=get_status())
             if hb_sleep > 0.0:
-                time.sleep(hb_sleep)
+                with cond:
+                    cond.wait(hb_sleep)
+        task_hnd.task_heartbeat(worker_status=get_status())
 
     th = threading.Thread(target=heartbeat, daemon=True)
     th.start()

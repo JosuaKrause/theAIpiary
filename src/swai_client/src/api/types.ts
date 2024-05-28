@@ -43,7 +43,12 @@ export type TaskStatus =
   | 'error'
   | 'unknown';
 
-export type WorkerStatus = 'unknown' | 'idle' | 'busy' | 'jammed' | 'offline';
+export type WorkerStatus =
+  | 'unknown'
+  | 'idle'
+  | 'busy'
+  | 'backedup'
+  | 'offline';
 
 export type Thinking = 'inactive' | 'thinking' | 'queued' | 'error';
 

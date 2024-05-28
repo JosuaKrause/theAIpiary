@@ -105,7 +105,7 @@ const STATUS_COLOR_MAP: { [key in WorkerStatus]: string } = {
   unknown: 'darkgray',
   idle: 'green',
   busy: 'cornflowerblue',
-  jammed: 'yellow',
+  backedup: 'yellow',
   offline: 'crimson',
 };
 

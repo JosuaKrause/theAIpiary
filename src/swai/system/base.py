@@ -37,7 +37,7 @@ WorkerStatus = Literal[
     "unknown",
     "idle",
     "busy",
-    "jammed",
+    "backedup",
     "offline",
 ]
 WORKER_STATUS: set[WorkerStatus] = set(get_args(WorkerStatus))
@@ -46,7 +46,7 @@ WORKER_STATUS: set[WorkerStatus] = set(get_args(WorkerStatus))
 STATUS_MAPPING: dict[WorkerStatus, int] = {
     "idle": 0,
     "busy": 1,
-    "jammed": 2,
+    "backedup": 2,
     "offline": 3,
     "unknown": 4,
 }

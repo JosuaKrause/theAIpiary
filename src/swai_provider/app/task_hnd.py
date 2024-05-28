@@ -32,6 +32,7 @@ from swai.server_response_types import (
     TaskBidResponse,
     TaskFinishResponse,
 )
+from swai.system.base import WorkerStatus
 from swai.system.user.manager import WorkerToken
 from swai_provider.env import envload_str
 from swai_provider.smind.worker_api import GraphProfile
@@ -56,11 +57,10 @@ class TaskHandler:
             "authorization": get_authorization(self._name, self._worker_token),
         }
 
-    def task_heartbeat(self, total_queues: int, *, is_busy: bool) -> float:
+    def task_heartbeat(self, *, worker_status: WorkerStatus) -> float:
         obj = self._json()
         obj["worker_name"] = self._worker_name
-        obj["total_queues"] = total_queues
-        obj["status"] = "busy" if is_busy else "idle"
+        obj["status"] = worker_status
         resp = self._api.post(
             self._url("/heartbeat"), json=obj, headers=self._headers())
         resp.raise_for_status()
@@ -97,7 +97,10 @@ class TaskHandler:
             out_input_data, graph.get_input_format())
         return (graph, task_id, input_data)
 
-    def task_finish(self, task_id: TaskId, response: ResponseObject) -> None:
+    def task_finish(
+            self,
+            task_id: TaskId,
+            response: ResponseObject) -> None:
         obj = self._json()
         obj["task_id"] = task_id.to_parseable()
         obj["response"] = response_to_redis(response)

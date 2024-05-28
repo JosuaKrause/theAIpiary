@@ -99,12 +99,10 @@ class TaskQueue:
 
     def heartbeat(
             self,
+            *,
             user_email: UName,
             worker_name: str,
-            total_queues: int,
-            status: WorkerStatus) -> float:
-        if status == "idle" and total_queues > 0:
-            status = "jammed"
+            worker_status: WorkerStatus) -> float:
         worker_id = get_worker_id(user_email, worker_name)
         heartbeat = HEARTBEAT
         with self._redis.pipeline() as pipe:
@@ -114,7 +112,7 @@ class TaskQueue:
                 expire_in=WORKER_GRACE)
             pipe.set_value(
                 self.worker_heartbeat_key(worker_id),
-                status,
+                worker_status,
                 expire_in=heartbeat)
         return heartbeat * 0.5
 
@@ -128,14 +126,14 @@ class TaskQueue:
         else:
             user_email = UName(user_str)
         if raw_status is None:
-            status: WorkerStatus = "offline"
+            worker_status: WorkerStatus = "offline"
         else:
-            status = to_worker_status(raw_status)
+            worker_status = to_worker_status(raw_status)
         if user_email is None:
-            status = "unknown"
+            worker_status = "unknown"
         return {
             "email": user_email,
-            "status": status,
+            "status": worker_status,
             "worker_id": worker_id,
         }
 
@@ -162,9 +160,9 @@ class TaskQueue:
     def pop_task(
             self,
             nss: list[GNamespace],
+            *,
             user_email: UName,
             worker_name: str,
-            *,
             timeout: float) -> tuple[GNamespace, TaskId, InputStr] | None:
         # FIXME: make big redis function
         worker_id = get_worker_id(user_email, worker_name)
@@ -181,6 +179,10 @@ class TaskQueue:
                 if input_str is not None:
                     redis.set_value(self.task_worker_key(task_id), worker_id)
                     self.set_status(task_id, TASK_STATUS_BUSY)
+                    self.heartbeat(
+                        user_email=user_email,
+                        worker_name=worker_name,
+                        worker_status="busy")
                     return (ns, task_id, input_str)
                 self.clear_task(task_id)
             return None
@@ -212,7 +214,10 @@ class TaskQueue:
 
         return redis.wait_for(output_key, get_response, timeout=timeout)
 
-    def set_result(self, task_id: TaskId, response: ResponseObject) -> None:
+    def set_result(
+            self,
+            task_id: TaskId,
+            response: ResponseObject) -> None:
         redis = self._redis
         output_key = self.output_key(task_id)
         task_worker_key = self.task_worker_key(task_id)
