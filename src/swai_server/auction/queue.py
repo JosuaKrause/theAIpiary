@@ -18,12 +18,13 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
-from typing import TypeAlias
+from collections.abc import Iterable
+from typing import TypeAlias, TypedDict
 
 from redipy import Redis, RedisConfig
 from scattermind.api.api import InputTypes, task_input_to_redis
 from scattermind.system.base import TaskId
-from scattermind.system.names import GNamespace
+from scattermind.system.names import GNamespace, UName
 from scattermind.system.response import (
     redis_to_response,
     response_to_redis,
@@ -36,8 +37,26 @@ from scattermind.system.response import (
 )
 from scattermind.system.session.session import SessionStore
 
+from swai.system.base import (
+    get_worker_id,
+    to_worker_status,
+    WorkerId,
+    WorkerStatus,
+)
+
+
+HEARTBEAT = 10 * 60  # 10min
+WORKER_GRACE = 30 * 24 * 60 * 60  # 1month
+
 
 InputStr: TypeAlias = str
+
+
+WorkerInfo = TypedDict('WorkerInfo', {
+    "worker_id": WorkerId,
+    "email": UName | None,
+    "status": WorkerStatus,
+})
 
 
 # FIXME: replace task queue with scattermind later
@@ -66,6 +85,67 @@ class TaskQueue:
     def status_key(task_id: TaskId) -> str:
         return f"status:{task_id.to_parseable()}"
 
+    @staticmethod
+    def task_worker_key(task_id: TaskId) -> str:
+        return f"worker:{task_id.to_parseable()}"
+
+    @staticmethod
+    def worker_heartbeat_key(worker_id: WorkerId) -> str:
+        return f"heartbeat:{worker_id}"
+
+    @staticmethod
+    def worker_user_key(worker_id: WorkerId | None) -> str:
+        return f"user:{'' if worker_id is None else worker_id}"
+
+    def heartbeat(
+            self,
+            user_email: UName,
+            worker_name: str,
+            total_queues: int,
+            status: WorkerStatus) -> float:
+        if status == "idle" and total_queues > 0:
+            status = "jammed"
+        worker_id = get_worker_id(user_email, worker_name)
+        heartbeat = HEARTBEAT
+        with self._redis.pipeline() as pipe:
+            pipe.set_value(
+                self.worker_user_key(worker_id),
+                user_email.get(),
+                expire_in=WORKER_GRACE)
+            pipe.set_value(
+                self.worker_heartbeat_key(worker_id),
+                status,
+                expire_in=heartbeat)
+        return heartbeat * 0.5
+
+    def get_worker_info(self, worker_id: WorkerId) -> WorkerInfo:
+        with self._redis.pipeline() as pipe:
+            pipe.get_value(self.worker_user_key(worker_id))
+            pipe.get_value(self.worker_heartbeat_key(worker_id))
+            user_str, raw_status = pipe.execute()
+        if user_str is None:
+            user_email: UName | None = None
+        else:
+            user_email = UName(user_str)
+        if raw_status is None:
+            status: WorkerStatus = "offline"
+        else:
+            status = to_worker_status(raw_status)
+        if user_email is None:
+            status = "unknown"
+        return {
+            "email": user_email,
+            "status": status,
+            "worker_id": worker_id,
+        }
+
+    def get_all_workers(self) -> Iterable[WorkerInfo]:
+        prefix = self.worker_user_key(None)
+        pat = f"{prefix}*"
+        for key in self._redis.keys(match=pat, block=False):
+            worker_id: WorkerId = key.removeprefix(prefix)
+            yield self.get_worker_info(worker_id)
+
     def enqueue_task(
             self,
             ns: GNamespace,
@@ -82,8 +162,12 @@ class TaskQueue:
     def pop_task(
             self,
             nss: list[GNamespace],
+            user_email: UName,
+            worker_name: str,
             *,
             timeout: float) -> tuple[GNamespace, TaskId, InputStr] | None:
+        # FIXME: make big redis function
+        worker_id = get_worker_id(user_email, worker_name)
         redis = self._redis
         queue_channel = self.queue_channel()
 
@@ -95,6 +179,7 @@ class TaskQueue:
                 task_id = TaskId.parse(task)
                 input_str = redis.get_value(self.input_key(task_id))
                 if input_str is not None:
+                    redis.set_value(self.task_worker_key(task_id), worker_id)
                     self.set_status(task_id, TASK_STATUS_BUSY)
                     return (ns, task_id, input_str)
                 self.clear_task(task_id)
@@ -130,8 +215,10 @@ class TaskQueue:
     def set_result(self, task_id: TaskId, response: ResponseObject) -> None:
         redis = self._redis
         output_key = self.output_key(task_id)
+        task_worker_key = self.task_worker_key(task_id)
         self.set_status(task_id, response["status"])
         redis.set_value(output_key, response_to_redis(response))
+        redis.delete(task_worker_key)
         redis.publish(output_key, "response")
 
     def get_result(self, task_id: TaskId) -> ResponseObject | None:
@@ -145,3 +232,4 @@ class TaskQueue:
             pipe.delete(self.input_key(task_id))
             pipe.delete(self.output_key(task_id))
             pipe.delete(self.status_key(task_id))
+            pipe.delete(self.task_worker_key(task_id))

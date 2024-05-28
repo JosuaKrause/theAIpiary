@@ -26,6 +26,7 @@ import {
   ApiLoginResponse,
   ApiPasswordResetTokenResponse,
   ApiUserListResponse,
+  ApiWorkerInfoResponse,
   ApiWorkerTokenResponse,
   DisplayName,
   LoginInfo,
@@ -35,6 +36,7 @@ import {
   User,
   UserEmail,
   UserInfo,
+  WorkerInfo,
   WorkerToken,
   checkResponse,
   toUserOrMessage,
@@ -61,6 +63,7 @@ export type LoginApiProvider = {
   getWorkerToken: () => Promise<Readonly<WorkerToken>>;
   listUsers: () => Promise<UserInfo[]>;
   listChats: () => Promise<SessionId[]>;
+  listWorkers: () => Promise<WorkerInfo[]>;
 };
 
 export const DEFAULT_LOGIN_API: LoginApiProvider = {
@@ -200,5 +203,23 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     const { model_sessions: sessions } =
       (await res.json()) as ApiChatSessionsResponse;
     return sessions;
+  },
+  listWorkers: async () => {
+    const res = await fetch(`${URL_PREFIX}/task/workers`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    checkResponse(res);
+    const { workers } = (await res.json()) as ApiWorkerInfoResponse;
+    return workers.map(({ worker_id: workerId, email, status, own }) => ({
+      workerId,
+      email,
+      status,
+      own,
+    }));
   },
 };

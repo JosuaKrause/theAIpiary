@@ -21,3 +21,4 @@
  * all copies or substantial portions of the software.
  */
 export const URL_PREFIX = `${window.location.origin}/api`;
+export const WORKER_UPDATE = 60 * 1000; // 1min

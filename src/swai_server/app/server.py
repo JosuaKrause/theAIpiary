@@ -44,6 +44,7 @@ from swai.server_response_types import (
     ChatPromptResponse,
     ChatRecoverResponse,
     ChatTextResponse,
+    HeartbeatResponse,
     LoginResponse,
     ResetTokenResponse,
     TaskBidResponse,
@@ -53,6 +54,8 @@ from swai.server_response_types import (
     VersionResponse,
     WorkerBlobHashResponse,
     WorkerBlobListResponse,
+    WorkerInfoJSON,
+    WorkerInfoResponse,
     WorkerKeysResponse,
     WorkerSessionListResponse,
     WorkerSessionResponse,
@@ -62,6 +65,7 @@ from swai.server_response_types import (
     WorkerUserResponse,
     WorkerValueResponse,
 )
+from swai.system.base import STATUS_MAPPING, to_worker_status
 from swai.system.user.loader import load_user_manager
 from swai.system.user.manager import (
     DEFAULT_CAPABILITIES,
@@ -71,7 +75,7 @@ from swai.system.user.manager import (
     SessionToken,
 )
 from swai.system.user.secure import SecureContext
-from swai_server.auction.queue import TaskQueue
+from swai_server.auction.queue import TaskQueue, WorkerInfo
 from swai_server.config import get_config
 from swai_server.env import envload_int, envload_path, envload_str
 from swai_server.smind.server_api import (
@@ -455,14 +459,62 @@ def setup(
 
     # * tasks *
 
+    @server.json_post(f"{prefix}/task/workers")
+    @server.middleware(verify_user_session)
+    def _post_task_workers(_req: QSRH, rargs: ReqArgs) -> WorkerInfoResponse:
+        user_email: UName = rargs["meta"]["user_email"]
+        status_mapping = STATUS_MAPPING
+
+        def convert(info: WorkerInfo) -> WorkerInfoJSON:
+            email_str = None if info["email"] is None else info["email"].get()
+            return {
+                "worker_id": info["worker_id"],
+                "email": email_str,
+                "status": info["status"],
+                "own": info["email"] == user_email,
+            }
+
+        def sort_key(info: WorkerInfoJSON) -> tuple[int, int, str, str]:
+            email_str = "" if info["email"] is None else info["email"]
+            return (
+                0 if info["own"] else 1,
+                status_mapping.get(info["status"], 5),
+                email_str,
+                info["worker_id"],
+            )
+
+        return {
+            "workers": sorted((
+                convert(worker)
+                for worker in task_queue.get_all_workers()
+            ), key=sort_key),
+        }
+
+    @server.json_post(f"{prefix}/task/heartbeat")
+    @server.middleware(verify_worker_token)
+    def _post_task_heartbeat(_req: QSRH, rargs: ReqArgs) -> HeartbeatResponse:
+        user_email: UName = rargs["meta"]["user_email"]
+        args = rargs["post"]
+        worker_name: str = args["worker_name"]
+        total_queues = int(args["total_queues"])
+        worker_status = to_worker_status(args["status"])
+        timeout = task_queue.heartbeat(
+            user_email, worker_name, total_queues, worker_status)
+        return {
+            "timeout": timeout,
+        }
+
     @server.json_post(f"{prefix}/task/bid")
     @server.middleware(verify_worker_token)
     def _post_task_bid(_req: QSRH, rargs: ReqArgs) -> TaskBidResponse:
+        user_email: UName = rargs["meta"]["user_email"]
         args = rargs["post"]
+        worker_name: str = args["worker_name"]
         nss = [GNamespace(ns) for ns in args["nss"]]
         timeout = float(args["timeout"])
         assert timeout > 0.0
-        task = task_queue.pop_task(nss, timeout=timeout)
+        task = task_queue.pop_task(
+            nss, user_email, worker_name, timeout=timeout)
         if task is None:
             return {
                 "ns": None,

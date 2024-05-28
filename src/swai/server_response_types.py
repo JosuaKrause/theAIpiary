@@ -23,6 +23,7 @@ from typing import Literal, NotRequired, TypedDict
 from scattermind.system.response import TaskStatus
 
 from swai.smind.llama_session import VisibleMessage
+from swai.system.base import WorkerId, WorkerStatus
 from swai.system.user.manager import CapabilityName, WorkerToken
 
 
@@ -43,6 +44,18 @@ UserInfoResponse = TypedDict('UserInfoResponse', {
 })
 UserListResponse = TypedDict('UserListResponse', {
     "users": list[UserInfoResponse],
+})
+WorkerInfoJSON = TypedDict('WorkerInfoJSON', {
+    "worker_id": WorkerId,
+    "email": str | None,
+    "status": WorkerStatus,
+    "own": bool,
+})
+WorkerInfoResponse = TypedDict('WorkerInfoResponse', {
+    "workers": list[WorkerInfoJSON],
+})
+HeartbeatResponse = TypedDict('HeartbeatResponse', {
+    "timeout": float,
 })
 TaskBidResponse = TypedDict('TaskBidResponse', {
     "ns": str | None,

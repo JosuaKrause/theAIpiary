@@ -29,6 +29,7 @@ export type SessionId = string & { _sessionId: void };
 export type TaskId = string & { _taskId: void };
 export type ResetToken = string & { _resetToken: void };
 export type WorkerToken = string & { _workerToken: void };
+export type WorkerId = string & { _workerId: void };
 
 export type Role = 'assistant' | 'user';
 
@@ -41,6 +42,8 @@ export type TaskStatus =
   | 'deferred'
   | 'error'
   | 'unknown';
+
+export type WorkerStatus = 'unknown' | 'idle' | 'busy' | 'jammed' | 'offline';
 
 export type Thinking = 'inactive' | 'thinking' | 'queued' | 'error';
 
@@ -146,6 +149,22 @@ export type ApiUserListResponse = {
 export type UserInfo = {
   email: Readonly<UserEmail>;
   displayName: Readonly<DisplayName>;
+};
+
+export type WorkerInfo = {
+  workerId: Readonly<WorkerId>;
+  email: Readonly<UserEmail> | undefined;
+  status: WorkerStatus;
+  own: boolean;
+};
+export type ApiWorkerInfo = {
+  worker_id: Readonly<WorkerId>;
+  email: Readonly<UserEmail> | undefined;
+  status: WorkerStatus;
+  own: boolean;
+};
+export type ApiWorkerInfoResponse = {
+  workers: ApiWorkerInfo[];
 };
 
 export type ApiWorkerTokenResponse = {

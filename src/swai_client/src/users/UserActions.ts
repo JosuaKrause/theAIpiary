@@ -30,6 +30,7 @@ import {
   User,
   UserEmail,
   UserInfo,
+  WorkerInfo,
   WorkerToken,
 } from '../api/types';
 
@@ -37,6 +38,7 @@ type UserCallback = (user: Readonly<User> | Readonly<LoginInfo>) => void;
 type EmailOpCallback = (email: Readonly<UserEmail> | undefined) => void;
 type UserListCallback = (users: UserInfo[]) => void;
 type ChatListCallback = (chats: SessionId[]) => void;
+type WorkerListCallback = (workers: WorkerInfo[]) => void;
 
 export default class UserActions {
   private readonly api: LoginApiProvider;
@@ -102,5 +104,10 @@ export default class UserActions {
   async getChats(updateChats: ChatListCallback) {
     const chats = await this.api.listChats();
     updateChats(chats);
+  }
+
+  async getWorkers(updateWorkers: WorkerListCallback) {
+    const workers = await this.api.listWorkers();
+    updateWorkers(workers);
   }
 } // UserActions

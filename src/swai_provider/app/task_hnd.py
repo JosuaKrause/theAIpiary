@@ -18,6 +18,8 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
+import uuid
+
 import requests
 from scattermind.api.api import InputTypes, redis_to_task_input
 from scattermind.system.base import TaskId
@@ -25,7 +27,11 @@ from scattermind.system.names import GNamespace, UName
 from scattermind.system.response import response_to_redis, ResponseObject
 
 from swai.auth import get_authorization
-from swai.server_response_types import TaskBidResponse, TaskFinishResponse
+from swai.server_response_types import (
+    HeartbeatResponse,
+    TaskBidResponse,
+    TaskFinishResponse,
+)
 from swai.system.user.manager import WorkerToken
 from swai_provider.env import envload_str
 from swai_provider.smind.worker_api import GraphProfile
@@ -33,6 +39,7 @@ from swai_provider.smind.worker_api import GraphProfile
 
 class TaskHandler:
     def __init__(self) -> None:
+        self._worker_name = f"{uuid.getnode():0>12x}"
         self._name = UName(envload_str("SWAI_USER"))
         self._worker_token: WorkerToken = envload_str("SWAI_WORKER_TOKEN")
         self._api_url = envload_str("SWAI_API_URL").removesuffix("/")
@@ -49,6 +56,17 @@ class TaskHandler:
             "authorization": get_authorization(self._name, self._worker_token),
         }
 
+    def task_heartbeat(self, total_queues: int, *, is_busy: bool) -> float:
+        obj = self._json()
+        obj["worker_name"] = self._worker_name
+        obj["total_queues"] = total_queues
+        obj["status"] = "busy" if is_busy else "idle"
+        resp = self._api.post(
+            self._url("/heartbeat"), json=obj, headers=self._headers())
+        resp.raise_for_status()
+        res: HeartbeatResponse = resp.json()
+        return res["timeout"]
+
     def task_bid(
             self,
             graphs: list[GraphProfile],
@@ -60,6 +78,7 @@ class TaskHandler:
             for graph in graphs
         }
         obj = self._json()
+        obj["worker_name"] = self._worker_name
         obj["nss"] = [ns.get() for ns in graph_ns.keys()]
         obj["timeout"] = timeout
         resp = self._api.post(

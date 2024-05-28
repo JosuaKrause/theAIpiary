@@ -28,9 +28,12 @@ import {
   SessionId,
   UserEmail,
   UserInfo,
+  WorkerInfo,
+  WorkerStatus,
   WorkerToken,
 } from '../api/types';
 import { redirectWelcome } from '../misc/common';
+import { WORKER_UPDATE } from '../misc/constants';
 import { RootState } from '../store';
 import AutoHide from './AutoHide';
 import UserActions from './UserActions';
@@ -98,6 +101,24 @@ const Button = styled.input`
   }
 `;
 
+const STATUS_COLOR_MAP: { [key in WorkerStatus]: string } = {
+  unknown: 'darkgray',
+  idle: 'green',
+  busy: 'cornflowerblue',
+  jammed: 'yellow',
+  offline: 'crimson',
+};
+
+type StatusProps = {
+  status: WorkerStatus;
+};
+const Status = styled.span<StatusProps>`
+  width: 1em;
+  height: 1em;
+  border-radius: 0.5em;
+  background-color: ${({ status }) => STATUS_COLOR_MAP[status]};
+`;
+
 type GroupProps = {
   maxHeight?: number;
 };
@@ -143,6 +164,8 @@ type ProfileState = {
   users: UserInfo[];
   initChats: boolean;
   chats: SessionId[];
+  initWorkers: boolean;
+  workers: WorkerInfo[];
   createdUserMessage: string | null;
   workerToken: Readonly<WorkerToken> | null;
 };
@@ -158,6 +181,8 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
       users: [],
       initChats: false,
       chats: [],
+      initWorkers: false,
+      workers: [],
       createdUserMessage: null,
       workerToken: null,
     };
@@ -173,6 +198,8 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
         users: [],
         initChats: false,
         chats: [],
+        initWorkers: false,
+        workers: [],
         createdUserMessage: null,
         workerToken: null,
       },
@@ -184,7 +211,7 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
     _prevState: Readonly<ProfileState>,
   ): void {
     const { userActions, user } = this.props;
-    const { initUsers, initChats } = this.state;
+    const { initUsers, initChats, initWorkers } = this.state;
     if (!initUsers && user && user.capabilities.listUsers) {
       this.setState(
         {
@@ -204,6 +231,20 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
         () =>
           userActions.getChats((chats) => {
             this.setState({ chats });
+          }),
+      );
+    }
+    if (!initWorkers) {
+      this.setState(
+        {
+          initWorkers: true,
+        },
+        () =>
+          userActions.getWorkers((workers) => {
+            this.setState({ workers });
+            setTimeout(() => {
+              this.setState({ initWorkers: false });
+            }, WORKER_UPDATE);
           }),
       );
     }
@@ -259,7 +300,8 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
 
   render() {
     const { user } = this.props;
-    const { workerToken, createdUserMessage, users, chats } = this.state;
+    const { workerToken, createdUserMessage, users, chats, workers } =
+      this.state;
     return (
       <VMain>
         <Header>
@@ -325,6 +367,18 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
             {createdUserMessage ? <Row>{createdUserMessage}</Row> : null}
           </Group>
         ) : null}
+        <Group>
+          <GroupTitle>Worker Bees</GroupTitle>
+          {workers.map(({ own, workerId, email, status }) => (
+            <Row>
+              {own ? <strong>{workerId}</strong> : workerId} (
+              <AutoHide title="@">{email}</AutoHide>)
+              <span>
+                <Status status={status} /> {status}
+              </span>
+            </Row>
+          ))}
+        </Group>
         {user && user.capabilities.registerOwnWorker ? (
           <Group>
             <GroupTitle>Add Worker Bees</GroupTitle>

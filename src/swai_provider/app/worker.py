@@ -19,14 +19,24 @@
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
 import sys
+import threading
+import time
 from typing import TypedDict
 
 from quick_server import add_shutdown_hook
+from scattermind.api.api import InputTypes
+from scattermind.system.base import TaskId
 from scattermind.system.util import get_time_str
 
 from swai_provider.app.task_hnd import TaskHandler
 from swai_provider.config import get_config
-from swai_provider.smind.worker_api import execute_task, load_graph, load_smind
+from swai_provider.smind.worker_api import (
+    execute_task,
+    get_queue_stats,
+    GraphProfile,
+    load_graph,
+    load_smind,
+)
 from swai_provider.version import get_version
 
 
@@ -65,6 +75,19 @@ def task_loop() -> None:
     graphs = [load_graph(config, smind, "graph_llama.json")]
     task_hnd = TaskHandler()
     done = False
+    is_busy = False
+
+    def compute_task(
+            task: tuple[GraphProfile, TaskId, dict[str, InputTypes]]) -> None:
+        nonlocal is_busy
+
+        is_busy = True
+        graph, task_id, input_data = task
+        print(f"picked up {graph.get_ns()=} {task_id=}")
+        response = execute_task(task_id, input_data, graph_profile=graph)
+        task_hnd.task_finish(task_id, response)
+        print("done")
+        is_busy = False
 
     def hook() -> None:
         nonlocal done
@@ -73,12 +96,20 @@ def task_loop() -> None:
 
     add_shutdown_hook(hook)
 
+    def heartbeat() -> None:
+        while not done:
+            total_queues = 0
+            for stats in get_queue_stats(smind):
+                total_queues += stats["queue_length"]
+            hb_sleep = task_hnd.task_heartbeat(total_queues, is_busy=is_busy)
+            if hb_sleep > 0.0:
+                time.sleep(hb_sleep)
+
+    th = threading.Thread(target=heartbeat, daemon=True)
+    th.start()
+
     while not done:
         maybe_task = task_hnd.task_bid(graphs, timeout=DEFAULT_TIMEOUT)
         if maybe_task is None:
             continue  # NOTE: no sleep!
-        graph, task_id, input_data = maybe_task
-        print(f"picked up {graph.get_ns()=} {task_id=}")
-        response = execute_task(task_id, input_data, graph_profile=graph)
-        task_hnd.task_finish(task_id, response)
-        print("done")
+        compute_task(maybe_task)
