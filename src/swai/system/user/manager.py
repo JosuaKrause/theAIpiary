@@ -21,7 +21,7 @@
 import hmac
 import uuid
 from collections.abc import Iterable
-from typing import cast, get_args, Literal, TypeAlias
+from typing import cast, get_args, Literal, TypeAlias, TypedDict
 
 import bcrypt
 from scattermind.system.base import UserId
@@ -47,8 +47,8 @@ CapabilityName = Literal[
     "logout_other_user",
     "create_user",
     "list_users",
-    "write_chat",
-    "read_chat",
+    "write_other_chat",
+    "read_other_chat",
     "register_own_worker",
     "register_other_worker",
 ]
@@ -59,10 +59,16 @@ CAP_RESET_OTHER_PW: CapabilityName = "reset_other_password"
 CAP_LOGOUT_OTHER_USER: CapabilityName = "logout_other_user"
 CAP_CREATE_USER: CapabilityName = "create_user"
 CAP_LIST_USERS: CapabilityName = "list_users"
-CAP_WRITE_CHAT: CapabilityName = "write_chat"
-CAP_READ_CHAT: CapabilityName = "read_chat"
+CAP_WRITE_OTHER_CHAT: CapabilityName = "write_other_chat"
+CAP_READ_OTHER_CHAT: CapabilityName = "read_other_chat"
 CAP_REGISTER_OWN_WORKER: CapabilityName = "register_own_worker"
 CAP_REGISTER_OTHER_WORKER: CapabilityName = "register_other_worker"
+
+
+DEFAULT_CAPABILITIES: set[CapabilityName] = {
+    CAP_RESET_OWN_PW,
+    CAP_REGISTER_OWN_WORKER,
+}
 
 
 def as_capability(capability: str) -> CapabilityName:
@@ -83,6 +89,13 @@ def check_password(password: RawPassword, hashpw: HashPassword | None) -> bool:
     return bcrypt.checkpw(
         get_text_hash(password).encode("utf-8"),
         hashpw.encode("utf-8"))
+
+
+UserInfo = TypedDict('UserInfo', {
+    "email": UName,
+    "display_name": str,
+    "capabilities": set[CapabilityName],
+})
 
 
 class UserManager:
@@ -128,6 +141,8 @@ class UserManager:
     def create_user(self, email: UName, display_name: str) -> bool:
         if self.is_admin(email):
             return False
+        if not email.get() or not display_name:
+            return False
         return self.do_create_user(email, display_name)
 
     def do_create_user(self, email: UName, display_name: str) -> bool:
@@ -138,7 +153,7 @@ class UserManager:
             return None
         return self.do_generate_reset_token(email)
 
-    def do_generate_reset_token(self, email: UName) -> ResetToken:
+    def do_generate_reset_token(self, email: UName) -> ResetToken | None:
         raise NotImplementedError()
 
     def get_email_for_reset_token(
@@ -168,12 +183,16 @@ class UserManager:
     def get_email(self, token: SessionToken) -> UName | None:
         raise NotImplementedError()
 
-    def get_display_name(self, email: UName) -> str | None:
+    def get_user_info(self, email: UName) -> UserInfo:
         if self.is_admin(email):
-            return "admin"
-        return self.do_get_display_name(email)
+            return {
+                "email": email,
+                "display_name": "admin",
+                "capabilities": self.list_capabilities(email),
+            }
+        return self.do_get_user_info(email)
 
-    def do_get_display_name(self, email: UName) -> str | None:
+    def do_get_user_info(self, email: UName) -> UserInfo:
         raise NotImplementedError()
 
     def get_user_id(self, email: UName) -> UserId:

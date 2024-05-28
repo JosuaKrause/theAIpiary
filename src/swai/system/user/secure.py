@@ -30,16 +30,17 @@ from swai.system.user.manager import (
     CAP_CREATE_USER,
     CAP_LIST_USERS,
     CAP_LOGOUT_OTHER_USER,
-    CAP_READ_CHAT,
+    CAP_READ_OTHER_CHAT,
     CAP_REGISTER_OTHER_WORKER,
     CAP_REGISTER_OWN_WORKER,
     CAP_RESET_OTHER_PW,
     CAP_RESET_OWN_PW,
-    CAP_WRITE_CHAT,
+    CAP_WRITE_OTHER_CHAT,
     CapabilityName,
     RawPassword,
     ResetToken,
     SessionToken,
+    UserInfo,
     UserManager,
     WorkerToken,
 )
@@ -133,6 +134,9 @@ class SecureContext:
             email=email,
             own_capability=CAP_RESET_OWN_PW,
             admin_capability=CAP_RESET_OTHER_PW)
+        return self.force_reset_token(email)
+
+    def force_reset_token(self, email: UName) -> ResetToken | None:
         return self._user_mng.generate_reset_token(email)
 
     def set_password(
@@ -144,9 +148,9 @@ class SecureContext:
     def get_email(self, token: SessionToken) -> UName | None:
         return self._user_mng.get_email(token)
 
-    def get_display_name(self, who: SessionToken, email: UName) -> str | None:
+    def get_user_info(self, who: SessionToken, email: UName) -> UserInfo:
         self.ensure_can_act(who, email=email, admin_capability=CAP_LIST_USERS)
-        return self._user_mng.get_display_name(email)
+        return self._user_mng.get_user_info(email)
 
     def get_user_id(self, who: SessionToken, email: UName) -> UserId:
         self.ensure_can_act(who, email=email)
@@ -162,7 +166,7 @@ class SecureContext:
         if (
                 user_id != own_user_id
                 and not self.can_act(
-                    who, email=None, admin_capability=CAP_READ_CHAT)):
+                    who, email=None, admin_capability=CAP_READ_OTHER_CHAT)):
             return "denied"
         return "ok"
 
@@ -180,7 +184,7 @@ class SecureContext:
         if (
                 user_id != own_user_id
                 and not self.can_act(
-                    who, email=None, admin_capability=CAP_WRITE_CHAT)):
+                    who, email=None, admin_capability=CAP_WRITE_OTHER_CHAT)):
             return "denied"
         return "ok"
 
@@ -212,6 +216,14 @@ class SecureContext:
             email,
             own_capability=CAP_CHANGE_CAPABILITIES,
             admin_capability=CAP_CHANGE_CAPABILITIES)
+        self.force_capability(email, capability, has=has)
+
+    def force_capability(
+            self,
+            email: UName,
+            capability: CapabilityName,
+            *,
+            has: bool) -> None:
         self._user_mng.set_capability(email, capability, has=has)
 
     def list_capabilities(

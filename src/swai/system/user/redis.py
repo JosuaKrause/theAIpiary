@@ -33,6 +33,7 @@ from swai.system.user.manager import (
     HashPassword,
     ResetToken,
     SessionToken,
+    UserInfo,
     UserManager,
     WorkerToken,
 )
@@ -41,7 +42,7 @@ from swai.system.user.manager import (
 UserHash: TypeAlias = str
 
 
-UserInfo = TypedDict('UserInfo', {
+UserInfoRedis = TypedDict('UserInfoRedis', {
     "email": str,
     "display_name": str,
     "hashpw": str,
@@ -49,6 +50,7 @@ UserInfo = TypedDict('UserInfo', {
 
 
 PW_RESET_EXPIRE = 24.0 * 60.0 * 60.0  # 24h
+PW_RESET_COOLDOWN = 1.0 * 60.0  # 1min
 
 
 class RedisUserManager(UserManager):
@@ -95,6 +97,10 @@ class RedisUserManager(UserManager):
     def _key_pw_reset(cls, reset_token: ResetToken) -> str:
         return f"reset:{reset_token}"
 
+    @classmethod
+    def _key_pw_cooldown(cls, email: UName) -> str:
+        return f"cooldown:{cls._userhash(email)}"
+
     @staticmethod
     def _key_worker(user_id: UserId) -> str:
         return f"worker:{user_id.to_parseable()}"
@@ -108,14 +114,14 @@ class RedisUserManager(UserManager):
         return token[:short_hash_size()]
 
     @staticmethod
-    def _new_user_info(email: UName, display_name: str) -> UserInfo:
+    def _new_user_info(email: UName, display_name: str) -> UserInfoRedis:
         return {
             "email": email.get(),
             "display_name": display_name,
             "hashpw": "",
         }
 
-    def _get_user_info(self, email: UName) -> UserInfo:
+    def _get_user_info(self, email: UName) -> UserInfoRedis:
         if self.is_admin(email):
             raise ValueError("cannot read info for admin")
         res = self._redis.hgetall(self._key_user_info(email))
@@ -125,7 +131,7 @@ class RedisUserManager(UserManager):
             "hashpw": res["hashpw"],
         }
 
-    def _set_user_info(self, info: UserInfo) -> None:
+    def _set_user_info(self, info: UserInfoRedis) -> None:
         email = UName(info["email"])
         if self.is_admin(email):
             raise ValueError("cannot set info for admin")
@@ -151,12 +157,19 @@ class RedisUserManager(UserManager):
         self._set_user_info(self._new_user_info(email, display_name))
         return True
 
-    def do_generate_reset_token(self, email: UName) -> ResetToken:
-        reset_token = uuid.uuid4().hex
-        self._redis.set_value(
-            self._key_pw_reset(reset_token),
-            email.get(),
-            expire_in=PW_RESET_EXPIRE)
+    def do_generate_reset_token(self, email: UName) -> ResetToken | None:
+        redis = self._redis
+        cooldown_key = self._key_pw_cooldown(email)
+        if redis.get_value(cooldown_key) is not None:
+            return None
+        reset_token: ResetToken = uuid.uuid4().hex
+        with redis.pipeline() as pipe:
+            pipe.set_value(
+                self._key_pw_reset(reset_token),
+                email.get(),
+                expire_in=PW_RESET_EXPIRE)
+            pipe.set_value(
+                cooldown_key, reset_token, expire_in=PW_RESET_COOLDOWN)
         return reset_token
 
     def get_email_for_reset_token(
@@ -199,8 +212,13 @@ class RedisUserManager(UserManager):
             return None
         return UName(res)
 
-    def do_get_display_name(self, email: UName) -> str | None:
-        return self._redis.hget(self._key_user_info(email), "display_name")
+    def do_get_user_info(self, email: UName) -> UserInfo:
+        obj = self._get_user_info(email)
+        return {
+            "email": email,
+            "display_name": obj["display_name"],
+            "capabilities": self.list_capabilities(email),
+        }
 
     def do_has_capability(
             self,

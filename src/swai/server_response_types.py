@@ -18,7 +18,7 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
-from typing import NotRequired, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from scattermind.system.response import TaskStatus
 
@@ -26,12 +26,17 @@ from swai.smind.llama_session import VisibleMessage
 from swai.system.user.manager import CapabilityName, WorkerToken
 
 
-LoginResponse = TypedDict('LoginResponse', {
-    "user_name": str | None,
-    "logged": bool,
+UserLogged = TypedDict('UserLogged', {
+    "logged": Literal[True],
+    "email": str,
+    "display_name": str,
     "capabilities": list[CapabilityName],
-    "message": str | None,
 })
+UserNotLogged = TypedDict('UserNotLogged', {
+    "logged": Literal[False],
+    "message": str,
+})
+LoginResponse = UserLogged | UserNotLogged
 TaskBidResponse = TypedDict('TaskBidResponse', {
     "ns": str | None,
     "task_id": str | None,
@@ -74,8 +79,7 @@ WorkerSignalResponse = TypedDict('WorkerSignalResponse', {
     "signal": bool,
 })
 ResetTokenResponse = TypedDict('ResetTokenResponse', {
-    "user_name": str,
-    "reset_token": str,
+    "email": str | None,
 })
 VersionResponse = TypedDict('VersionResponse', {
     "app_name": str,

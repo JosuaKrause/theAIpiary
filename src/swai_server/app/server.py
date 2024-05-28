@@ -26,7 +26,7 @@ import threading
 from http.cookies import SimpleCookie
 from typing import TypedDict
 
-from quick_server import create_server, QuickServer
+from quick_server import create_server, PreventDefaultResponse, QuickServer
 from quick_server import QuickServerRequestHandler as QSRH
 from quick_server import ReqArgs, ReqNext, Response
 from scattermind.system.base import SessionId, TaskId, UserId
@@ -61,6 +61,7 @@ from swai.server_response_types import (
 )
 from swai.system.user.loader import load_user_manager
 from swai.system.user.manager import (
+    DEFAULT_CAPABILITIES,
     HashPassword,
     RawPassword,
     ResetToken,
@@ -186,11 +187,11 @@ def setup(
         if session_cookie is None:
             return okay
         user_session = session_cookie.value
-        user_name = sec_ctx.get_email(user_session)
-        if user_name is None:
+        user_email = sec_ctx.get_email(user_session)
+        if user_email is None:
             return okay
         rargs["meta"]["user_session"] = user_session
-        rargs["meta"]["user_name"] = user_name
+        rargs["meta"]["user_email"] = user_email
         return okay
 
     def verify_user_session(
@@ -199,9 +200,12 @@ def setup(
         user_session = rargs["meta"].get("user_session")
         if user_session is None:
             return Response("must be logged in", 401)
-        user_name: UName | None = rargs["meta"].get("user_name")
-        if user_name is None:
-            # FIXME: clear cookie
+        user_email: UName | None = rargs["meta"].get("user_email")
+        if user_email is None:
+            cookie = SimpleCookie()
+            cookie["user_session"] = ""
+            cookie["user_session"]["max-age"] = 0
+            req.send_cookie(cookie)
             return Response("must be logged in", 401)
         return okay
 
@@ -247,9 +251,9 @@ def setup(
         auth = req.headers.get("authorization")
         if auth is None:
             return Response("must include authorization header", 401)
-        name, worker_token = parse_authorization(auth)
-        sec_ctx.ensure_worker_token(name, worker_token)
-        rargs["meta"]["user_name"] = name
+        email, worker_token = parse_authorization(auth)
+        sec_ctx.ensure_worker_token(email, worker_token)
+        rargs["meta"]["user_email"] = email
         return okay
 
     # *** misc ***
@@ -273,25 +277,21 @@ def setup(
         user_session: SessionToken | None = rargs["meta"].get("user_session")
         if user_session is None:
             return {
-                "user_name": None,
                 "logged": False,
-                "capabilities": [],
                 "message": "not logged in",
             }
-        login_name: UName | None = rargs["meta"].get("user_name")
-        if login_name is None:
+        user_email: UName | None = rargs["meta"].get("user_email")
+        if user_email is None:
             return {
-                "user_name": None,
                 "logged": False,
-                "capabilities": [],
                 "message": f"no user in {user_session=}",
             }
+        user_info = sec_ctx.get_user_info(user_session, user_email)
         return {
-            "user_name": login_name.get(),
             "logged": True,
-            "capabilities": sorted(sec_ctx.list_capabilities(
-                user_session, login_name)),
-            "message": None,
+            "email": user_info["email"].get(),
+            "display_name": user_info["display_name"],
+            "capabilities": sorted(user_info["capabilities"]),
         }
 
     @server.json_post(f"{prefix}/login")
@@ -302,17 +302,13 @@ def setup(
         user_session = sec_ctx.login(UName(user_name), password)
         if user_session is None:
             return {
-                "user_name": None,
                 "logged": False,
-                "capabilities": [],
                 "message": "username or password is incorrect",
             }
-        login_name = sec_ctx.get_email(user_session)
-        if login_name is None:
+        user_email = sec_ctx.get_email(user_session)
+        if user_email is None:
             return {
-                "user_name": None,
                 "logged": False,
-                "capabilities": [],
                 "message": f"invalid {user_session=}",
             }
         cookie = SimpleCookie()
@@ -320,12 +316,37 @@ def setup(
         cookie["user_session"]["path"] = "/"
         cookie["user_session"]["max-age"] = 90*24*60*60
         req.send_cookie(cookie)
+        user_info = sec_ctx.get_user_info(user_session, user_email)
         return {
-            "user_name": login_name.get(),
             "logged": True,
-            "capabilities": sorted(sec_ctx.list_capabilities(
-                user_session, login_name)),
-            "message": None,
+            "email": user_info["email"].get(),
+            "display_name": user_info["display_name"],
+            "capabilities": sorted(user_info["capabilities"]),
+        }
+
+    @server.json_post(f"{prefix}/create_user")
+    @server.middleware(verify_user_session)
+    def _post_create_user(
+            _req: QSRH, rargs: ReqArgs) -> ResetTokenResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
+        args = rargs["post"]
+        new_email_str: str = args["new_email"]
+        new_display: str = args["new_display"]
+        new_email = UName(new_email_str)
+        if not sec_ctx.create_user(user_session, new_email, new_display):
+            return {
+                "email": None,
+            }
+        for cap in DEFAULT_CAPABILITIES:
+            sec_ctx.force_capability(new_email, cap, has=True)
+        reset_token = sec_ctx.force_reset_token(new_email)
+        # FIXME: send welcome email! (if reset token is None omit that part)
+        if reset_token:
+            print(f"RESET TOKEN for {new_email.get()}: {reset_token}")
+        else:
+            print(f"NO RESET TOKEN for {new_email.get()}")
+        return {
+            "email": new_email.get(),
         }
 
     @server.json_post(f"{prefix}/create_worker_token")
@@ -333,12 +354,12 @@ def setup(
     def _post_create_worker_token(
             _req: QSRH, rargs: ReqArgs) -> WorkerTokenResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
-        name: UName = rargs["meta"]["user_name"]
+        user_email: UName = rargs["meta"]["user_email"]
         args = rargs["post"]
         user_name: str | None = args.get("name")
         if user_name is not None:
-            name = UName(user_name)
-        worker_token = sec_ctx.create_worker_token(user_session, name)
+            user_email = UName(user_name)
+        worker_token = sec_ctx.create_worker_token(user_session, user_email)
         return {
             "worker_token": worker_token,
         }
@@ -350,13 +371,16 @@ def setup(
         user_session: SessionToken = rargs["meta"]["user_session"]
         args = rargs["post"]
         user_name: str = args["name"]
-        reset_token = sec_ctx.generate_reset_token(
-            user_session, UName(user_name))
+        user_email = UName(user_name)
+        reset_token = sec_ctx.generate_reset_token(user_session, user_email)
         if reset_token is None:
-            raise ValueError(f"cannot create reset token for {user_name}")
+            return {
+                "email": None,
+            }
+        # FIXME: send reset password email!
+        print(f"RESET TOKEN for {user_email.get()}: {reset_token}")
         return {
-            "user_name": user_name,
-            "reset_token": reset_token,
+            "email": user_email.get(),
         }
 
     @server.json_post(f"{prefix}/reset_password")
@@ -364,17 +388,15 @@ def setup(
         args = rargs["post"]
         password: RawPassword = args["password"]
         reset_token: ResetToken = args["reset_token"]
-        user_name = sec_ctx.set_password(password, reset_token)
-        if user_name is not None:
-            sec_ctx.force_logout_user(user_name)
+        user_email = sec_ctx.set_password(password, reset_token)
+        if user_email is not None:
+            sec_ctx.force_logout_user(user_email)
             cookie = SimpleCookie()
             cookie["user_session"] = ""
             cookie["user_session"]["max-age"] = 0
             req.send_cookie(cookie)
         return {
-            "user_name": None if user_name is None else user_name.get(),
             "logged": False,
-            "capabilities": [],
             "message": "password set",
         }
 
@@ -394,9 +416,7 @@ def setup(
             cookie["user_session"]["max-age"] = 0
             req.send_cookie(cookie)
         return {
-            "user_name": None,
             "logged": False,
-            "capabilities": [],
             "message": "successfully logged out",
         }
 
@@ -675,8 +695,8 @@ def setup(
     @server.json_post(f"{prefix}/new")
     def _post_new(_req: QSRH, rargs: ReqArgs) -> ChatInitResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
-        name: UName = rargs["meta"]["user_name"]
-        user_id = sec_ctx.get_user_id(user_session, name)
+        user_email: UName = rargs["meta"]["user_email"]
+        user_id = sec_ctx.get_user_id(user_session, user_email)
         session, messages = init_llama(session_store, user_id)
         return {
             "model_session": session.get_session_id().to_parseable(),
@@ -688,7 +708,11 @@ def setup(
     def _post_recover(_req: QSRH, rargs: ReqArgs) -> ChatRecoverResponse:
         meta = rargs["meta"]
         session: Session = meta["model_session"]
-        messages, task_id = recover_llama_chat(task_queue, model_ns, session)
+        try:
+            messages, task_id = recover_llama_chat(
+                task_queue, model_ns, session)
+        except FileNotFoundError as exc:
+            raise PreventDefaultResponse(404, "session not available") from exc
         return {
             "messages": messages,
             "task": None if task_id is None else task_id.to_parseable(),

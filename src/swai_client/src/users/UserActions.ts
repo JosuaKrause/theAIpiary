@@ -22,15 +22,17 @@
  */
 import { DEFAULT_LOGIN_API, LoginApiProvider } from '../api/login';
 import {
+  DisplayName,
   LoginInfo,
   Password,
   ResetToken,
   User,
-  UserName,
+  UserEmail,
   WorkerToken,
 } from '../api/types';
 
 type UserCallback = (user: Readonly<User> | Readonly<LoginInfo>) => void;
+type EmailOpCallback = (email: Readonly<UserEmail> | undefined) => void;
 
 export default class UserActions {
   private readonly api: LoginApiProvider;
@@ -45,12 +47,26 @@ export default class UserActions {
   }
 
   async login(
-    username: Readonly<UserName>,
+    username: Readonly<UserEmail>,
     password: Readonly<Password>,
     updateUser: UserCallback,
   ) {
     const user = await this.api.loginUser(username, password);
     updateUser(user);
+  }
+
+  async createUser(
+    newEmail: Readonly<UserEmail>,
+    displayName: Readonly<DisplayName>,
+    onFinish: EmailOpCallback,
+  ) {
+    const email = await this.api.newUser(newEmail, displayName);
+    onFinish(email);
+  }
+
+  async resetPassword(email: Readonly<UserEmail>, onFinish: EmailOpCallback) {
+    const responseEmail = await this.api.getResetPasswordToken(email);
+    onFinish(responseEmail);
   }
 
   async changePassword(

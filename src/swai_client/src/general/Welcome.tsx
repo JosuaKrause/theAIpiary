@@ -22,7 +22,17 @@
  */
 import { PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
+import styled from 'styled-components';
 import { RootState } from '../store';
+
+const Link = styled.a`
+  color: silver;
+  text-decoration: none;
+
+  &:visited {
+    color: silver;
+  }
+`;
 
 interface WelcomeProps extends ConnectWelcome {
   appName: string;
@@ -40,7 +50,11 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
           provided by their members.
         </p>
         <p>
-          {user ? <a href="/login">Login</a> : <a href="/profile">Profile</a>}
+          {user ? (
+            <Link href="/profile">Profile</Link>
+          ) : (
+            <Link href="/login">Login</Link>
+          )}
         </p>
       </div>
     );

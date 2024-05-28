@@ -1,5 +1,3 @@
-import { redirectLogin } from '../misc/common';
-
 /**
  * Copyright (c) 2024 Josua Krause - All Rights Reserved
  *
@@ -22,7 +20,10 @@ import { redirectLogin } from '../misc/common';
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the software.
  */
-export type UserName = string & { _userName: void };
+import { redirectLogin } from '../misc/common';
+
+export type UserEmail = string & { _userEmail: void };
+export type DisplayName = string & { _displayName: void };
 export type Password = string & { _password: void };
 export type SessionId = string & { _sessionId: void };
 export type TaskId = string & { _taskId: void };
@@ -88,15 +89,19 @@ type UserCapabilities = {
   logoutOtherUser: Readonly<boolean>;
   createUser: Readonly<boolean>;
   listUsers: Readonly<boolean>;
-  writeChat: Readonly<boolean>;
-  readChat: Readonly<boolean>;
+  writeOtherChat: Readonly<boolean>;
+  readOtherChat: Readonly<boolean>;
+  registerOwnWorker: Readonly<boolean>;
+  registerOtherWorker: Readonly<boolean>;
 };
 export type User = {
-  name: Readonly<UserName>;
+  logged: true;
+  email: Readonly<UserEmail>;
+  displayName: Readonly<DisplayName>;
   capabilities: Readonly<UserCapabilities>;
 };
 export type LoginInfo = {
-  name: null;
+  logged: false;
   message: string;
 };
 
@@ -107,22 +112,24 @@ type ApiUserCapability =
   | 'logout_other_user'
   | 'create_user'
   | 'list_users'
-  | 'write_chat'
-  | 'read_chat';
-export type ApiLoginResponse = {
-  user_name: Readonly<UserName> | undefined;
-  logged: boolean;
-  capabilities: Readonly<ApiUserCapability[]>;
-  message: string | undefined;
-};
+  | 'write_other_chat'
+  | 'read_other_chat'
+  | 'register_own_worker'
+  | 'register_other_worker';
+export type ApiLoginResponse =
+  | {
+      logged: true;
+      email: Readonly<UserEmail>;
+      display_name: Readonly<DisplayName>;
+      capabilities: Readonly<ApiUserCapability[]>;
+    }
+  | {
+      logged: false;
+      message: string;
+    };
 
 export type ApiPasswordResetTokenResponse = {
-  user_name: Readonly<UserName>;
-  reset_token: Readonly<ResetToken>;
-};
-export type PasswordResetTokenResponse = {
-  name: Readonly<UserName>;
-  resetToken: Readonly<ResetToken>;
+  email: Readonly<UserEmail> | undefined;
 };
 
 export type ApiWorkerTokenResponse = {
@@ -136,17 +143,21 @@ const NO_CAPABILITIES: Readonly<UserCapabilities> = {
   logoutOtherUser: false,
   createUser: false,
   listUsers: false,
-  writeChat: false,
-  readChat: false,
+  writeOtherChat: false,
+  readOtherChat: false,
+  registerOwnWorker: false,
+  registerOtherWorker: false,
 };
 
 export function toUserOrMessage(
   userResp: Readonly<ApiLoginResponse>,
 ): Readonly<User> | LoginInfo {
-  const { logged, user_name, capabilities: caps, message, ...rest } = userResp;
-  if (!logged || !user_name) {
-    return { name: null, message: message ?? 'invalid response' };
+  const { logged } = userResp;
+  if (!logged) {
+    const { message } = userResp;
+    return { logged: false, message };
   }
+  const { capabilities: caps, email, display_name: displayName } = userResp;
   const capabilities: UserCapabilities = { ...NO_CAPABILITIES };
   caps.forEach((cap) => {
     switch (cap) {
@@ -168,18 +179,25 @@ export function toUserOrMessage(
       case 'list_users':
         capabilities.listUsers = true;
         break;
-      case 'write_chat':
-        capabilities.writeChat = true;
+      case 'write_other_chat':
+        capabilities.writeOtherChat = true;
         break;
-      case 'read_chat':
-        capabilities.readChat = true;
+      case 'read_other_chat':
+        capabilities.readOtherChat = true;
+        break;
+      case 'register_own_worker':
+        capabilities.registerOwnWorker = true;
+        break;
+      case 'register_other_worker':
+        capabilities.registerOtherWorker = true;
         break;
     }
   });
   return {
-    name: user_name,
+    logged: true,
+    email,
+    displayName,
     capabilities,
-    ...rest,
   };
 }
 

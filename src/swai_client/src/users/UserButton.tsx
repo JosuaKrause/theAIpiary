@@ -23,7 +23,7 @@
 import React, { PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
 import styled from 'styled-components';
-import { UserName } from '../api/types';
+import { DisplayName } from '../api/types';
 import { redirectLogin } from '../misc/common';
 import { RootState } from '../store';
 import UserActions from './UserActions';
@@ -58,7 +58,7 @@ interface UserButtonProps extends ConnectUserButton {
   show: boolean;
 }
 type UserButtonState = {
-  displayName: Readonly<UserName> | undefined;
+  displayName: Readonly<DisplayName> | undefined;
   ready: boolean;
 };
 
@@ -83,17 +83,17 @@ class UserButton extends PureComponent<UserButtonProps, UserButtonState> {
         () => {
           userActions.currentUser((user) => {
             const { redirect } = this.props;
-            if (!user.name && redirect) {
+            if (!user.logged && redirect) {
               redirectLogin();
             }
-            dispatch(setUser({ user: user.name ? user : undefined }));
+            dispatch(setUser({ user: user.logged ? user : undefined }));
           });
         },
       );
     }
-    if (user?.name !== prevUser?.name) {
+    if (user?.displayName !== prevUser?.displayName) {
       this.setState({
-        displayName: user?.name,
+        displayName: user?.displayName,
       });
     }
   }

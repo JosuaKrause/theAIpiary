@@ -22,7 +22,7 @@
  */
 import React, { FormEventHandler, PureComponent } from 'react';
 import styled from 'styled-components';
-import { Password, UserName } from '../api/types';
+import { Password, UserEmail } from '../api/types';
 import UserActions from './UserActions';
 
 const VMain = styled.div`
@@ -92,10 +92,7 @@ type LoginState = {
   redirectPath: string | null;
 };
 
-export default class Login extends PureComponent<
-  Readonly<LoginProps>,
-  Readonly<LoginState>
-> {
+export default class Login extends PureComponent<LoginProps, LoginState> {
   private readonly nameRef: React.RefObject<HTMLInputElement>;
   private readonly passwordRef: React.RefObject<HTMLInputElement>;
 
@@ -148,12 +145,12 @@ export default class Login extends PureComponent<
     if (!nameInput || !passwordInput) {
       return;
     }
-    const userName = nameInput.value as UserName;
+    const userName = nameInput.value as UserEmail;
     const password = passwordInput.value as Password;
     const { userActions } = this.props;
     userActions.login(userName, password, (user) => {
       const { redirectPath } = this.state;
-      if (user.name) {
+      if (user.logged) {
         window.location.href = redirectPath ?? '/profile';
       } else {
         this.setState({
@@ -187,6 +184,7 @@ export default class Login extends PureComponent<
             />
           </LoginElement>
           <LoginElement>
+            <a href="/reset-password">Forgot Password</a>
             <LoginSubmit
               type="submit"
               value="Login"

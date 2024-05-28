@@ -25,12 +25,12 @@ import {
   ApiLoginResponse,
   ApiPasswordResetTokenResponse,
   ApiWorkerTokenResponse,
+  DisplayName,
   LoginInfo,
   Password,
-  PasswordResetTokenResponse,
   ResetToken,
   User,
-  UserName,
+  UserEmail,
   WorkerToken,
   checkResponse,
   toUserOrMessage,
@@ -38,13 +38,17 @@ import {
 
 export type LoginApiProvider = {
   getUser: () => Promise<Readonly<User> | Readonly<LoginInfo>>;
+  newUser: (
+    email: Readonly<UserEmail>,
+    displayName: Readonly<DisplayName>,
+  ) => Promise<Readonly<UserEmail> | undefined>;
   loginUser: (
-    name: Readonly<UserName>,
+    name: Readonly<UserEmail>,
     password: Readonly<Password>,
   ) => Promise<Readonly<User> | Readonly<LoginInfo>>;
   getResetPasswordToken: (
-    name: Readonly<UserName>,
-  ) => Promise<Readonly<PasswordResetTokenResponse>>;
+    name: Readonly<UserEmail>,
+  ) => Promise<Readonly<UserEmail> | undefined>;
   resetPassword: (
     resetToken: Readonly<ResetToken>,
     password: Readonly<Password>,
@@ -66,6 +70,23 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     checkResponse(res);
     const obj = (await res.json()) as ApiLoginResponse;
     return toUserOrMessage(obj);
+  },
+  newUser: async (email, displayName) => {
+    const res = await fetch(`${URL_PREFIX}/create_user`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        new_email: email,
+        new_display: displayName,
+      }),
+    });
+    checkResponse(res);
+    const { email: newEmail } =
+      (await res.json()) as ApiPasswordResetTokenResponse;
+    return newEmail;
   },
   loginUser: async (name, password) => {
     const res = await fetch(`${URL_PREFIX}/login`, {
@@ -95,12 +116,8 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
       }),
     });
     checkResponse(res);
-    const { user_name, reset_token } =
-      (await res.json()) as ApiPasswordResetTokenResponse;
-    return {
-      name: user_name,
-      resetToken: reset_token,
-    };
+    const { email } = (await res.json()) as ApiPasswordResetTokenResponse;
+    return email;
   },
   resetPassword: async (resetToken, password) => {
     const res = await fetch(`${URL_PREFIX}/reset_password`, {
