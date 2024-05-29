@@ -25,12 +25,28 @@ import { ConnectedProps, connect } from 'react-redux';
 import styled from 'styled-components';
 import { RootState } from '../store';
 
+const VMain = styled.div`
+  display: flex;
+  flex-direction: column;
+  justify-content: start;
+  min-height: 100vh;
+`;
+
+const Filler = styled.div`
+  align-self: center;
+  flex-grow: 1;
+`;
+
 const Img = styled.img`
+  flex-grow: 0;
   width: 30vw;
   height: 30vw;
+  align-self: center;
 `;
 
 const Paragraph = styled.p`
+  align-self: center;
+  flex-grow: 0;
   text-align: justify;
   margin: 10px;
   padding: 5px;
@@ -42,8 +58,10 @@ const Paragraph = styled.p`
 `;
 
 const LinkParagraph = styled.p`
+  flex-grow: 0;
   margin: 10px;
   padding: 5px;
+  align-self: center;
 `;
 
 const Link = styled.a`
@@ -65,6 +83,19 @@ const Link = styled.a`
   }
 `;
 
+const SmallLink = styled.a`
+  color: silver;
+  text-decoration: none;
+
+  &:visited {
+    color: silver;
+  }
+
+  &:hover {
+    color: lightgray;
+  }
+`;
+
 interface WelcomeProps extends ConnectWelcome {
   appName: string;
 }
@@ -74,7 +105,7 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
   render() {
     const { user, appName } = this.props;
     return (
-      <div>
+      <VMain>
         <h3>Welcome to the {appName}!</h3>
         <Paragraph>
           The <strong>{appName}</strong> is a unique swarm-based ML compute
@@ -93,11 +124,14 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
           )}
         </LinkParagraph>
         <Img src="/logo_inv_lg.png" />
-        <Paragraph>
-          2024 &copyright;{' '}
-          <Link href="https://www.josuakrause.com/">Josua Krause</Link>
-        </Paragraph>
-      </div>
+        <Filler />
+        <LinkParagraph>
+          2024 &copy;{' '}
+          <SmallLink href="https://www.josuakrause.com/">
+            Josua Krause
+          </SmallLink>
+        </LinkParagraph>
+      </VMain>
     );
   }
 }
