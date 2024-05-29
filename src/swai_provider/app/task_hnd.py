@@ -102,6 +102,7 @@ class TaskHandler:
             task_id: TaskId,
             response: ResponseObject) -> None:
         obj = self._json()
+        obj["worker_name"] = self._worker_name
         obj["task_id"] = task_id.to_parseable()
         obj["response"] = response_to_redis(response)
         resp = self._api.post(

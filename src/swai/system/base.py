@@ -41,6 +41,7 @@ WorkerStatus = Literal[
     "offline",
 ]
 WORKER_STATUS: set[WorkerStatus] = set(get_args(WorkerStatus))
+WORKER_UNAVAILABLE: set[WorkerStatus] = {"offline", "unknown"}
 
 
 STATUS_MAPPING: dict[WorkerStatus, int] = {

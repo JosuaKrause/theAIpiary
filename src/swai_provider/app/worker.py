@@ -109,7 +109,6 @@ def task_loop() -> None:
         done = True
         with cond:
             cond.notify_all()
-        # FIXME send a requeue command for the current task
 
     add_shutdown_hook(hook)
 

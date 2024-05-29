@@ -18,6 +18,8 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
+import json
+import threading
 from collections.abc import Iterable
 from typing import TypeAlias, TypedDict
 
@@ -29,6 +31,7 @@ from scattermind.system.response import (
     redis_to_response,
     response_to_redis,
     ResponseObject,
+    TASK_COMPLETE,
     TASK_STATUS_BUSY,
     TASK_STATUS_UNKNOWN,
     TASK_STATUS_WAIT,
@@ -36,17 +39,19 @@ from scattermind.system.response import (
     to_status,
 )
 from scattermind.system.session.session import SessionStore
+from scattermind.system.util import json_compact
 
 from swai.system.base import (
     get_worker_id,
     to_worker_status,
+    WORKER_UNAVAILABLE,
     WorkerId,
     WorkerStatus,
 )
 
 
-HEARTBEAT = 10 * 60  # 10min
-WORKER_GRACE = 30 * 24 * 60 * 60  # 1month
+HEARTBEAT = 10.0 * 60.0  # 10min
+WORKER_GRACE = 30.0 * 24.0 * 60.0 * 60.0  # 1month
 
 
 InputStr: TypeAlias = str
@@ -59,11 +64,60 @@ WorkerInfo = TypedDict('WorkerInfo', {
 })
 
 
+TaskWorker = TypedDict('TaskWorker', {
+    "worker_id": WorkerId,
+    "ns": GNamespace,
+})
+TaskWorkerJSON = TypedDict('TaskWorkerJSON', {
+    "worker_id": WorkerId,
+    "ns": str,
+})
+
+
+def redis_to_task_worker(text: str | None) -> TaskWorker | None:
+    if not text:
+        return None
+    obj: TaskWorkerJSON = json.loads(text)
+    return {
+        "ns": GNamespace(obj["ns"]),
+        "worker_id": obj["worker_id"],
+    }
+
+
+def task_worker_to_redis(task_worker: TaskWorker) -> str:
+    obj: TaskWorkerJSON = {
+        "ns": task_worker["ns"].get(),
+        "worker_id": task_worker["worker_id"],
+    }
+    return json_compact(obj)
+
+
 # FIXME: replace task queue with scattermind later
 class TaskQueue:
     def __init__(self, session_store: SessionStore, cfg: RedisConfig) -> None:
         self._session_store = session_store
         self._redis = Redis(cfg=cfg, redis_module="task")
+        self._cleaner_th: threading.Thread | None = None
+        self._cleaner_cond = threading.Condition()
+        self.start_cleaner()
+
+    def start_cleaner(self) -> None:
+        cleaner_cond = self._cleaner_cond
+        with cleaner_cond:
+            if self._cleaner_th is not None:
+                cleaner_cond.notify_all()
+                return
+
+            def run() -> None:
+                cleaner_freq = HEARTBEAT * 0.5
+                while th is self._cleaner_th:
+                    with cleaner_cond:
+                        cleaner_cond.wait(cleaner_freq)
+                    self.requeue_unavailable_worker_tasks()
+
+            th = threading.Thread(target=run, daemon=True)
+            self._cleaner_th = th
+            th.start()
 
     @staticmethod
     def queue_channel() -> str:
@@ -86,8 +140,8 @@ class TaskQueue:
         return f"status:{task_id.to_parseable()}"
 
     @staticmethod
-    def task_worker_key(task_id: TaskId) -> str:
-        return f"worker:{task_id.to_parseable()}"
+    def task_worker_key(task_id: TaskId | None) -> str:
+        return f"worker:{'' if task_id is None else task_id.to_parseable()}"
 
     @staticmethod
     def worker_heartbeat_key(worker_id: WorkerId) -> str:
@@ -114,6 +168,8 @@ class TaskQueue:
                 self.worker_heartbeat_key(worker_id),
                 worker_status,
                 expire_in=heartbeat)
+        if worker_status == "offline":
+            self.start_cleaner()
         return heartbeat * 0.5
 
     def get_worker_info(self, worker_id: WorkerId) -> WorkerInfo:
@@ -177,7 +233,12 @@ class TaskQueue:
                 task_id = TaskId.parse(task)
                 input_str = redis.get_value(self.input_key(task_id))
                 if input_str is not None:
-                    redis.set_value(self.task_worker_key(task_id), worker_id)
+                    redis.set_value(
+                        self.task_worker_key(task_id),
+                        task_worker_to_redis({
+                            "ns": ns,
+                            "worker_id": worker_id,
+                        }))
                     self.set_status(task_id, TASK_STATUS_BUSY)
                     self.heartbeat(
                         user_email=user_email,
@@ -188,6 +249,30 @@ class TaskQueue:
             return None
 
         return redis.wait_for(queue_channel, get_task, timeout=timeout)
+
+    def requeue_unavailable_worker_tasks(self) -> None:
+        redis = self._redis
+        prefix = self.task_worker_key(None)
+        for worker_key in redis.keys(match=f"{prefix}*", block=False):
+            task_worker = redis_to_task_worker(redis.get_value(worker_key))
+            if task_worker is None:
+                continue
+            info = self.get_worker_info(task_worker["worker_id"])
+            if info["status"] not in WORKER_UNAVAILABLE:
+                continue
+            task_id = TaskId.parse(worker_key.removeprefix(prefix))
+            task_status = self.get_status(task_id)
+            if task_status in TASK_COMPLETE:
+                # FIXME: maybe clean up task / worker here?
+                # might be a race-condition; so let's not do that for now
+                continue
+            with redis.pipeline() as pipe:
+                pipe.lpush(
+                    self.queue_key(task_worker["ns"]),
+                    task_id.to_parseable())
+                pipe.set_value(self.status_key(task_id), TASK_STATUS_WAIT)
+                pipe.delete(worker_key)
+            redis.publish(self.queue_channel(), "task")
 
     def get_status(self, task_id: TaskId | None) -> TaskStatus:
         if task_id is None:
@@ -217,10 +302,19 @@ class TaskQueue:
     def set_result(
             self,
             task_id: TaskId,
+            *,
+            user_email: UName,
+            worker_name: str,
             response: ResponseObject) -> None:
         redis = self._redis
-        output_key = self.output_key(task_id)
         task_worker_key = self.task_worker_key(task_id)
+        task_worker = redis_to_task_worker(
+            redis.get_value(task_worker_key))
+        worker_id = get_worker_id(user_email, worker_name)
+        if task_worker is None or task_worker["worker_id"] != worker_id:
+            # NOTE: we are too late; someone else computed it; ignore results
+            return
+        output_key = self.output_key(task_id)
         self.set_status(task_id, response["status"])
         redis.set_value(output_key, response_to_redis(response))
         redis.delete(task_worker_key)

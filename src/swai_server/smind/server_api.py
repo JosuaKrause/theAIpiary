@@ -75,6 +75,8 @@ def start_llama_response(
         set_interrupted(session, prev_task_id)
         result = queue.wait_for(prev_task_id, timeout=DEFAULT_TIMEOUT)
         if result is None:
+            # FIXME: how to handle if a worker disappears, the user cancels,
+            # and then the worker comes back
             raise ValueError(
                 f"could not terminate previous task {prev_task_id}")
         try:

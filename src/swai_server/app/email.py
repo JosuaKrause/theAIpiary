@@ -69,8 +69,6 @@ contributing compute, you can still utilize the power of the swarm.
 
 Please activate your account by clicking here.
 
-If you need assistance, our support team is ready to help.
-
 Best
 """
 

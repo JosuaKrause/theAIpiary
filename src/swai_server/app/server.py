@@ -541,10 +541,16 @@ def setup(
     @server.json_post(f"{prefix}/task/finish")
     @server.middleware(verify_worker_token)
     def _post_task_finish(_req: QSRH, rargs: ReqArgs) -> TaskFinishResponse:
+        user_email: UName = rargs["meta"]["user_email"]
         args = rargs["post"]
+        worker_name: str = args["worker_name"]
         task_id = TaskId.parse(args["task_id"])
         response = redis_to_response(args["response"])
-        task_queue.set_result(task_id, response)
+        task_queue.set_result(
+            task_id,
+            user_email=user_email,
+            worker_name=worker_name,
+            response=response)
         return {
             "well_done": True,
         }
