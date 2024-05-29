@@ -106,8 +106,6 @@ export type ApiChatSessionsResponse = {
 
 type UserCapabilities = {
   changeCapabilities: Readonly<boolean>;
-  resetOwnPassword: Readonly<boolean>;
-  resetOtherPassword: Readonly<boolean>;
   logoutOtherUser: Readonly<boolean>;
   createUser: Readonly<boolean>;
   listUsers: Readonly<boolean>;
@@ -130,8 +128,6 @@ export type LoginInfo = {
 
 type ApiUserCapability =
   | 'change_capabilities'
-  | 'reset_own_password'
-  | 'reset_other_password'
   | 'logout_other_user'
   | 'create_user'
   | 'list_users'
@@ -190,8 +186,6 @@ export type ApiWorkerTokenResponse = {
 
 const NO_CAPABILITIES: Readonly<UserCapabilities> = {
   changeCapabilities: false,
-  resetOwnPassword: false,
-  resetOtherPassword: false,
   logoutOtherUser: false,
   createUser: false,
   listUsers: false,
@@ -220,12 +214,6 @@ export function toUserOrMessage(
     switch (cap) {
       case 'change_capabilities':
         capabilities.changeCapabilities = true;
-        break;
-      case 'reset_own_password':
-        capabilities.resetOwnPassword = true;
-        break;
-      case 'reset_other_password':
-        capabilities.resetOtherPassword = true;
         break;
       case 'logout_other_user':
         capabilities.logoutOtherUser = true;

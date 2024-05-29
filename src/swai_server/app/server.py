@@ -383,7 +383,7 @@ def setup(
             }
         for cap in DEFAULT_CAPABILITIES:
             sec_ctx.force_capability(new_email, cap, has=True)
-        reset_token = sec_ctx.force_reset_token(new_email)
+        reset_token = sec_ctx.generate_reset_token(new_email)
         user_info = sec_ctx.force_user_info(user_email)
         send_create_user(
             email_config,
@@ -431,14 +431,12 @@ def setup(
         }
 
     @server.json_post(f"{prefix}/user/reset_password_token")
-    @server.middleware(verify_user_session)
     def _post_user_reset_password_token(
             _req: QSRH, rargs: ReqArgs) -> ResetTokenResponse:
-        user_session: SessionToken = rargs["meta"]["user_session"]
         args = rargs["post"]
         user_name: str = args["name"]
         user_email = UName(user_name)
-        reset_token = sec_ctx.generate_reset_token(user_session, user_email)
+        reset_token = sec_ctx.generate_reset_token(user_email)
         if reset_token is None:
             return {
                 "email": None,

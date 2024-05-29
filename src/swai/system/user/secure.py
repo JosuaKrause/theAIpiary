@@ -33,8 +33,6 @@ from swai.system.user.manager import (
     CAP_READ_OTHER_CHAT,
     CAP_REGISTER_OTHER_WORKER,
     CAP_REGISTER_OWN_WORKER,
-    CAP_RESET_OTHER_PW,
-    CAP_RESET_OWN_PW,
     CAP_WRITE_OTHER_CHAT,
     CapabilityName,
     RawPassword,
@@ -141,16 +139,7 @@ class SecureContext:
         self.ensure_can_act(who, email=None, admin_capability=CAP_CREATE_USER)
         return self._user_mng.create_user(email, display_name)
 
-    def generate_reset_token(
-            self, who: SessionToken, email: UName) -> ResetToken | None:
-        self.ensure_can_act(
-            who,
-            email=email,
-            own_capability=CAP_RESET_OWN_PW,
-            admin_capability=CAP_RESET_OTHER_PW)
-        return self.force_reset_token(email)
-
-    def force_reset_token(self, email: UName) -> ResetToken | None:
+    def generate_reset_token(self, email: UName) -> ResetToken | None:
         return self._user_mng.generate_reset_token(email)
 
     def set_password(

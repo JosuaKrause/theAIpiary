@@ -42,8 +42,6 @@ INVALID_WORKER_TOKEN: WorkerToken = uuid.UUID(
 
 CapabilityName = Literal[
     "change_capabilities",
-    "reset_own_password",
-    "reset_other_password",
     "logout_other_user",
     "create_user",
     "list_users",
@@ -54,8 +52,6 @@ CapabilityName = Literal[
 ]
 CAPABILITIES: tuple[CapabilityName] = get_args(CapabilityName)
 CAP_CHANGE_CAPABILITIES: CapabilityName = "change_capabilities"
-CAP_RESET_OWN_PW: CapabilityName = "reset_own_password"
-CAP_RESET_OTHER_PW: CapabilityName = "reset_other_password"
 CAP_LOGOUT_OTHER_USER: CapabilityName = "logout_other_user"
 CAP_CREATE_USER: CapabilityName = "create_user"
 CAP_LIST_USERS: CapabilityName = "list_users"
@@ -66,7 +62,6 @@ CAP_REGISTER_OTHER_WORKER: CapabilityName = "register_other_worker"
 
 
 DEFAULT_CAPABILITIES: set[CapabilityName] = {
-    CAP_RESET_OWN_PW,
     CAP_REGISTER_OWN_WORKER,
 }
 
