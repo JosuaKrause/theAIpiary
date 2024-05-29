@@ -40,9 +40,7 @@ const VMain = styled.div`
 `;
 
 const ResetPasswordHeader = styled.h3`
-  @media (hover: none) and (max-width: 480px) {
-    padding-left: 5px;
-  }
+  padding-left: 5px;
 `;
 
 const ResetPasswordForm = styled.form`

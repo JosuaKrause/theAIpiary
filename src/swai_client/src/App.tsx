@@ -171,7 +171,10 @@ class App extends PureComponent<AppProps, AppState> {
                     userActions={this.userActions}
                     redirect={true}
                     show={false}>
-                    <Profile userActions={this.userActions} />
+                    <Profile
+                      appName={appName}
+                      userActions={this.userActions}
+                    />
                   </UserButton>
                 }
               />

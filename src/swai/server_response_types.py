@@ -32,6 +32,7 @@ UserLogged = TypedDict('UserLogged', {
     "email": str,
     "display_name": str,
     "capabilities": list[CapabilityName],
+    "discord": str | None,
 })
 UserNotLogged = TypedDict('UserNotLogged', {
     "logged": Literal[False],

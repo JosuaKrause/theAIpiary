@@ -36,6 +36,8 @@ import { redirectWelcome } from '../misc/common';
 import { WORKER_UPDATE } from '../misc/constants';
 import { RootState } from '../store';
 import AutoHide from './AutoHide';
+import Discord from './Discord';
+import Logo from './Logo';
 import UserActions from './UserActions';
 
 const VMain = styled.div`
@@ -50,15 +52,26 @@ const VMain = styled.div`
   }
 `;
 
-const Header = styled.h3`
+const HeaderRow = styled.div`
   margin: 20px 0;
   padding-top: 20px;
-  text-align: left;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+`;
 
-  @media (hover: none) and (max-width: 480px) {
-    padding-left: 5px;
-    margin-left: 5px;
-  }
+const HeaderBand = styled.div`
+  margin-left: 5px;
+  padding-left: 5px;
+  display: flex;
+  flex-direction: row;
+  justify-content: left;
+`;
+
+const Header = styled.h3`
+  text-align: left;
+  align-self: center;
+  padding-left: 10px;
 `;
 
 const Label = styled.label`
@@ -80,6 +93,26 @@ const Link = styled.a`
   color: silver;
   text-decoration: none;
   text-align: left;
+
+  &:visited {
+    color: silver;
+  }
+
+  &:hover {
+    color: lightgray;
+    background-color: var(--button-background);
+  }
+`;
+
+const SessionLink = styled.a`
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: bold;
+  color: silver;
+  text-decoration: none;
+  text-align: left;
+  white-space: nowrap;
 
   &:visited {
     color: silver;
@@ -147,13 +180,13 @@ const Group = styled.fieldset<GroupProps>`
   margin: 5px;
   padding: 5px;
   border: 1px solid darkgray;
+  min-width: 0;
   width: 100%;
 
   ${({ maxHeight }) => styleGroup(maxHeight)}
 
   @media (hover: none) and (max-width: 480px) {
     width: calc(100vw - 10px);
-    padding-right: 0;
     margin-right: 0;
   }
 `;
@@ -161,6 +194,31 @@ const Group = styled.fieldset<GroupProps>`
 const GroupTitle = styled.legend`
   text-align: left;
   padding: 5px;
+`;
+
+const SessionGroup = styled.fieldset<GroupProps>`
+  margin: 5px;
+  padding: 5px;
+  border: 1px solid darkgray;
+  width: 100%;
+  min-width: 0;
+  max-width: 60vw;
+
+  ${({ maxHeight }) => styleGroup(maxHeight)}
+
+  overflow-x: hidden;
+
+  @media (hover: none) and (max-width: 480px) {
+    width: calc(100vw - 10px);
+    max-width: 100vw;
+    margin-right: 0;
+  }
+`;
+
+const SessionRow = styled.div`
+  display: flex;
+  flex-direction: row;
+  justify-content: start;
 `;
 
 const Row = styled.div`
@@ -184,6 +242,7 @@ const RowParagraph = styled.p`
 
 interface ProfileProps extends ConnectProfile {
   userActions: UserActions;
+  appName: string;
 }
 type EmptyProfileProps = {
   userActions: undefined;
@@ -328,26 +387,32 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
   };
 
   render() {
-    const { user } = this.props;
+    const { user, appName } = this.props;
     const { workerToken, createdUserMessage, users, chats, workers } =
       this.state;
     return (
       <VMain>
-        <Header>
-          Welcome, {user?.displayName} (
-          <AutoHide title="@">{user?.email}</AutoHide>)
-        </Header>
+        <HeaderRow>
+          <HeaderBand>
+            <Logo appName={appName} />
+            <Header>
+              Welcome, {user?.displayName} (
+              <AutoHide title="@">{user?.email}</AutoHide>)
+            </Header>
+          </HeaderBand>
+          <Discord />
+        </HeaderRow>
         {chats.length ? (
-          <Group maxHeight={200}>
+          <SessionGroup maxHeight={200}>
             <GroupTitle>Chats</GroupTitle>
             {chats.map(({ session: chatId, summary }) => (
-              <Row key={`${chatId}`}>
-                <Link href={`/chat?session=${chatId}`}>
+              <SessionRow key={`${chatId}`}>
+                <SessionLink href={`/chat?session=${chatId}`}>
                   {summary ? summary : `Chat (${chatId})`}
-                </Link>
-              </Row>
+                </SessionLink>
+              </SessionRow>
             ))}
-          </Group>
+          </SessionGroup>
         ) : null}
         <Group>
           <Row>

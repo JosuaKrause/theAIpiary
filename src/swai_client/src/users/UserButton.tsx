@@ -38,7 +38,7 @@ const Circle = styled.div`
   border-radius: 25px;
   color: black;
   border-color: black;
-  background-color: pink;
+  background-color: #eb459e;
   overflow: hidden;
 `;
 

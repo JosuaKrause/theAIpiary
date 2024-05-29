@@ -104,9 +104,10 @@ SHORT_HARD_LENGTH = 80
 
 
 def shorten(text: str) -> str:
+    text = text.strip()
     if len(text) < SHORT_LENGTH:
         return text
     match = SHORT_PAT.search(text, SHORT_LENGTH, SHORT_HARD_LENGTH)
     if match is None:
-        return f"{text[:SHORT_HARD_LENGTH]}..."
+        return text[:SHORT_HARD_LENGTH].strip()
     return text[:match.end() + 1].strip()

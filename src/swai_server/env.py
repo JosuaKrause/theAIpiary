@@ -33,8 +33,10 @@ EnvPath = Literal[
 EnvStr = Literal[
     "ADMIN_EMAIL",
     "ADMIN_PW",
+    "DISCORD_URL",
     "HOST",
     "OWN_EMAIL",
+    "OWN_URL",
     "REDIS_HOST",
     "REDIS_PREFIX",
     "REDIS_PW",

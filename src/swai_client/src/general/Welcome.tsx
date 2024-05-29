@@ -20,7 +20,7 @@
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the software.
  */
-import { PureComponent } from 'react';
+import React, { PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
 import styled from 'styled-components';
 import { RootState } from '../store';
@@ -118,7 +118,16 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
         </Paragraph>
         <LinkParagraph>
           {user ? (
-            <Link href="/profile">Profile</Link>
+            <React.Fragment>
+              <Link href="/profile">Profile</Link>
+              {user.discord ? (
+                <Link
+                  href={user.discord}
+                  title="Join the Discord Server!">
+                  Discord
+                </Link>
+              ) : null}
+            </React.Fragment>
           ) : (
             <Link href="/login">Login</Link>
           )}

@@ -173,6 +173,10 @@ def setup(
         admin_email = UName(admin_email_str)
         print(f"admin is {admin_email.get()}")
 
+    discord: str | None = envload_str("DISCORD_URL", default="")
+    if not discord:
+        discord = None
+
     session_store = create_session_store(config)
     task_queue = TaskQueue(session_store, config["task_queue"])
     sec_ctx = SecureContext(load_user_manager(
@@ -315,6 +319,7 @@ def setup(
             "email": user_info["email"].get(),
             "display_name": user_info["display_name"],
             "capabilities": sorted(user_info["capabilities"]),
+            "discord": discord,
         }
 
     @server.json_post(f"{prefix}/user/login")
@@ -341,6 +346,7 @@ def setup(
             "email": user_info["email"].get(),
             "display_name": user_info["display_name"],
             "capabilities": sorted(user_info["capabilities"]),
+            "discord": discord,
         }
 
     @server.json_post(f"{prefix}/user/create")

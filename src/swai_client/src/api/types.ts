@@ -121,6 +121,7 @@ export type User = {
   email: Readonly<UserEmail>;
   displayName: Readonly<DisplayName>;
   capabilities: Readonly<UserCapabilities>;
+  discord: Readonly<string> | undefined;
 };
 export type LoginInfo = {
   logged: false;
@@ -144,6 +145,7 @@ export type ApiLoginResponse =
       email: Readonly<UserEmail>;
       display_name: Readonly<DisplayName>;
       capabilities: Readonly<ApiUserCapability[]>;
+      discord: Readonly<string> | undefined;
     }
   | {
       logged: false;
@@ -207,7 +209,12 @@ export function toUserOrMessage(
     const { message } = userResp;
     return { logged: false, message };
   }
-  const { capabilities: caps, email, display_name: displayName } = userResp;
+  const {
+    capabilities: caps,
+    email,
+    display_name: displayName,
+    discord,
+  } = userResp;
   const capabilities: UserCapabilities = { ...NO_CAPABILITIES };
   caps.forEach((cap) => {
     switch (cap) {
@@ -248,6 +255,7 @@ export function toUserOrMessage(
     email,
     displayName,
     capabilities,
+    discord,
   };
 }
 
