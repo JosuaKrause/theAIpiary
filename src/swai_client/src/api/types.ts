@@ -90,7 +90,7 @@ export type ChatTextResponse = {
   status: TaskStatus;
 };
 
-export type ApiSessionInfo = {
+type ApiSessionInfo = {
   model_session: SessionId;
   time: string | undefined;
   summary: string | undefined;
