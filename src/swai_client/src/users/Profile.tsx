@@ -256,6 +256,7 @@ type ProfileState = {
   workers: WorkerInfo[];
   createdUserMessage: string | null;
   workerToken: Readonly<WorkerToken> | null;
+  inFlightUserCreation: boolean;
 };
 
 class Profile extends PureComponent<ProfileProps, ProfileState> {
@@ -273,6 +274,7 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
       workers: [],
       createdUserMessage: null,
       workerToken: null,
+      inFlightUserCreation: false,
     };
     this.createNameRef = React.createRef();
     this.createEmailRef = React.createRef();
@@ -290,6 +292,7 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
         workers: [],
         createdUserMessage: null,
         workerToken: null,
+        inFlightUserCreation: false,
       },
     );
   }
@@ -372,18 +375,36 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
       });
       return;
     }
-    userActions.createUser(email, displayName, (newEmail) => {
-      if (newEmail) {
-        emailInput.value = '';
-        nameInput.value = '';
-        this.setState({
-          createdUserMessage: `Sent email to: ${newEmail}`,
-          initUsers: false,
+    const { inFlightUserCreation } = this.state;
+    if (inFlightUserCreation) {
+      this.setState({
+        createdUserMessage:
+          "Clicking the button multiple times won't make it go faster!",
+      });
+      return;
+    }
+    this.setState(
+      {
+        inFlightUserCreation: true,
+      },
+      () => {
+        userActions.createUser(email, displayName, (newEmail) => {
+          if (newEmail) {
+            emailInput.value = '';
+            nameInput.value = '';
+            this.setState({
+              createdUserMessage: `Sent email to: ${newEmail}`,
+              initUsers: false,
+            });
+          } else {
+            this.setState({ createdUserMessage: 'Could not create user!' });
+          }
+          this.setState({
+            inFlightUserCreation: false,
+          });
         });
-      } else {
-        this.setState({ createdUserMessage: 'Could not create user!' });
-      }
-    });
+      },
+    );
   };
 
   render() {

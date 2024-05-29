@@ -97,6 +97,7 @@ type ResetPasswordProps = {
 type ResetPasswordState = {
   message: string | null;
   resetToken: ResetToken | undefined;
+  inFlightCreateResetToken: boolean;
 };
 
 export default class ResetPassword extends PureComponent<
@@ -109,7 +110,11 @@ export default class ResetPassword extends PureComponent<
 
   constructor(props: Readonly<ResetPasswordProps>) {
     super(props);
-    this.state = { message: null, resetToken: undefined };
+    this.state = {
+      message: null,
+      resetToken: undefined,
+      inFlightCreateResetToken: false,
+    };
     this.nameRef = React.createRef();
     this.newPasswordRef = React.createRef();
     this.confirmPasswordRef = React.createRef();
@@ -119,6 +124,7 @@ export default class ResetPassword extends PureComponent<
     this.componentDidUpdate(undefined, {
       message: null,
       resetToken: undefined,
+      inFlightCreateResetToken: false,
     });
   }
 
@@ -183,7 +189,7 @@ export default class ResetPassword extends PureComponent<
 
   handleCreateResetTokenSubmit: FormEventHandler<HTMLFormElement> = (e) => {
     e.preventDefault();
-    const { resetToken } = this.state;
+    const { resetToken, inFlightCreateResetToken } = this.state;
     if (resetToken) {
       this.setState({
         message: 'Reset token already set!',
@@ -201,19 +207,35 @@ export default class ResetPassword extends PureComponent<
       });
       return;
     }
+    if (inFlightCreateResetToken) {
+      this.setState({
+        message: "Clicking the button multiple times won't make it go faster!",
+      });
+      return;
+    }
     const { userActions } = this.props;
-    userActions.resetPassword(name, (email) => {
-      if (email) {
-        this.setState({
-          message: `Instructions sent to ${email}!`,
+    this.setState(
+      {
+        inFlightCreateResetToken: true,
+      },
+      () => {
+        userActions.resetPassword(name, (email) => {
+          if (email) {
+            this.setState({
+              message: `Instructions sent to ${email}!`,
+            });
+            nameInput.value = '';
+          } else {
+            this.setState({
+              message: `Incorrect email or try again in a few minutes!`,
+            });
+          }
+          this.setState({
+            inFlightCreateResetToken: false,
+          });
         });
-        nameInput.value = '';
-      } else {
-        this.setState({
-          message: `Incorrect email or try again in a few minutes!`,
-        });
-      }
-    });
+      },
+    );
   };
 
   render() {
