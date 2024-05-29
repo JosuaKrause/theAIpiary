@@ -90,8 +90,18 @@ export type ChatTextResponse = {
   status: TaskStatus;
 };
 
+export type ApiSessionInfo = {
+  model_session: SessionId;
+  time: string | undefined;
+  summary: string | undefined;
+};
+export type SessionInfo = {
+  session: SessionId;
+  time: string | undefined;
+  summary: string | undefined;
+};
 export type ApiChatSessionsResponse = {
-  model_sessions: SessionId[];
+  model_sessions: ApiSessionInfo[];
 };
 
 type UserCapabilities = {

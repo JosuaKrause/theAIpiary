@@ -25,7 +25,7 @@ import { ConnectedProps, connect } from 'react-redux';
 import styled, { css } from 'styled-components';
 import {
   DisplayName,
-  SessionId,
+  SessionInfo,
   UserEmail,
   UserInfo,
   WorkerInfo,
@@ -192,7 +192,7 @@ type ProfileState = {
   initUsers: boolean;
   users: UserInfo[];
   initChats: boolean;
-  chats: SessionId[];
+  chats: SessionInfo[];
   initWorkers: boolean;
   workers: WorkerInfo[];
   createdUserMessage: string | null;
@@ -340,9 +340,11 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
         {chats.length ? (
           <Group maxHeight={200}>
             <GroupTitle>Chats</GroupTitle>
-            {chats.map((chatId) => (
+            {chats.map(({ session: chatId, summary }) => (
               <Row key={`${chatId}`}>
-                <Link href={`/chat?session=${chatId}`}>Chat ({chatId})</Link>
+                <Link href={`/chat?session=${chatId}`}>
+                  {summary ? summary : `Chat (${chatId})`}
+                </Link>
               </Row>
             ))}
           </Group>

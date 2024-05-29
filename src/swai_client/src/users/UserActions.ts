@@ -26,7 +26,7 @@ import {
   LoginInfo,
   Password,
   ResetToken,
-  SessionId,
+  SessionInfo,
   User,
   UserEmail,
   UserInfo,
@@ -37,7 +37,7 @@ import {
 type UserCallback = (user: Readonly<User> | Readonly<LoginInfo>) => void;
 type EmailOpCallback = (email: Readonly<UserEmail> | undefined) => void;
 type UserListCallback = (users: UserInfo[]) => void;
-type ChatListCallback = (chats: SessionId[]) => void;
+type ChatListCallback = (chats: SessionInfo[]) => void;
 type WorkerListCallback = (workers: WorkerInfo[]) => void;
 
 export default class UserActions {

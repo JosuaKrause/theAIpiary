@@ -34,7 +34,7 @@ from scattermind.system.io import open_readb, open_writeb, remove_file
 from scattermind.system.names import GNamespace, UName
 from scattermind.system.response import redis_to_response
 from scattermind.system.session.session import Session
-from scattermind.system.util import get_time_str, to_bool
+from scattermind.system.util import get_time_str, parse_time_str, to_bool
 
 from swai.auth import parse_authorization
 from swai.clean import sanity_check
@@ -65,7 +65,7 @@ from swai.server_response_types import (
     WorkerUserResponse,
     WorkerValueResponse,
 )
-from swai.system.base import STATUS_MAPPING, to_worker_status
+from swai.system.base import SessionInfoJSON, STATUS_MAPPING, to_worker_status
 from swai.system.user.loader import load_user_manager
 from swai.system.user.manager import (
     DEFAULT_CAPABILITIES,
@@ -80,6 +80,7 @@ from swai_server.config import get_config
 from swai_server.env import envload_int, envload_path, envload_str
 from swai_server.smind.server_api import (
     create_session_store,
+    get_session_info,
     init_llama,
     list_sessions,
     recover_llama_chat,
@@ -785,11 +786,22 @@ def setup(
         user_email: UName = rargs["meta"]["user_email"]
         user_id = sec_ctx.get_user_id(user_session, user_email)
         sessions = list_sessions(session_store, user_id)
+
+        def sort_key(info: SessionInfoJSON) -> float:
+            timestamp = (
+                0
+                if info["time"] is None
+                else parse_time_str(info["time"]).timestamp())
+            return timestamp
+
         return {
-            "model_sessions": [
-                session.get_session_id().to_parseable()
-                for session in sessions
-            ],
+            "model_sessions": sorted(
+                (
+                    get_session_info(session)
+                    for session in sessions
+                ),
+                key=sort_key,
+                reverse=True),
         }
 
     @server.json_post(f"{prefix}/chat/new")

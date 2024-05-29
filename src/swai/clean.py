@@ -96,3 +96,17 @@ def sanity_check(text: str | None) -> str | None:
         raise ValueError(
             f"{canonical=} in {text=}! this might be a bug on the sender side")
     return text
+
+
+SHORT_PAT = re.compile(r".\b")
+SHORT_LENGTH = 60
+SHORT_HARD_LENGTH = 80
+
+
+def shorten(text: str) -> str:
+    if len(text) < SHORT_LENGTH:
+        return text
+    match = SHORT_PAT.search(text, SHORT_LENGTH, SHORT_HARD_LENGTH)
+    if match is None:
+        return f"{text[:SHORT_HARD_LENGTH]}..."
+    return text[:match.end() + 1].strip()

@@ -23,7 +23,9 @@ from scattermind.system.names import GNamespace
 from scattermind.system.response import response_ok, TASK_COMPLETE
 from scattermind.system.session.loader import load_session_store
 from scattermind.system.session.session import Session, SessionStore
+from scattermind.system.util import get_time_str
 
+from swai.clean import shorten
 from swai.smind.llama_session import (
     ChunkPosition,
     get_active_task,
@@ -35,6 +37,7 @@ from swai.smind.llama_session import (
     set_interrupted,
     VisibleMessage,
 )
+from swai.system.base import SessionInfoJSON
 from swai_server.auction.queue import TaskQueue
 from swai_server.config import Config
 
@@ -82,6 +85,10 @@ def start_llama_response(
     return do_enqueue(queue, ns, prompt, session)
 
 
+SESSION_TIME_KEY = "session_time"
+SESSION_SUMMARY_KEY = "session_summary"
+
+
 def do_enqueue(
         queue: TaskQueue,
         ns: GNamespace,
@@ -93,8 +100,19 @@ def do_enqueue(
             "prompt": prompt,
             "session": session,
         })
+    session.set_value(SESSION_TIME_KEY, 0, get_time_str())
+    if not session.get_length(SESSION_SUMMARY_KEY):
+        session.set_value(SESSION_SUMMARY_KEY, 0, shorten(prompt))
     set_active_task(session, task_id)
     return task_id
+
+
+def get_session_info(session: Session) -> SessionInfoJSON:
+    return {
+        "model_session": session.get_session_id().to_parseable(),
+        "time": session.get_value(SESSION_TIME_KEY, 0),
+        "summary": session.get_value(SESSION_SUMMARY_KEY, 0),
+    }
 
 
 def retrieve_llama_response(

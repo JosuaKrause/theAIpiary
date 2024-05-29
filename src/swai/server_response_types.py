@@ -23,7 +23,7 @@ from typing import Literal, NotRequired, TypedDict
 from scattermind.system.response import TaskStatus
 
 from swai.smind.llama_session import VisibleMessage
-from swai.system.base import WorkerId, WorkerStatus
+from swai.system.base import SessionInfoJSON, WorkerId, WorkerStatus
 from swai.system.user.manager import CapabilityName, WorkerToken
 
 
@@ -110,7 +110,7 @@ VersionResponse = TypedDict('VersionResponse', {
     "error": list[str] | None,
 })
 ChatListResponse = TypedDict('ChatListResponse', {
-    "model_sessions": list[str],
+    "model_sessions": list[SessionInfoJSON],
 })
 ChatInitResponse = TypedDict('ChatInitResponse', {
     "model_session": str,

@@ -32,7 +32,7 @@ import {
   LoginInfo,
   Password,
   ResetToken,
-  SessionId,
+  SessionInfo,
   User,
   UserEmail,
   UserInfo,
@@ -62,7 +62,7 @@ export type LoginApiProvider = {
   logout: () => Promise<Readonly<User> | Readonly<LoginInfo>>;
   getWorkerToken: () => Promise<Readonly<WorkerToken>>;
   listUsers: () => Promise<UserInfo[]>;
-  listChats: () => Promise<SessionId[]>;
+  listChats: () => Promise<SessionInfo[]>;
   listWorkers: () => Promise<WorkerInfo[]>;
 };
 
@@ -202,7 +202,11 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     checkResponse(res);
     const { model_sessions: sessions } =
       (await res.json()) as ApiChatSessionsResponse;
-    return sessions;
+    return sessions.map(({ model_session, time, summary }) => ({
+      session: model_session,
+      time,
+      summary,
+    }));
   },
   listWorkers: async () => {
     const res = await fetch(`${URL_PREFIX}/task/workers`, {

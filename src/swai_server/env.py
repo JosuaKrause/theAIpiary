@@ -34,13 +34,18 @@ EnvStr = Literal[
     "ADMIN_EMAIL",
     "ADMIN_PW",
     "HOST",
+    "OWN_EMAIL",
     "REDIS_HOST",
     "REDIS_PREFIX",
     "REDIS_PW",
+    "SMTP_HOST",
+    "SMTP_PW",
+    "SMTP_USER",
 ]
 EnvInt = Literal[
     "PORT",
     "REDIS_PORT",
+    "SMTP_PORT",
 ]
 
 

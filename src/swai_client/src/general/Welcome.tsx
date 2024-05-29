@@ -77,7 +77,7 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
       <div>
         <h3>Welcome to the {appName}!</h3>
         <Paragraph>
-          The <strong>{appName}</strong> is a unique swarm-based inference
+          The <strong>{appName}</strong> is a unique swarm-based ML compute
           engine. Here, members can contribute their spare computational power
           to create a collective intelligence. It&apos;s like a beehive buzzing
           with activity, where every bee plays a part in the success of the
@@ -93,6 +93,10 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
           )}
         </LinkParagraph>
         <Img src="/logo_inv_lg.png" />
+        <Paragraph>
+          2024 &copyright;{' '}
+          <Link href="https://www.josuakrause.com/">Josua Krause</Link>
+        </Paragraph>
       </div>
     );
   }
