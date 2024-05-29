@@ -123,7 +123,6 @@ CREATE_USER_EMAIL = """
 <p>
 Hello [new_name]!
 </p>
-<br/>
 <p>
 [creator] invites you to join the [app], a unique swarm-based ML compute
 engine. Here, you can contribute your computational power to create collective
@@ -134,7 +133,6 @@ contributing compute, you can still utilize the power of the swarm.
 [login_text]
 </p>
 [discord]
-<br/>
 <p>
 Welcome,<br/>
 The [app_name]!
@@ -173,7 +171,6 @@ RESET_PASSWORD_EMAIL = """
 <p>
 Hello [user_name]!
 </p>
-<br/>
 <p>
 We have received a request to reset your password for the [app].
 Please click the link below to reset your password:
@@ -187,7 +184,6 @@ This link will expire in 24 hours.
 <p>
 If you did not request a password reset, please ignore this email.
 </p>
-<br/>
 <p>
 Best regards,<br/>
 The [app_name]!
