@@ -185,8 +185,11 @@ class RedisUserManager(UserManager):
             email: UName,
             hashpw: HashPassword,
             reset_token: ResetToken) -> None:
+        cooldown_key = self._key_pw_cooldown(email)
         reset_key = self._key_pw_reset(reset_token)
-        self._redis.delete(reset_key)
+        with self._redis.pipeline() as pipe:
+            pipe.delete(cooldown_key)
+            pipe.delete(reset_key)
         info = self._get_user_info(email)
         info["hashpw"] = hashpw
         self._set_user_info(info)
