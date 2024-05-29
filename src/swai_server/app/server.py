@@ -461,6 +461,15 @@ def setup(
         if user_email is not None:
             sec_ctx.force_logout_user(user_email)
             send_logout_cookie(req)
+            user_info = sec_ctx.force_user_info(user_email)
+            return {
+                # NOTE: we are not logged in but we need this to redirect!
+                "logged": True,
+                "email": user_info["email"].get(),
+                "display_name": user_info["display_name"],
+                "capabilities": sorted(user_info["capabilities"]),
+                "discord": discord,
+            }
         return {
             "logged": False,
             "message": "password set",

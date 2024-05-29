@@ -71,7 +71,12 @@ def send_email(
     msg["From"] = own_email
     msg["To"] = recipient_email
     msg["Subject"] = subject
-    msg.attach(MIMEText(message, "text/html", "utf-8"))
+    html_message = format_email(
+        EMAIL_BODY,
+        {
+            "email": message,
+        })
+    msg.attach(MIMEText(html_message, "html", "utf-8"))
     with smtplib.SMTP(smtp_host, smtp_port) as mailserver:
         mailserver.ehlo()
         mailserver.starttls()
@@ -100,6 +105,17 @@ APP_NAME = "AIpiary"
 
 def app_str(config: EmailConfig) -> str:
     return f"<a href=\"{config['own_url']}#\">{APP_NAME}</a>"
+
+
+EMAIL_BODY = """
+<!DOCTYPE html>
+<html lang="en">
+<head></head>
+<body>
+[email]
+</body>
+</html>
+"""
 
 
 CREATE_USER_SUBJECT = "[creator_name] Invites You to Join the [app_name]"
