@@ -164,6 +164,9 @@ class SecureContext:
 
     def get_user_info(self, who: SessionToken, email: UName) -> UserInfo:
         self.ensure_can_act(who, email=email, admin_capability=CAP_LIST_USERS)
+        return self.force_user_info(email)
+
+    def force_user_info(self, email: UName) -> UserInfo:
         return self._user_mng.get_user_info(email)
 
     def get_user_id(self, who: SessionToken, email: UName) -> UserId:

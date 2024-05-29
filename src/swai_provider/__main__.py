@@ -19,6 +19,7 @@
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
 import argparse
+import os
 
 from dotenv import load_dotenv
 from quick_server import setup_shutdown
@@ -42,8 +43,11 @@ def run() -> None:
     args = parse_args()
     env_file: str | None = args.env
     if env_file:
-        print(f"loading env {env_file}")
-        load_dotenv(env_file)
+        if os.path.exists(env_file):
+            print(f"could not load env! {env_file} does not exist!")
+        else:
+            print(f"loading env {env_file}")
+            load_dotenv(env_file)
     versions = get_version_strs()
     print(f"python version: {versions['python_version']}")
     print(f"app version: {versions['app_version']}")

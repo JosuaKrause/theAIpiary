@@ -75,6 +75,12 @@ from swai.system.user.manager import (
     SessionToken,
 )
 from swai.system.user.secure import SecureContext
+from swai_server.app.email import (
+    EmailConfig,
+    is_valid_email_config,
+    send_create_user,
+    send_password_reset,
+)
 from swai_server.auction.queue import TaskQueue, WorkerInfo
 from swai_server.config import get_config
 from swai_server.env import envload_int, envload_path, envload_str
@@ -176,6 +182,16 @@ def setup(
     discord: str | None = envload_str("DISCORD_URL", default="")
     if not discord:
         discord = None
+    email_config: EmailConfig = {
+        "own_url": envload_str("OWN_URL", default="").removesuffix("/"),
+        "own_email": envload_str("OWN_EMAIL", default=""),
+        "smtp_host": envload_str("SMTP_HOST", default=""),
+        "smtp_port": envload_int("SMTP_PORT", default=587),
+        "smtp_user": envload_str("SMTP_USER", default=""),
+        "smtp_pw": envload_str("SMTP_PW", default=""),
+    }
+    if not is_valid_email_config(email_config):
+        print("EMAIL CONFIG IS NOT VALID!")
 
     session_store = create_session_store(config)
     task_queue = TaskQueue(session_store, config["task_queue"])
@@ -354,6 +370,7 @@ def setup(
     def _post_user_create(
             _req: QSRH, rargs: ReqArgs) -> ResetTokenResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
+        user_email: UName = rargs["meta"]["user_email"]
         args = rargs["post"]
         new_email_str: str = args["new_email"]
         new_display: str = args["new_display"]
@@ -365,11 +382,14 @@ def setup(
         for cap in DEFAULT_CAPABILITIES:
             sec_ctx.force_capability(new_email, cap, has=True)
         reset_token = sec_ctx.force_reset_token(new_email)
-        # FIXME: send welcome email! (if reset token is None omit that part)
-        if reset_token:
-            print(f"RESET TOKEN for {new_email.get()}: {reset_token}")
-        else:
-            print(f"NO RESET TOKEN for {new_email.get()}")
+        user_info = sec_ctx.force_user_info(user_email)
+        send_create_user(
+            email_config,
+            new_email=new_email,
+            new_display=new_display,
+            creator=user_info,
+            reset_token=reset_token,
+            discord=discord)
         return {
             "email": new_email.get(),
         }
@@ -421,8 +441,11 @@ def setup(
             return {
                 "email": None,
             }
-        # FIXME: send reset password email!
-        print(f"RESET TOKEN for {user_email.get()}: {reset_token}")
+        user_info = sec_ctx.force_user_info(user_email)
+        send_password_reset(
+            email_config,
+            user=user_info,
+            reset_token=reset_token)
         return {
             "email": user_email.get(),
         }
