@@ -18,3 +18,49 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
+from typing import cast, get_args, Literal, TypeAlias, TypedDict
+
+from scattermind.system.names import UName
+from scattermind.system.util import get_short_hash
+
+
+WorkerId: TypeAlias = str
+
+
+def get_worker_id(user_email: UName, worker_name: str) -> WorkerId:
+    if not worker_name:
+        raise ValueError(f"{worker_name=} cannot be empty")
+    return f"{get_short_hash(user_email.get())}-{worker_name}"
+
+
+WorkerStatus = Literal[
+    "unknown",
+    "idle",
+    "busy",
+    "backedup",
+    "offline",
+]
+WORKER_STATUS: set[WorkerStatus] = set(get_args(WorkerStatus))
+WORKER_UNAVAILABLE: set[WorkerStatus] = {"offline", "unknown"}
+
+
+STATUS_MAPPING: dict[WorkerStatus, int] = {
+    "idle": 0,
+    "busy": 1,
+    "backedup": 2,
+    "offline": 3,
+    "unknown": 4,
+}
+
+
+def to_worker_status(text: str) -> WorkerStatus:
+    if text not in WORKER_STATUS:
+        raise ValueError(f"{text=} is not in {WORKER_STATUS}")
+    return cast(WorkerStatus, text)
+
+
+SessionInfoJSON = TypedDict('SessionInfoJSON', {
+    "model_session": str,
+    "time": str | None,
+    "summary": str | None,
+})

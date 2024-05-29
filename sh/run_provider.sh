@@ -25,8 +25,8 @@ set -x
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-ENV_FILE="${ENV_FILE:-.env.provider}"
 BASE="userdata/provider"
+ENV_FILE="${ENV_FILE:-${BASE}/swai/provider.env}"
 ROOT="../.."
 
 mkdir -p "${BASE}/"
@@ -35,7 +35,8 @@ PYTHON="${PYTHON:-python}"
 DATE=$(date "+%Y-%m-%d")
 
 if [ ! -f "${ENV_FILE}" ]; then
-    cp "env_provider_sample" "${ENV_FILE}"
+    mkdir -p "$(dirname -- ${ENV_FILE})"
+    cp "provider.env.sample" "${ENV_FILE}"
     echo "created env file at ${ENV_FILE} please fill in all values and run again"
     exit 1
 else
@@ -54,7 +55,7 @@ start_redis() {
     mkdir -p "${REDIS_PATH}"
     pushd "${REDIS_PATH}"
     redis-server \
-        "../${ROOT}/deploy/redis_local/${REDIS_NAME}.conf" \
+        "../${ROOT}/local/redis/${REDIS_NAME}.conf" \
         --port "${REDIS_PORT}" \
         >> "redis-${DATE}.log" 2>&1 &
     popd
@@ -68,11 +69,12 @@ start_smind() {
     SWAI_USER="${SWAI_USER}" \
     SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
         ${PYTHON} -u -m scattermind \
+        --env "../${ENV_FILE}" \
         --version-file "../${BASE}/version.txt" \
-        --config "../deploy/smind-config-local.json" \
+        --config "../local/smind-config.json" \
         --device "${DEVICE}" \
         worker \
-        --graph "../deploy/graphs_local/" \
+        --graph "../local/graphs/" \
         >> "../${BASE}/smind/smind-${DATE}.log" 2>&1 &
     popd
 }
@@ -83,9 +85,10 @@ start_provider() {
     SWAI_API_URL="${SWAI_API_URL}" \
     SWAI_USER="${SWAI_USER}" \
     SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
-    CONFIG_PATH="../local/local.config.json" \
+    CONFIG_PATH="../local/provider.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
         ${PYTHON} -u -m swai_provider \
+        --env "../${ENV_FILE}" \
         >> "../${BASE}/swai/swai_provider-${DATE}.log" 2>&1
     popd
 }

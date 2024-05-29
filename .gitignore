@@ -11,6 +11,7 @@ __pycache__/
 .ipynb_checkpoints
 __pypackages__/
 /.env*
+/*.env
 .venv
 venv
 .mypy_cache/

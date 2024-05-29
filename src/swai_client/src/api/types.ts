@@ -20,14 +20,37 @@
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the software.
  */
-export type UserName = string & { _userName: void };
+import { redirectLogin } from '../misc/common';
+
+export type UserEmail = string & { _userEmail: void };
+export type DisplayName = string & { _displayName: void };
 export type Password = string & { _password: void };
 export type SessionId = string & { _sessionId: void };
 export type TaskId = string & { _taskId: void };
 export type ResetToken = string & { _resetToken: void };
 export type WorkerToken = string & { _workerToken: void };
+type WorkerId = string & { _workerId: void };
 
 export type Role = 'assistant' | 'user';
+
+type TaskStatus =
+  | 'init'
+  | 'wait'
+  | 'busy'
+  | 'ready'
+  | 'done'
+  | 'deferred'
+  | 'error'
+  | 'unknown';
+
+export type WorkerStatus =
+  | 'unknown'
+  | 'idle'
+  | 'busy'
+  | 'backedup'
+  | 'offline';
+
+export type Thinking = 'inactive' | 'thinking' | 'queued' | 'error';
 
 export type Message = {
   role: Role;
@@ -46,60 +69,115 @@ export type ChatInitResponse = {
 export type ChatRecoverResponse = {
   messages: Message[];
   task: TaskId | undefined;
+  status: TaskStatus;
 };
 
 export type ChatPromptResponse = {
   task: TaskId | undefined;
+  status: TaskStatus;
 };
 
 export type ApiChatTextResponse = {
   diff: string;
   task: Readonly<TaskId> | undefined;
   next_index: number | undefined;
+  status: TaskStatus;
 };
 export type ChatTextResponse = {
   diff: string;
   nextTask: Readonly<TaskId> | undefined;
   nextIndex: number | undefined;
+  status: TaskStatus;
+};
+
+type ApiSessionInfo = {
+  model_session: SessionId;
+  time: string | undefined;
+  summary: string | undefined;
+};
+export type SessionInfo = {
+  session: SessionId;
+  time: string | undefined;
+  summary: string | undefined;
+};
+export type ApiChatSessionsResponse = {
+  model_sessions: ApiSessionInfo[];
 };
 
 type UserCapabilities = {
   changeCapabilities: Readonly<boolean>;
-  resetOwnPassword: Readonly<boolean>;
-  resetOtherPassword: Readonly<boolean>;
   logoutOtherUser: Readonly<boolean>;
   createUser: Readonly<boolean>;
   listUsers: Readonly<boolean>;
-  writeChat: Readonly<boolean>;
-  readChat: Readonly<boolean>;
+  writeOtherChat: Readonly<boolean>;
+  readOtherChat: Readonly<boolean>;
+  registerOwnWorker: Readonly<boolean>;
+  registerOtherWorker: Readonly<boolean>;
 };
 export type User = {
-  name: Readonly<UserName>;
+  logged: true;
+  email: Readonly<UserEmail>;
+  displayName: Readonly<DisplayName>;
   capabilities: Readonly<UserCapabilities>;
+  discord: Readonly<string> | undefined;
+};
+export type LoginInfo = {
+  logged: false;
+  message: string;
 };
 
 type ApiUserCapability =
   | 'change_capabilities'
-  | 'reset_own_password'
-  | 'reset_other_password'
   | 'logout_other_user'
   | 'create_user'
   | 'list_users'
-  | 'write_chat'
-  | 'read_chat';
-export type ApiLoginResponse = {
-  user_name: Readonly<UserName> | undefined;
-  logged: boolean;
-  capabilities: Readonly<ApiUserCapability[]>;
-};
+  | 'write_other_chat'
+  | 'read_other_chat'
+  | 'register_own_worker'
+  | 'register_other_worker';
+export type ApiLoginResponse =
+  | {
+      logged: true;
+      email: Readonly<UserEmail>;
+      display_name: Readonly<DisplayName>;
+      capabilities: Readonly<ApiUserCapability[]>;
+      discord: Readonly<string> | undefined;
+    }
+  | {
+      logged: false;
+      message: string;
+    };
 
 export type ApiPasswordResetTokenResponse = {
-  user_name: Readonly<UserName>;
-  reset_token: Readonly<ResetToken>;
+  email: Readonly<UserEmail> | undefined;
 };
-export type PasswordResetTokenResponse = {
-  name: Readonly<UserName>;
-  resetToken: Readonly<ResetToken>;
+
+type ApiUserInfoResponse = {
+  email: Readonly<UserEmail>;
+  display_name: Readonly<DisplayName>;
+};
+export type ApiUserListResponse = {
+  users: ApiUserInfoResponse[];
+};
+export type UserInfo = {
+  email: Readonly<UserEmail>;
+  displayName: Readonly<DisplayName>;
+};
+
+export type WorkerInfo = {
+  workerId: Readonly<WorkerId>;
+  email: Readonly<UserEmail> | undefined;
+  status: WorkerStatus;
+  own: boolean;
+};
+type ApiWorkerInfo = {
+  worker_id: Readonly<WorkerId>;
+  email: Readonly<UserEmail> | undefined;
+  status: WorkerStatus;
+  own: boolean;
+};
+export type ApiWorkerInfoResponse = {
+  workers: ApiWorkerInfo[];
 };
 
 export type ApiWorkerTokenResponse = {
@@ -108,33 +186,34 @@ export type ApiWorkerTokenResponse = {
 
 const NO_CAPABILITIES: Readonly<UserCapabilities> = {
   changeCapabilities: false,
-  resetOwnPassword: false,
-  resetOtherPassword: false,
   logoutOtherUser: false,
   createUser: false,
   listUsers: false,
-  writeChat: false,
-  readChat: false,
+  writeOtherChat: false,
+  readOtherChat: false,
+  registerOwnWorker: false,
+  registerOtherWorker: false,
 };
 
-export function toUser(
+export function toUserOrMessage(
   userResp: Readonly<ApiLoginResponse>,
-): Readonly<User> | null {
-  const { logged, user_name, capabilities: caps, ...rest } = userResp;
-  if (!logged || !user_name) {
-    return null;
+): Readonly<User> | LoginInfo {
+  const { logged } = userResp;
+  if (!logged) {
+    const { message } = userResp;
+    return { logged: false, message };
   }
+  const {
+    capabilities: caps,
+    email,
+    display_name: displayName,
+    discord,
+  } = userResp;
   const capabilities: UserCapabilities = { ...NO_CAPABILITIES };
   caps.forEach((cap) => {
     switch (cap) {
       case 'change_capabilities':
         capabilities.changeCapabilities = true;
-        break;
-      case 'reset_own_password':
-        capabilities.resetOwnPassword = true;
-        break;
-      case 'reset_other_password':
-        capabilities.resetOtherPassword = true;
         break;
       case 'logout_other_user':
         capabilities.logoutOtherUser = true;
@@ -145,17 +224,37 @@ export function toUser(
       case 'list_users':
         capabilities.listUsers = true;
         break;
-      case 'write_chat':
-        capabilities.writeChat = true;
+      case 'write_other_chat':
+        capabilities.writeOtherChat = true;
         break;
-      case 'read_chat':
-        capabilities.readChat = true;
+      case 'read_other_chat':
+        capabilities.readOtherChat = true;
+        break;
+      case 'register_own_worker':
+        capabilities.registerOwnWorker = true;
+        break;
+      case 'register_other_worker':
+        capabilities.registerOtherWorker = true;
         break;
     }
   });
   return {
-    name: user_name,
+    logged: true,
+    email,
+    displayName,
     capabilities,
-    ...rest,
+    discord,
   };
+}
+
+export function checkResponse(res: Response) {
+  if (res.ok) {
+    return;
+  }
+  if (res.status === 401) {
+    redirectLogin();
+  }
+  throw new Error(
+    `Error in request ${res} (${res.status}): ${res.statusText}`,
+  );
 }

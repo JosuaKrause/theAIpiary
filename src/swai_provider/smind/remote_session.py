@@ -1,5 +1,26 @@
+# Copyright (c) 2024 Josua Krause - All Rights Reserved
+#
+# THE CONTENTS OF THIS PROJECT ARE PROPRIETARY AND CONFIDENTIAL.
+# UNAUTHORIZED COPYING, TRANSFERRING OR REPRODUCTION OF THE CONTENTS OF
+# THIS PROJECT, VIA ANY MEDIUM IS STRICTLY PROHIBITED.
+#
+# The receipt or possession of the source code and/or any parts thereof does
+# not convey or imply any right to use them for any purpose other than the
+# purpose for which they were provided to you.
+#
+# The software is provided "AS IS", without warranty of any kind, express or
+# implied, including but not limited to the warranties of merchantability,
+# fitness for a particular purpose and non infringement. In no event shall the
+# authors or copyright holders be liable for any claim, damages or other
+# liability, whether in an action of contract, tort or otherwise, arising from,
+# out of or in connection with the software or the use or other dealings in the
+# software.
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the software.
 import io
 import time
+import uuid
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from typing import IO, TypeVar
@@ -9,6 +30,7 @@ from scattermind.system.base import L_REMOTE, Locality, SessionId, UserId
 from scattermind.system.names import UName
 from scattermind.system.session.session import Session, SessionStore
 
+from swai.auth import get_authorization
 from swai.server_response_types import (
     WorkerBlobHashResponse,
     WorkerBlobListResponse,
@@ -36,7 +58,7 @@ class RemoteSessionStore(SessionStore):
         super().__init__(cache_path=cache_path, is_shared=is_shared)
         self._name = UName(envload_str("SWAI_USER"))
         self._worker_token: WorkerToken = envload_str("SWAI_WORKER_TOKEN")
-        self._api_url = envload_str("SWAI_API_URL")
+        self._api_url = envload_str("SWAI_API_URL").removesuffix("/")
         self._api = requests.Session()
 
     @staticmethod
@@ -44,19 +66,22 @@ class RemoteSessionStore(SessionStore):
         return L_REMOTE
 
     def _url(self, path: str) -> str:
-        return f"{self._api_url}/smind{path}"
+        return f"{self._api_url}/api/smind{path}"
 
     def _json(self) -> dict[str, str | int | float | list[str] | None]:
+        return {}
+
+    def _headers(self) -> dict[str, str]:
         return {
-            "name": self._name.get(),
-            "worker_token": self._worker_token,
+            "authorization": get_authorization(self._name, self._worker_token),
         }
 
     def register_session(self, user_id: UserId, session_id: SessionId) -> None:
         obj = self._json()
         obj["user_id"] = user_id.to_parseable()
         obj["session"] = session_id.to_parseable()
-        resp = self._api.put(self._url("/session"), json=obj)
+        resp = self._api.put(
+            self._url("/session"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerSessionResponse = resp.json()
         assert res["ok"]
@@ -64,7 +89,8 @@ class RemoteSessionStore(SessionStore):
     def get_sessions(self, user_id: UserId) -> Iterable[Session]:
         obj = self._json()
         obj["user_id"] = user_id.to_parseable()
-        resp = self._api.post(self._url("/session"), json=obj)
+        resp = self._api.post(
+            self._url("/session"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerSessionListResponse = resp.json()
         yield from (
@@ -75,7 +101,8 @@ class RemoteSessionStore(SessionStore):
     def get_user(self, session_id: SessionId) -> UserId | None:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        resp = self._api.post(self._url("/user"), json=obj)
+        resp = self._api.post(
+            self._url("/user"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerUserResponse = resp.json()
         user_id_str = res["user_id"]
@@ -95,7 +122,8 @@ class RemoteSessionStore(SessionStore):
         obj["key"] = key
         obj["index"] = index
         obj["value"] = value
-        resp = self._api.post(self._url("/value"), json=obj)
+        resp = self._api.post(
+            self._url("/value"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerValueResponse = resp.json()
         assert res["success"]
@@ -106,7 +134,8 @@ class RemoteSessionStore(SessionStore):
         obj["op"] = "push"
         obj["key"] = key
         obj["value"] = value
-        resp = self._api.post(self._url("/value"), json=obj)
+        resp = self._api.post(
+            self._url("/value"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerValueResponse = resp.json()
         assert res["success"]
@@ -116,7 +145,8 @@ class RemoteSessionStore(SessionStore):
         obj["session"] = session_id.to_parseable()
         obj["op"] = "pop"
         obj["key"] = key
-        resp = self._api.post(self._url("/value"), json=obj)
+        resp = self._api.post(
+            self._url("/value"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerValueResponse = resp.json()
         assert res["success"]
@@ -129,7 +159,8 @@ class RemoteSessionStore(SessionStore):
         obj["op"] = "get"
         obj["key"] = key
         obj["index"] = index
-        resp = self._api.post(self._url("/value"), json=obj)
+        resp = self._api.post(
+            self._url("/value"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerValueResponse = resp.json()
         assert res["success"]
@@ -140,7 +171,8 @@ class RemoteSessionStore(SessionStore):
         obj["session"] = session_id.to_parseable()
         obj["op"] = "length"
         obj["key"] = key
-        resp = self._api.post(self._url("/value"), json=obj)
+        resp = self._api.post(
+            self._url("/value"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerValueResponse = resp.json()
         assert res["success"]
@@ -149,7 +181,8 @@ class RemoteSessionStore(SessionStore):
     def get_keys(self, session_id: SessionId) -> list[str]:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        resp = self._api.post(self._url("/keys"), json=obj)
+        resp = self._api.post(
+            self._url("/keys"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerKeysResponse = resp.json()
         return res["keys"]
@@ -158,7 +191,8 @@ class RemoteSessionStore(SessionStore):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         obj["key"] = key
-        resp = self._api.post(self._url("/signal"), json=obj)
+        resp = self._api.post(
+            self._url("/signal"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerSignalResponse = resp.json()
         assert res["signal"]
@@ -182,7 +216,8 @@ class RemoteSessionStore(SessionStore):
             obj["session"] = session_id.to_parseable()
             obj["key"] = key
             obj["timeout"] = timeout - time_passed
-            resp = self._api.post(self._url("/signal"), json=obj)
+            resp = self._api.post(
+                self._url("/signal"), json=obj, headers=self._headers())
             resp.raise_for_status()
             res: WorkerSignalResponse = resp.json()
             assert "signal" in res
@@ -193,22 +228,50 @@ class RemoteSessionStore(SessionStore):
         bout = io.BytesIO()
         yield bout
         bout.seek(0, io.SEEK_SET)
-        obj = self._json()
-        obj["session"] = session_id.to_parseable()
-        obj["blob"] = name
-        resp = self._api.put(
-            self._url("/blob"),
-            data=obj,
-            files={
-                "blob": (
-                    "blob",
-                    bout,
-                    "application/octet-stream",
-                ),
-            })
-        resp.raise_for_status()
-        res: WorkerUploadResponse = resp.json()
-        assert res["done"]
+        upload_id = uuid.uuid4().hex
+        chunk_size = 1024 * 10  # 10kiB
+        # FIXME: parallelize and use the missing field
+
+        def send_chunk(
+                chunk_ix: int, bchunk: IO[bytes], *, complete: bool) -> None:
+            obj = self._json()
+            obj["session"] = session_id.to_parseable()
+            obj["blob"] = name
+            obj["upload_id"] = upload_id
+            obj["fragment"] = chunk_ix
+            obj["complete"] = complete
+            bchunk.seek(0, io.SEEK_SET)
+            resp = self._api.put(
+                self._url("/blob"),
+                data=obj,
+                files={
+                    "blob": (
+                        "blob",
+                        bchunk,
+                        "application/octet-stream",
+                    ),
+                },
+                headers=self._headers())
+            resp.raise_for_status()
+            res: WorkerUploadResponse = resp.json()
+            assert res["done"]
+            assert not res["missing"]
+
+        ix = 0
+        complete = False
+        bchunk: io.BytesIO | None = None
+        while True:
+            cur = bout.read(chunk_size)
+            if not cur:
+                complete = True
+            if bchunk is not None:
+                send_chunk(ix, bchunk, complete=complete)
+                ix += 1
+            if complete:
+                break
+            bchunk = io.BytesIO(cur)
+        if bchunk is None:
+            send_chunk(ix, io.BytesIO(), complete=True)
 
     @contextmanager
     def open_blob_read(
@@ -216,7 +279,8 @@ class RemoteSessionStore(SessionStore):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         obj["blob"] = name
-        resp = self._api.post(self._url("/blob"), json=obj)
+        resp = self._api.post(
+            self._url("/blob"), json=obj, headers=self._headers())
         resp.raise_for_status()
         bout = io.BytesIO(resp.content)
         try:
@@ -231,7 +295,8 @@ class RemoteSessionStore(SessionStore):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         obj["blobs"] = sorted(set(names))
-        resp = self._api.post(self._url("/hash"), json=obj)
+        resp = self._api.post(
+            self._url("/hash"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerBlobHashResponse = resp.json()
         return res["blob_hashes"]
@@ -239,7 +304,8 @@ class RemoteSessionStore(SessionStore):
     def blob_list(self, session_id: SessionId) -> list[str]:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        resp = self._api.post(self._url("/list"), json=obj)
+        resp = self._api.post(
+            self._url("/list"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerBlobListResponse = resp.json()
         return res["blobs"]
@@ -248,7 +314,8 @@ class RemoteSessionStore(SessionStore):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         obj["blobs"] = sorted(set(names))
-        resp = self._api.delete(self._url("/blob"), json=obj)
+        resp = self._api.delete(
+            self._url("/blob"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerUploadResponse = resp.json()
         assert res["done"]
@@ -256,7 +323,8 @@ class RemoteSessionStore(SessionStore):
     def remove(self, session_id: SessionId) -> None:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        resp = self._api.delete(self._url("/session"), json=obj)
+        resp = self._api.delete(
+            self._url("/session"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: WorkerSessionResponse = resp.json()
         assert res["ok"]

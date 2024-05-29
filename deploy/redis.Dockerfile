@@ -9,4 +9,4 @@ COPY "${REDIS_RUN_SCRIPT}" /app/run_redis.sh
 ENV PORT=${PORT}
 EXPOSE ${PORT}
 ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["/app/run_redis.sh"]
+CMD ["exec /app/run_redis.sh"]

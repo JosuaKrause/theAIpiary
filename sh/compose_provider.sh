@@ -25,4 +25,12 @@ set -e
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
+ENV_FILE=userdata/provider/swai/provider.env
+if [ ! -f "${ENV_FILE}" ]; then
+    mkdir -p "$(dirname -- ${ENV_FILE})"
+    cp "provider.env.sample" "${ENV_FILE}"
+    echo "created env file at ${ENV_FILE} please fill in all values and run again"
+    exit 1
+fi
+
 docker compose -f "docker-compose.provider.dev.yml" up || echo "done $?"

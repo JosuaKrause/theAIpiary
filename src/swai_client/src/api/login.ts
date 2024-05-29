@@ -22,54 +22,83 @@
  */
 import { URL_PREFIX } from '../misc/constants';
 import {
+  ApiChatSessionsResponse,
   ApiLoginResponse,
   ApiPasswordResetTokenResponse,
+  ApiUserListResponse,
+  ApiWorkerInfoResponse,
   ApiWorkerTokenResponse,
+  DisplayName,
+  LoginInfo,
   Password,
-  PasswordResetTokenResponse,
   ResetToken,
+  SessionInfo,
   User,
-  UserName,
+  UserEmail,
+  UserInfo,
+  WorkerInfo,
   WorkerToken,
-  toUser,
+  checkResponse,
+  toUserOrMessage,
 } from './types';
 
 export type LoginApiProvider = {
-  getUser: () => Promise<Readonly<User> | null>;
+  getUser: () => Promise<Readonly<User> | Readonly<LoginInfo>>;
+  newUser: (
+    email: Readonly<UserEmail>,
+    displayName: Readonly<DisplayName>,
+  ) => Promise<Readonly<UserEmail> | undefined>;
   loginUser: (
-    name: Readonly<UserName>,
+    name: Readonly<UserEmail>,
     password: Readonly<Password>,
-  ) => Promise<Readonly<User> | null>;
+  ) => Promise<Readonly<User> | Readonly<LoginInfo>>;
   getResetPasswordToken: (
-    name: Readonly<UserName>,
-  ) => Promise<Readonly<PasswordResetTokenResponse>>;
+    name: Readonly<UserEmail>,
+  ) => Promise<Readonly<UserEmail> | undefined>;
   resetPassword: (
     resetToken: Readonly<ResetToken>,
     password: Readonly<Password>,
-  ) => Promise<Readonly<User> | null>;
-  logout: () => Promise<Readonly<User> | null>;
+  ) => Promise<Readonly<User> | Readonly<LoginInfo>>;
+  logout: () => Promise<Readonly<User> | Readonly<LoginInfo>>;
   getWorkerToken: () => Promise<Readonly<WorkerToken>>;
+  listUsers: () => Promise<UserInfo[]>;
+  listChats: () => Promise<SessionInfo[]>;
+  listWorkers: () => Promise<WorkerInfo[]>;
 };
 
 export const DEFAULT_LOGIN_API: LoginApiProvider = {
   getUser: async () => {
-    const res = await fetch(`${URL_PREFIX}/user`, {
+    const res = await fetch(`${URL_PREFIX}/user/current`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({}),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const obj = (await res.json()) as ApiLoginResponse;
-    return toUser(obj);
+    return toUserOrMessage(obj);
+  },
+  newUser: async (email, displayName) => {
+    const res = await fetch(`${URL_PREFIX}/user/create`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        new_email: email,
+        new_display: displayName,
+      }),
+    });
+    checkResponse(res);
+    const { email: newEmail } =
+      (await res.json()) as ApiPasswordResetTokenResponse;
+    return newEmail;
   },
   loginUser: async (name, password) => {
-    const res = await fetch(`${URL_PREFIX}/login`, {
+    const res = await fetch(`${URL_PREFIX}/user/login`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -80,16 +109,12 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
         password,
       }),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const obj = (await res.json()) as ApiLoginResponse;
-    return toUser(obj);
+    return toUserOrMessage(obj);
   },
   getResetPasswordToken: async (name) => {
-    const res = await fetch(`${URL_PREFIX}/reset_password_token`, {
+    const res = await fetch(`${URL_PREFIX}/user/reset_password_token`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -99,20 +124,15 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
         name,
       }),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
+    if (res.status === 403 || res.status === 401) {
+      return undefined;
     }
-    const { user_name, reset_token } =
-      (await res.json()) as ApiPasswordResetTokenResponse;
-    return {
-      name: user_name,
-      resetToken: reset_token,
-    };
+    checkResponse(res);
+    const { email } = (await res.json()) as ApiPasswordResetTokenResponse;
+    return email;
   },
   resetPassword: async (resetToken, password) => {
-    const res = await fetch(`${URL_PREFIX}/reset_password`, {
+    const res = await fetch(`${URL_PREFIX}/user/reset_password`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -123,16 +143,12 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
         password,
       }),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const obj = (await res.json()) as ApiLoginResponse;
-    return toUser(obj);
+    return toUserOrMessage(obj);
   },
   logout: async () => {
-    const res = await fetch(`${URL_PREFIX}/logout`, {
+    const res = await fetch(`${URL_PREFIX}/user/logout`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -140,16 +156,12 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
       },
       body: JSON.stringify({}),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const obj = (await res.json()) as ApiLoginResponse;
-    return toUser(obj);
+    return toUserOrMessage(obj);
   },
   getWorkerToken: async () => {
-    const res = await fetch(`${URL_PREFIX}/create_worker_token`, {
+    const res = await fetch(`${URL_PREFIX}/user/create_worker_token`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -157,13 +169,61 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
       },
       body: JSON.stringify({}),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const { worker_token: workerToken } =
       (await res.json()) as ApiWorkerTokenResponse;
     return workerToken;
+  },
+  listUsers: async () => {
+    const res = await fetch(`${URL_PREFIX}/user/list`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    checkResponse(res);
+    const { users } = (await res.json()) as ApiUserListResponse;
+    return users.map(({ email, display_name }) => ({
+      email,
+      displayName: display_name,
+    }));
+  },
+  listChats: async () => {
+    const res = await fetch(`${URL_PREFIX}/chat/list`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    checkResponse(res);
+    const { model_sessions: sessions } =
+      (await res.json()) as ApiChatSessionsResponse;
+    return sessions.map(({ model_session, time, summary }) => ({
+      session: model_session,
+      time,
+      summary,
+    }));
+  },
+  listWorkers: async () => {
+    const res = await fetch(`${URL_PREFIX}/task/workers`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    checkResponse(res);
+    const { workers } = (await res.json()) as ApiWorkerInfoResponse;
+    return workers.map(({ worker_id: workerId, email, status, own }) => ({
+      workerId,
+      email,
+      status,
+      own,
+    }));
   },
 };

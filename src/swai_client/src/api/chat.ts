@@ -31,6 +31,7 @@ import {
   ChatTextResponse,
   SessionId,
   TaskId,
+  checkResponse,
 } from './types';
 
 export type ChatApiProvider = {
@@ -50,7 +51,7 @@ export type ChatApiProvider = {
 export const DEFAULT_CHAT_API: ChatApiProvider = {
   response: async (session, task, index) => {
     try {
-      const res = await fetch(`${URL_PREFIX}/response`, {
+      const res = await fetch(`${URL_PREFIX}/chat/response`, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -62,20 +63,18 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           index,
         }),
       });
-      if (!res.ok) {
-        throw new Error(
-          `Error in request ${res} (${res.status}): ${res.statusText}`,
-        );
-      }
+      checkResponse(res);
       const {
         diff,
         task: nextTask,
         next_index: nextIndex,
+        status,
       } = (await res.json()) as ApiChatTextResponse;
       return {
         diff,
         nextTask,
         nextIndex,
+        status,
       };
     } catch (err) {
       console.error(err);
@@ -84,11 +83,12 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
         diff: '',
         nextTask: task,
         nextIndex: index,
+        status: 'unknown',
       };
     }
   },
   new: async () => {
-    const res = await fetch(`${URL_PREFIX}/new`, {
+    const res = await fetch(`${URL_PREFIX}/chat/new`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -96,11 +96,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
       },
       body: JSON.stringify({}),
     });
-    if (!res.ok) {
-      throw new Error(
-        `Error in request ${res} (${res.status}): ${res.statusText}`,
-      );
-    }
+    checkResponse(res);
     const { model_session, messages } =
       (await res.json()) as ApiChatInitResponse;
     return {
@@ -110,7 +106,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
   },
   recover: async (session) => {
     try {
-      const res = await fetch(`${URL_PREFIX}/recover`, {
+      const res = await fetch(`${URL_PREFIX}/chat/recover`, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -120,11 +116,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           model_session: session,
         }),
       });
-      if (!res.ok) {
-        throw new Error(
-          `Error in request ${res} (${res.status}): ${res.statusText}`,
-        );
-      }
+      checkResponse(res);
       return await res.json();
     } catch (err) {
       console.error(err);
@@ -137,7 +129,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
   },
   prompt: async (prompt, session) => {
     try {
-      const res = await fetch(`${URL_PREFIX}/prompt`, {
+      const res = await fetch(`${URL_PREFIX}/chat/prompt`, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -148,11 +140,7 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
           prompt,
         }),
       });
-      if (!res.ok) {
-        throw new Error(
-          `Error in request ${res} (${res.status}): ${res.statusText}`,
-        );
-      }
+      checkResponse(res);
       return await res.json();
     } catch (err) {
       console.error(err);

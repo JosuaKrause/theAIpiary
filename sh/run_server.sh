@@ -26,12 +26,20 @@ set -x
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
 BASE="userdata/server"
+ENV_FILE="${ENV_FILE:-${BASE}/swai/server.env}"
 ROOT="../.."
 
 mkdir -p "${BASE}/"
 
 PYTHON="${PYTHON:-python}"
 DATE=$(date "+%Y-%m-%d")
+
+if [ ! -f "${ENV_FILE}" ]; then
+    mkdir -p "$(dirname -- ${ENV_FILE})"
+    cp "server.env.sample" "${ENV_FILE}"
+    echo "created env file at ${ENV_FILE} please fill in all values and run again"
+    exit 1
+fi
 
 start_redis() {
     REDIS_NAME=$1
@@ -40,7 +48,7 @@ start_redis() {
     mkdir -p "${REDIS_PATH}"
     pushd "${REDIS_PATH}"
     redis-server \
-        "../${ROOT}/deploy/redis_local/${REDIS_NAME}.conf" \
+        "../${ROOT}/local/redis/${REDIS_NAME}.conf" \
         --port "${REDIS_PORT}" \
         >> "redis-${DATE}.log" 2>&1 &
     popd
@@ -52,7 +60,9 @@ start_server() {
     HISTORY_PATH="../${BASE}/.cmd_history" \
     CONFIG_PATH="../local/server.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
-        ${PYTHON} -u -m swai_server --dedicated \
+        ${PYTHON} -u -m swai_server \
+        --dedicated \
+        --env "../${ENV_FILE}" \
         >> "../${BASE}/swai/swai_server-${DATE}.log" 2>&1 &
     popd
 }

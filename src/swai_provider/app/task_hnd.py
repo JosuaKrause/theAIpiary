@@ -1,10 +1,38 @@
+# Copyright (c) 2024 Josua Krause - All Rights Reserved
+#
+# THE CONTENTS OF THIS PROJECT ARE PROPRIETARY AND CONFIDENTIAL.
+# UNAUTHORIZED COPYING, TRANSFERRING OR REPRODUCTION OF THE CONTENTS OF
+# THIS PROJECT, VIA ANY MEDIUM IS STRICTLY PROHIBITED.
+#
+# The receipt or possession of the source code and/or any parts thereof does
+# not convey or imply any right to use them for any purpose other than the
+# purpose for which they were provided to you.
+#
+# The software is provided "AS IS", without warranty of any kind, express or
+# implied, including but not limited to the warranties of merchantability,
+# fitness for a particular purpose and non infringement. In no event shall the
+# authors or copyright holders be liable for any claim, damages or other
+# liability, whether in an action of contract, tort or otherwise, arising from,
+# out of or in connection with the software or the use or other dealings in the
+# software.
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the software.
+import uuid
+
 import requests
 from scattermind.api.api import InputTypes, redis_to_task_input
 from scattermind.system.base import TaskId
 from scattermind.system.names import GNamespace, UName
 from scattermind.system.response import response_to_redis, ResponseObject
 
-from swai.server_response_types import TaskBidResponse, TaskFinishResponse
+from swai.auth import get_authorization
+from swai.server_response_types import (
+    HeartbeatResponse,
+    TaskBidResponse,
+    TaskFinishResponse,
+)
+from swai.system.base import WorkerStatus
 from swai.system.user.manager import WorkerToken
 from swai_provider.env import envload_str
 from swai_provider.smind.worker_api import GraphProfile
@@ -12,19 +40,32 @@ from swai_provider.smind.worker_api import GraphProfile
 
 class TaskHandler:
     def __init__(self) -> None:
+        self._worker_name = f"{uuid.getnode():0>12x}"
         self._name = UName(envload_str("SWAI_USER"))
         self._worker_token: WorkerToken = envload_str("SWAI_WORKER_TOKEN")
-        self._api_url = envload_str("SWAI_API_URL")
+        self._api_url = envload_str("SWAI_API_URL").removesuffix("/")
         self._api = requests.Session()
 
     def _url(self, path: str) -> str:
-        return f"{self._api_url}/task{path}"
+        return f"{self._api_url}/api/task{path}"
 
     def _json(self) -> dict[str, str | int | float | list[str] | None]:
+        return {}
+
+    def _headers(self) -> dict[str, str]:
         return {
-            "name": self._name.get(),
-            "worker_token": self._worker_token,
+            "authorization": get_authorization(self._name, self._worker_token),
         }
+
+    def task_heartbeat(self, *, worker_status: WorkerStatus) -> float:
+        obj = self._json()
+        obj["worker_name"] = self._worker_name
+        obj["status"] = worker_status
+        resp = self._api.post(
+            self._url("/heartbeat"), json=obj, headers=self._headers())
+        resp.raise_for_status()
+        res: HeartbeatResponse = resp.json()
+        return res["timeout"]
 
     def task_bid(
             self,
@@ -37,9 +78,11 @@ class TaskHandler:
             for graph in graphs
         }
         obj = self._json()
+        obj["worker_name"] = self._worker_name
         obj["nss"] = [ns.get() for ns in graph_ns.keys()]
         obj["timeout"] = timeout
-        resp = self._api.post(self._url("/bid"), json=obj)
+        resp = self._api.post(
+            self._url("/bid"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: TaskBidResponse = resp.json()
         out_ns = res["ns"]
@@ -54,11 +97,16 @@ class TaskHandler:
             out_input_data, graph.get_input_format())
         return (graph, task_id, input_data)
 
-    def task_finish(self, task_id: TaskId, response: ResponseObject) -> None:
+    def task_finish(
+            self,
+            task_id: TaskId,
+            response: ResponseObject) -> None:
         obj = self._json()
+        obj["worker_name"] = self._worker_name
         obj["task_id"] = task_id.to_parseable()
         obj["response"] = response_to_redis(response)
-        resp = self._api.post(self._url("/finish"), json=obj)
+        resp = self._api.post(
+            self._url("/finish"), json=obj, headers=self._headers())
         resp.raise_for_status()
         res: TaskFinishResponse = resp.json()
         assert res["well_done"]

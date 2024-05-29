@@ -10,8 +10,10 @@ pycodestyle
 pylint
 pytest
 pytest-cov
+python-dotenv
 quick-server
 redipy
 requests
+scattermind
 torch
 types-requests

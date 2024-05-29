@@ -32,6 +32,7 @@ ENV HOST=0.0.0.0
 ENV PORT=${PORT}
 ENV CONFIG_PATH=config.json
 ENV HISTORY_PATH=/swai
+ENV ENV_FILE=/swai/server.env
 EXPOSE ${PORT}
 ENTRYPOINT ["/bin/bash", "-l", "-c"]
-CMD ["python -u -m swai_server --dedicated"]
+CMD ["python -u -m swai_server --dedicated --env ${ENV_FILE}"]

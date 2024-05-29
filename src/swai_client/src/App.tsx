@@ -1,3 +1,25 @@
+/**
+ * Copyright (c) 2024 Josua Krause - All Rights Reserved
+ *
+ * THE CONTENTS OF THIS PROJECT ARE PROPRIETARY AND CONFIDENTIAL.
+ * UNAUTHORIZED COPYING, TRANSFERRING OR REPRODUCTION OF THE CONTENTS OF
+ * THIS PROJECT, VIA ANY MEDIUM IS STRICTLY PROHIBITED.
+ *
+ * The receipt or possession of the source code and/or any parts thereof does
+ * not convey or imply any right to use them for any purpose other than the
+ * purpose for which they were provided to you.
+ *
+ * The software is provided "AS IS", without warranty of any kind, express or
+ * implied, including but not limited to the warranties of merchantability,
+ * fitness for a particular purpose and non infringement. In no event shall the
+ * authors or copyright holders be liable for any claim, damages or other
+ * liability, whether in an action of contract, tort or otherwise, arising
+ * from, out of or in connection with the software or the use or other dealings
+ * in the software.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the software.
+ */
 import { PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
@@ -6,17 +28,18 @@ import { SessionId } from './api/types';
 import Chat from './chat/Chat';
 import ChatActions from './chat/ChatActions';
 import { setSession } from './chat/ChatStateSlice';
+import Welcome from './general/Welcome';
 import { RootState } from './store';
 import Login from './users/Login';
 import Profile from './users/Profile';
 import ResetPassword from './users/ResetPassword';
 import UserActions from './users/UserActions';
+import UserButton from './users/UserButton';
 
 const Main = styled.div`
   text-align: center;
   margin: 0 auto;
   height: 100vh;
-  width: 100vw;
   display: flex;
   flex-direction: column;
   background-color: var(--main-background);
@@ -26,7 +49,6 @@ const Main = styled.div`
 const HMain = styled.div`
   display: flex;
   justify-content: center;
-  align-items: center;
   min-height: 100vh;
   max-width: 100vw;
 
@@ -37,7 +59,9 @@ const HMain = styled.div`
   }
 `;
 
-type AppProps = ConnectApp;
+interface AppProps extends ConnectApp {
+  appName: string;
+}
 
 type AppState = {
   ready: boolean;
@@ -111,6 +135,7 @@ class App extends PureComponent<AppProps, AppState> {
   }
 
   render() {
+    const { appName } = this.props;
     const { ready } = this.state;
     return (
       <Main>
@@ -120,10 +145,15 @@ class App extends PureComponent<AppProps, AppState> {
               <Route
                 path="/chat"
                 element={
-                  <Chat
-                    ready={ready}
-                    chatActions={this.chatActions}
-                  />
+                  <UserButton
+                    userActions={this.userActions}
+                    redirect={true}
+                    show={true}>
+                    <Chat
+                      ready={ready}
+                      chatActions={this.chatActions}
+                    />
+                  </UserButton>
                 }
               />
               <Route
@@ -136,7 +166,28 @@ class App extends PureComponent<AppProps, AppState> {
               />
               <Route
                 path="/profile"
-                element={<Profile userActions={this.userActions} />}
+                element={
+                  <UserButton
+                    userActions={this.userActions}
+                    redirect={true}
+                    show={false}>
+                    <Profile
+                      appName={appName}
+                      userActions={this.userActions}
+                    />
+                  </UserButton>
+                }
+              />
+              <Route
+                path="/"
+                element={
+                  <UserButton
+                    userActions={this.userActions}
+                    redirect={false}
+                    show={false}>
+                    <Welcome appName={appName} />
+                  </UserButton>
+                }
               />
             </Routes>
           </BrowserRouter>

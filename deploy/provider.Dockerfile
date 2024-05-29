@@ -31,6 +31,7 @@ ENV SMIND_CFG=smind-config.json
 ENV GRAPH_PATH=graphs/
 ENV CONFIG_PATH=-
 ENV VERSION_PATH=version.txt
+ENV ENV_FILE=/swai/provider.env
 EXPOSE ${PORT}
 ENTRYPOINT ["/bin/bash", "-l", "-c"]
-CMD [". /swai/.env_provider && python -u -m swai_provider --dedicated"]
+CMD ["python -u -m swai_provider --dedicated --env ${ENV_FILE}"]

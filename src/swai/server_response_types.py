@@ -18,16 +18,45 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
-from typing import NotRequired, TypedDict
+from typing import Literal, NotRequired, TypedDict
+
+from scattermind.system.response import TaskStatus
 
 from swai.smind.llama_session import VisibleMessage
+from swai.system.base import SessionInfoJSON, WorkerId, WorkerStatus
 from swai.system.user.manager import CapabilityName, WorkerToken
 
 
-LoginResponse = TypedDict('LoginResponse', {
-    "user_name": str | None,
-    "logged": bool,
+UserLogged = TypedDict('UserLogged', {
+    "logged": Literal[True],
+    "email": str,
+    "display_name": str,
     "capabilities": list[CapabilityName],
+    "discord": str | None,
+})
+UserNotLogged = TypedDict('UserNotLogged', {
+    "logged": Literal[False],
+    "message": str,
+})
+LoginResponse = UserLogged | UserNotLogged
+UserInfoResponse = TypedDict('UserInfoResponse', {
+    "email": str,
+    "display_name": str,
+})
+UserListResponse = TypedDict('UserListResponse', {
+    "users": list[UserInfoResponse],
+})
+WorkerInfoJSON = TypedDict('WorkerInfoJSON', {
+    "worker_id": WorkerId,
+    "email": str | None,
+    "status": WorkerStatus,
+    "own": bool,
+})
+WorkerInfoResponse = TypedDict('WorkerInfoResponse', {
+    "workers": list[WorkerInfoJSON],
+})
+HeartbeatResponse = TypedDict('HeartbeatResponse', {
+    "timeout": float,
 })
 TaskBidResponse = TypedDict('TaskBidResponse', {
     "ns": str | None,
@@ -56,6 +85,7 @@ WorkerValueResponse = TypedDict('WorkerValueResponse', {
 })
 WorkerUploadResponse = TypedDict('WorkerUploadResponse', {
     "done": bool,
+    "missing": list[int],
 })
 WorkerBlobListResponse = TypedDict('WorkerBlobListResponse', {
     "blobs": list[str],
@@ -70,8 +100,7 @@ WorkerSignalResponse = TypedDict('WorkerSignalResponse', {
     "signal": bool,
 })
 ResetTokenResponse = TypedDict('ResetTokenResponse', {
-    "user_name": str,
-    "reset_token": str,
+    "email": str | None,
 })
 VersionResponse = TypedDict('VersionResponse', {
     "app_name": str,
@@ -81,6 +110,9 @@ VersionResponse = TypedDict('VersionResponse', {
     "start_date": str,
     "error": list[str] | None,
 })
+ChatListResponse = TypedDict('ChatListResponse', {
+    "model_sessions": list[SessionInfoJSON],
+})
 ChatInitResponse = TypedDict('ChatInitResponse', {
     "model_session": str,
     "messages": list[VisibleMessage],
@@ -88,12 +120,15 @@ ChatInitResponse = TypedDict('ChatInitResponse', {
 ChatRecoverResponse = TypedDict('ChatRecoverResponse', {
     "messages": list[VisibleMessage],
     "task": str | None,
+    "status": TaskStatus,
 })
 ChatPromptResponse = TypedDict('ChatPromptResponse', {
     "task": str,
+    "status": TaskStatus,
 })
 ChatTextResponse = TypedDict('ChatTextResponse', {
     "diff": str,
     "task": str | None,
     "next_index": int | None,
+    "status": TaskStatus,
 })
