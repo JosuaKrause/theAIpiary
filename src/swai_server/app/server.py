@@ -191,7 +191,9 @@ def setup(
         "smtp_pw": envload_str("SMTP_PW", default=""),
     }
     if not is_valid_email_config(email_config):
-        print("EMAIL CONFIG IS NOT VALID!")
+        if email_config["smtp_pw"]:
+            email_config["smtp_pw"] = "***"
+        print(f"EMAIL CONFIG IS NOT VALID! {email_config}")
 
     session_store = create_session_store(config)
     task_queue = TaskQueue(session_store, config["task_queue"])

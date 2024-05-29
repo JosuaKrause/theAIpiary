@@ -43,7 +43,7 @@ def run() -> None:
     args = parse_args()
     env_file: str | None = args.env
     if env_file:
-        if os.path.exists(env_file):
+        if not os.path.exists(env_file):
             print(f"could not load env! {env_file} does not exist!")
         else:
             print(f"loading env {env_file}")
