@@ -132,6 +132,9 @@ run-ts:
 dockerpush-provider:
 	./sh/dockerpush_provider.sh
 
+dockerpush-server:
+	./sh/dockerpush_server.sh
+
 install:
 	PYTHON=$(PYTHON) REQUIREMENTS_PATH=$(REQUIREMENTS_PATH) ./sh/install.sh
 

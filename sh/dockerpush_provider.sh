@@ -38,9 +38,8 @@ fi
 echo "${DOCKER_TOKEN}" | docker login --username "${DOCKER_USER}" --password-stdin
 
 IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
-IMAGE_BASE="aipiary"
-DOCKER_LOGIN_SERVER="${DOCKER_LOGIN_SERVER:-"INVALID"}/"
-if [ "${DOCKER_LOGIN_SERVER}" == "INVALID/" ]; then
+IMAGE_BASE="aipiary-provider"
+if [ -z "${DOCKER_LOGIN_SERVER}" ]; then
     echo "no login server set"
     exit 1
 fi
@@ -57,7 +56,7 @@ fi
 
 dpush() {
     IMAGE="${IMAGE_BASE}-$1:$2"
-    URL="${DOCKER_LOGIN_SERVER}${IMAGE}"
+    URL="${DOCKER_LOGIN_SERVER}/${IMAGE}"
     if ! docker pull "${URL}" &> /dev/null ; then
         echo "pushing ${IMAGE} to ${URL}"
 
