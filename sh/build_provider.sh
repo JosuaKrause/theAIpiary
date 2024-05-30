@@ -55,7 +55,7 @@ cp "deploy/smind-config.json" "${SMIND_CFG}"
 cp -R "deploy/graphs/" "${SMIND_GRS}"
 
 IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
-IMAGE_BASE="swai-provider"
+IMAGE_BASE="aipiary-provider"
 
 if [ ! -z "${DEV}" ]; then
     IMAGE_BASE="${IMAGE_BASE}-dev"

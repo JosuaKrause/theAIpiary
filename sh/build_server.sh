@@ -46,7 +46,7 @@ cp "deploy/run_redis.sh" "${REDIS_RUN_SCRIPT}"
 cp "deploy/server.config.json" "${CONFIG_PATH}"
 
 IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
-IMAGE_BASE="swai-server"
+IMAGE_BASE="aipiary-server"
 PORT="${PORT:-8080}"
 
 if [ ! -z "${DEV}" ]; then

@@ -39,9 +39,9 @@ from swai_provider.smind.worker_api import GraphProfile
 class TaskHandler:
     def __init__(self, worker_name: str) -> None:
         self._worker_name = worker_name
-        self._name = UName(envload_str("SWAI_USER"))
-        self._worker_token: WorkerToken = envload_str("SWAI_WORKER_TOKEN")
-        self._api_url = envload_str("SWAI_API_URL").removesuffix("/")
+        self._name = UName(envload_str("AIPIARY_USER"))
+        self._worker_token: WorkerToken = envload_str("AIPIARY_WORKER_TOKEN")
+        self._api_url = envload_str("AIPIARY_API_URL").removesuffix("/")
         self._api = requests.Session()
 
     def _url(self, path: str) -> str:

@@ -37,16 +37,16 @@ from swai_server.app.server import (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog=f"python -m {python_module()}",
-        description="Run the SWAI API server")
+        description="Run the AIpiary API server")
     parser.add_argument(
         "--address",
         default=None,
-        help="the address of the SWAI API server")
+        help="the address of the AIpiary API server")
     parser.add_argument(
         "--port",
         default=None,
         type=int,
-        help="the port of the SWAI API server")
+        help="the port of the AIpiary API server")
     parser.add_argument(
         "--env",
         default=None,

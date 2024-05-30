@@ -120,7 +120,7 @@ def get_version_strs() -> VersionDict:
     return {
         "python_version_detail": py_version_detail,
         "python_version": py_version,
-        "server_version": f"SWAIserver/{version_name[1:]}",
+        "server_version": f"AIpiaryServer/{version_name[1:]}",
         "app_version": version_name,
         "commit": version_hash,
         "deploy_time": version_date,

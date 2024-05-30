@@ -13,6 +13,7 @@ test*.json
 *.rdb
 *.log
 *.csv
+system.env
 requirements.docker.txt
 out.txt
 **/__pycache__

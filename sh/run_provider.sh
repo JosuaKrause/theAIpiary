@@ -43,7 +43,7 @@ else
     source "${ENV_FILE}"
 fi
 
-if [ -z "${SWAI_WORKER_TOKEN}" ] || [ -z "${SWAI_USER}" ] || [ -z "${SWAI_API_URL}" ]; then
+if [ -z "${AIPIARY_WORKER_TOKEN}" ] || [ -z "${AIPIARY_USER}" ] || [ -z "${AIPIARY_API_URL}" ]; then
     echo "missing values in env file"
     exit 2
 fi
@@ -65,9 +65,9 @@ start_smind() {
     DEVICE=$1
     mkdir -p "${BASE}/smind/"
     pushd "src/"
-    SWAI_API_URL="${SWAI_API_URL}" \
-    SWAI_USER="${SWAI_USER}" \
-    SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
+    AIPIARY_API_URL="${AIPIARY_API_URL}" \
+    AIPIARY_USER="${AIPIARY_USER}" \
+    AIPIARY_WORKER_TOKEN="${AIPIARY_WORKER_TOKEN}" \
         ${PYTHON} -u -m scattermind \
         --env "../${ENV_FILE}" \
         --version-file "../${BASE}/version.txt" \
@@ -82,9 +82,9 @@ start_smind() {
 start_provider() {
     mkdir -p "${BASE}/swai/"
     pushd "src/"
-    SWAI_API_URL="${SWAI_API_URL}" \
-    SWAI_USER="${SWAI_USER}" \
-    SWAI_WORKER_TOKEN="${SWAI_WORKER_TOKEN}" \
+    AIPIARY_API_URL="${AIPIARY_API_URL}" \
+    AIPIARY_USER="${AIPIARY_USER}" \
+    AIPIARY_WORKER_TOKEN="${AIPIARY_WORKER_TOKEN}" \
     CONFIG_PATH="../local/provider.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
         ${PYTHON} -u -m swai_provider \

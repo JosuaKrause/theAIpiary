@@ -34,9 +34,9 @@ EnvPath = Literal[
 ]
 EnvStr = Literal[
     "HOST",
-    "SWAI_API_URL",
-    "SWAI_USER",
-    "SWAI_WORKER_TOKEN",
+    "AIPIARY_API_URL",
+    "AIPIARY_USER",
+    "AIPIARY_WORKER_TOKEN",
 ]
 EnvInt = Literal[
     "PORT",

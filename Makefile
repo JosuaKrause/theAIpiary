@@ -129,8 +129,8 @@ run-server:
 run-ts:
 	yarn --cwd $(TS_ROOT) start
 
-dockerpush:
-	./sh/dockerpush.sh
+dockerpush-provider:
+	./sh/dockerpush_provider.sh
 
 install:
 	PYTHON=$(PYTHON) REQUIREMENTS_PATH=$(REQUIREMENTS_PATH) ./sh/install.sh

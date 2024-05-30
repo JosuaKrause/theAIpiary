@@ -56,9 +56,9 @@ class RemoteSessionStore(SessionStore):
             is_shared: bool) -> None:
         # FIXME: use timeouts
         super().__init__(cache_path=cache_path, is_shared=is_shared)
-        self._name = UName(envload_str("SWAI_USER"))
-        self._worker_token: WorkerToken = envload_str("SWAI_WORKER_TOKEN")
-        self._api_url = envload_str("SWAI_API_URL").removesuffix("/")
+        self._name = UName(envload_str("AIPIARY_USER"))
+        self._worker_token: WorkerToken = envload_str("AIPIARY_WORKER_TOKEN")
+        self._api_url = envload_str("AIPIARY_API_URL").removesuffix("/")
         self._api = requests.Session()
 
     @staticmethod
