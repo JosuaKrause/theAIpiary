@@ -125,11 +125,11 @@ fi
 if [ ! -z "${DEV}" ]; then
     DOCKER_COMPOSE_OUT="docker-compose.server.dev.yml"
     WEBAPP_STORAGE_HOME="./userdata/server"
-    DOCKER_LOGIN_SERVER=josuakrause/
+    DOCKER_LOGIN_SERVER=
 else
     DOCKER_COMPOSE_OUT="docker-compose.server.yml"
     WEBAPP_STORAGE_HOME=
-    DOCKER_LOGIN_SERVER=
+    DOCKER_LOGIN_SERVER=josuakrause/
 fi
 
 make install-ts
