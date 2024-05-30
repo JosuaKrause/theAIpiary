@@ -41,6 +41,13 @@ services:
       - ${WEBAPP_STORAGE_HOME}/models:/models
       - ${WEBAPP_STORAGE_HOME}/smind_cache:/smind_cache
       - ${WEBAPP_STORAGE_HOME}/smind_sess:/smind_sess
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
   api:
     image: $DOCKER_PROVIDER
     restart: always
