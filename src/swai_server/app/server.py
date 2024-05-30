@@ -990,6 +990,12 @@ def fallback_server(
 
     # *** misc ***
 
+    @server.json_get("/health")
+    def _get_health(_req: QSRH, _rargs: ReqArgs) -> HealthResponse:
+        return {
+            "okay": "okay",
+        }
+
     @server.json_get(f"{prefix}/version")
     def _get_version(_req: QSRH, _rargs: ReqArgs) -> VersionResponse:
         return {
