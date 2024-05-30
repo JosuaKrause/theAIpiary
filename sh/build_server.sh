@@ -129,7 +129,7 @@ if [ ! -z "${DEV}" ]; then
 else
     DOCKER_COMPOSE_OUT="docker-compose.server.yml"
     WEBAPP_STORAGE_HOME=
-    DOCKER_LOGIN_SERVER="acclabdocker.azurecr.io/"
+    DOCKER_LOGIN_SERVER="aipiary.azurecr.io/"
 fi
 
 make install-ts

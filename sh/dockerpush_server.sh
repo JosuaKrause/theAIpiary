@@ -28,7 +28,7 @@ cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
 IMAGE_BASE="aipiary-server"
 
-DOCKER_LOGIN_SERVER="acclabdocker.azurecr.io/"
+DOCKER_LOGIN_SERVER="aipiary.azurecr.io/"
 
 DEVMODE_CONF_FILE="deploy/devmode.conf"
 REDIS_VERSION_FILE="deploy/redis.version"
