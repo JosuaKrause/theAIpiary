@@ -125,7 +125,7 @@ fi
 if [ ! -z "${DEV}" ]; then
     DOCKER_COMPOSE_OUT="docker-compose.server.dev.yml"
     WEBAPP_STORAGE_HOME="./userdata/server"
-    DOCKER_LOGIN_SERVER=
+    DOCKER_LOGIN_SERVER=josuakrause/
 else
     DOCKER_COMPOSE_OUT="docker-compose.server.yml"
     WEBAPP_STORAGE_HOME=
