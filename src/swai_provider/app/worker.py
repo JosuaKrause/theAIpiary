@@ -20,11 +20,13 @@
 # all copies or substantial portions of the software.
 import sys
 import threading
+import uuid
 from typing import TypedDict
 
 from quick_server import add_shutdown_hook
 from scattermind.api.api import InputTypes
 from scattermind.system.base import TaskId
+from scattermind.system.torch_util import get_arch
 from scattermind.system.util import get_time_str
 
 from swai.system.base import WorkerStatus
@@ -67,13 +69,21 @@ def get_version_strs() -> VersionDict:
     }
 
 
+def get_worker_name() -> str:
+    device_id = f"{uuid.getnode():0>12x}"
+    arch = get_arch()
+    return f"{device_id}-{arch}"
+
+
 def task_loop() -> None:
     config = get_config()
 
     smind_config = config["smind"]
     smind = load_smind(smind_config)
     graphs = [load_graph(config, smind, "graph_llama.json")]
-    task_hnd = TaskHandler()
+    worker_name = get_worker_name()
+    print(f"device name: {get_worker_name()}")
+    task_hnd = TaskHandler(worker_name)
     cond = threading.Condition()
     done = False
     is_busy = False

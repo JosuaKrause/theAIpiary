@@ -18,8 +18,6 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
-import uuid
-
 import requests
 from scattermind.api.api import InputTypes, redis_to_task_input
 from scattermind.system.base import TaskId
@@ -39,8 +37,8 @@ from swai_provider.smind.worker_api import GraphProfile
 
 
 class TaskHandler:
-    def __init__(self) -> None:
-        self._worker_name = f"{uuid.getnode():0>12x}"
+    def __init__(self, worker_name: str) -> None:
+        self._worker_name = worker_name
         self._name = UName(envload_str("SWAI_USER"))
         self._worker_token: WorkerToken = envload_str("SWAI_WORKER_TOKEN")
         self._api_url = envload_str("SWAI_API_URL").removesuffix("/")
