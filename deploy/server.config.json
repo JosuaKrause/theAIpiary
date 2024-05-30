@@ -1,6 +1,6 @@
 {
   "session_store": {
-    "cache_path": "/session/cache",
+    "cache_path": "/swai/session/cache",
     "cfg": {
       "host": "rserver",
       "passwd": "",
@@ -8,7 +8,7 @@
       "port": 6379,
       "prefix": "sessions"
     },
-    "disk_path": "/session/disk",
+    "disk_path": "/swai/session/disk",
     "is_shared": false,
     "name": "redis"
   },

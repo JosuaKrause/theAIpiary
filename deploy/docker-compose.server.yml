@@ -6,7 +6,7 @@ services:
     expose:
       - 6379
     volumes:
-      - ${WEBAPP_STORAGE_HOME}/rserver:/data
+      - ${WEBAPP_STORAGE_HOME}/swai:/swai
   api:
     image: $DOCKER_SERVER
     restart: always
@@ -14,5 +14,4 @@ services:
       - '8080:8080'
     volumes:
       - ${WEBAPP_STORAGE_HOME}/swai:/swai
-      - ${WEBAPP_STORAGE_HOME}/session:/session
 # eof
