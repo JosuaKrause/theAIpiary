@@ -102,6 +102,9 @@ WorkerSignalResponse = TypedDict('WorkerSignalResponse', {
 ResetTokenResponse = TypedDict('ResetTokenResponse', {
     "email": str | None,
 })
+HealthResponse = TypedDict('HealthResponse', {
+    "okay": Literal["okay"],
+})
 VersionResponse = TypedDict('VersionResponse', {
     "app_name": str,
     "app_commit": str,

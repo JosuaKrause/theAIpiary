@@ -44,6 +44,7 @@ from swai.server_response_types import (
     ChatPromptResponse,
     ChatRecoverResponse,
     ChatTextResponse,
+    HealthResponse,
     HeartbeatResponse,
     LoginResponse,
     ResetTokenResponse,
@@ -302,6 +303,12 @@ def setup(
         return okay
 
     # *** misc ***
+
+    @server.json_get("/health")
+    def _get_health(_req: QSRH, _rargs: ReqArgs) -> HealthResponse:
+        return {
+            "okay": "okay",
+        }
 
     @server.json_get(f"{prefix}/version")
     def _get_version(_req: QSRH, _rargs: ReqArgs) -> VersionResponse:

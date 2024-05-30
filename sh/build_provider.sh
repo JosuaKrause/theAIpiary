@@ -274,7 +274,7 @@ EOF
 ${PYTHON} -c "${PY_COMPOSE}" "${DOCKER_LOGIN_SERVER}" "deploy/docker-compose.provider.yml" "${DEFAULT_ENV_FILE}" "${DOCKER_COMPOSE_OUT}"
 
 echo "docker compose is ready at ${DOCKER_COMPOSE_OUT}"
-echo "make sure to call make dockerpush before updating"
+echo "make sure to call make dockerpush-provider before updating"
 if [ ! -z "${DEV}" ]; then
     echo "run 'make compose-provider' next to start the provider"
 elif [ -z "${CI}" ]; then

@@ -220,7 +220,7 @@ EOF
 ${PYTHON} -c "${PY_COMPOSE}" "${DOCKER_LOGIN_SERVER}" "deploy/docker-compose.server.yml" "${DEFAULT_ENV_FILE}" "${DOCKER_COMPOSE_OUT}"
 
 echo "docker compose is ready at ${DOCKER_COMPOSE_OUT}"
-echo "make sure to call make dockerpush before updating"
+echo "make sure to call make dockerpush-server before updating"
 if [ ! -z "${DEV}" ]; then
     echo "run 'make compose-server' next to start the app on http://localhost:8080/login/"
 elif [ -z "${CI}" ]; then
