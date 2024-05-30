@@ -129,6 +129,9 @@ run-server:
 run-ts:
 	yarn --cwd $(TS_ROOT) start
 
+azlogin:
+	./sh/azlogin.sh
+
 dockerpush-provider:
 	./sh/dockerpush_provider.sh
 

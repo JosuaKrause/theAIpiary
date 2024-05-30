@@ -25,24 +25,10 @@ set -e
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-ENV_FILE="system.env"
-
-if [ ! -f "${ENV_FILE}" ]; then
-    cp "system.env.sample" "${ENV_FILE}"
-    echo "created env file at ${ENV_FILE} please fill in all values and run again"
-    exit 1
-else
-    source "${ENV_FILE}"
-fi
-
-echo "${DOCKER_TOKEN}" | docker login --username "${DOCKER_USER}" --password-stdin
-
 IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
 IMAGE_BASE="aipiary-server"
-if [ -z "${DOCKER_LOGIN_SERVER}" ]; then
-    echo "no login server set"
-    exit 1
-fi
+
+DOCKER_LOGIN_SERVER="acclabdocker.azurecr.io/"
 
 DEVMODE_CONF_FILE="deploy/devmode.conf"
 REDIS_VERSION_FILE="deploy/redis.version"
@@ -56,7 +42,7 @@ fi
 
 dpush() {
     IMAGE="${IMAGE_BASE}-$1:$2"
-    URL="${DOCKER_LOGIN_SERVER}/${IMAGE}"
+    URL="${DOCKER_LOGIN_SERVER}${IMAGE}"
     if ! docker pull "${URL}" &> /dev/null ; then
         echo "pushing ${IMAGE} to ${URL}"
 
