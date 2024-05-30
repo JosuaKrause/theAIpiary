@@ -55,7 +55,7 @@ cp "deploy/smind-config.json" "${SMIND_CFG}"
 cp -R "deploy/graphs/" "${SMIND_GRS}"
 
 IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
-IMAGE_BASE="aipiary-provider"
+IMAGE_BASE="aipiary"
 
 if [ ! -z "${DEV}" ]; then
     IMAGE_BASE="${IMAGE_BASE}-dev"
@@ -142,7 +142,7 @@ if [ ! -z "${DEV}" ]; then
 else
     DOCKER_COMPOSE_OUT="docker-compose.provider.yml"
     WEBAPP_STORAGE_HOME=
-    DOCKER_LOGIN_SERVER=josuakrause/
+    DOCKER_LOGIN_SERVER=aipiary/
 fi
 
 docker_build() {

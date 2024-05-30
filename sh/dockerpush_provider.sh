@@ -38,8 +38,8 @@ fi
 echo "${DOCKER_TOKEN}" | docker login --username "${DOCKER_USER}" --password-stdin
 
 IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
-IMAGE_BASE="aipiary-provider"
-DOCKER_LOGIN_SERVER="josuakrause/"
+IMAGE_BASE="aipiary"
+DOCKER_LOGIN_SERVER="aipiary/"
 
 DEVMODE_CONF_FILE="deploy/devmode.conf"
 REDIS_VERSION_FILE="deploy/redis.version"
