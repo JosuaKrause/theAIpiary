@@ -61,8 +61,9 @@ if [ ! -z "${DEV}" ]; then
     IMAGE_BASE="${IMAGE_BASE}-dev"
 fi
 
-make -s version-file
-trap 'rm -- version.txt' EXIT
+VERSION_PATH="version.provider.txt"
+VERSION_PATH="${VERSION_PATH}" make -s version-file
+trap "rm -- ${VERSION_PATH}" EXIT
 
 echo "building ${IMAGE_BASE}"
 

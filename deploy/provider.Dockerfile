@@ -22,7 +22,8 @@ COPY sh/ sh/
 COPY src/swai/ swai/
 COPY src/swai_provider swai_provider/
 RUN python -m compileall .
-COPY version.txt .
+ENV VERSION_PATH=version.txt
+COPY version.provider.txt ${VERSION_PATH}
 ARG SMIND_GRAPHS
 ARG SMIND_CONFIG
 COPY "${SMIND_CONFIG}" smind-config.json
@@ -30,7 +31,6 @@ COPY "${SMIND_GRAPHS}" graphs/
 ENV SMIND_CFG=smind-config.json
 ENV GRAPH_PATH=graphs/
 ENV CONFIG_PATH=-
-ENV VERSION_PATH=version.txt
 ENV ENV_FILE=/swai/provider.env
 EXPOSE ${PORT}
 ENTRYPOINT ["/bin/bash", "-l", "-c"]
