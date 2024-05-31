@@ -123,7 +123,7 @@ ChatRecoverResponse = TypedDict('ChatRecoverResponse', {
     "status": TaskStatus,
 })
 ChatPromptResponse = TypedDict('ChatPromptResponse', {
-    "task": str,
+    "task": str | None,
     "status": TaskStatus,
 })
 ChatTextResponse = TypedDict('ChatTextResponse', {

@@ -69,7 +69,7 @@ def start_llama_response(
         queue: TaskQueue,
         ns: GNamespace,
         prompt: str,
-        session: Session) -> TaskId:
+        session: Session) -> TaskId | None:
     prev_task_id = get_active_task(session)
     if prev_task_id is not None:
         set_interrupted(session, prev_task_id)
@@ -84,6 +84,8 @@ def start_llama_response(
         except ValueError as exc:
             raise ValueError("error computing previous response") from exc
         queue.clear_task(prev_task_id)
+    if not prompt:
+        return None
     return do_enqueue(queue, ns, prompt, session)
 
 

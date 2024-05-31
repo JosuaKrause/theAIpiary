@@ -51,6 +51,7 @@ export type WorkerStatus =
   | 'offline';
 
 export type Thinking = 'inactive' | 'thinking' | 'queued' | 'error';
+export const ACTIVE_THINKING: Thinking[] = ['thinking', 'queued'];
 
 export type Message = {
   role: Role;
@@ -72,10 +73,20 @@ export type ChatRecoverResponse = {
   status: TaskStatus;
 };
 
-export type ChatPromptResponse = {
+export type ApiChatPromptResponse = {
   task: TaskId | undefined;
   status: TaskStatus;
 };
+type ChatPromptError = {
+  error: true;
+  message: string;
+};
+type ChatPromptTask = {
+  error: false;
+  task: TaskId | undefined;
+  status: TaskStatus;
+};
+export type ChatPromptResponse = ChatPromptError | ChatPromptTask;
 
 export type ApiChatTextResponse = {
   diff: string;

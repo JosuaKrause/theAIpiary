@@ -42,6 +42,7 @@ from swai.server_response_types import (
     WorkerUserResponse,
     WorkerValueResponse,
 )
+from swai.system.base import retry_on_disconnect
 from swai.system.user.manager import WorkerToken
 from swai_provider.env import envload_str
 
@@ -80,18 +81,16 @@ class RemoteSessionStore(SessionStore):
         obj = self._json()
         obj["user_id"] = user_id.to_parseable()
         obj["session"] = session_id.to_parseable()
-        resp = self._api.put(
-            self._url("/session"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.put(
+            self._url("/session"), json=obj, headers=self._headers()))
         res: WorkerSessionResponse = resp.json()
         assert res["ok"]
 
     def get_sessions(self, user_id: UserId) -> Iterable[Session]:
         obj = self._json()
         obj["user_id"] = user_id.to_parseable()
-        resp = self._api.post(
-            self._url("/session"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/session"), json=obj, headers=self._headers()))
         res: WorkerSessionListResponse = resp.json()
         yield from (
             self.get_session(SessionId.parse(session))
@@ -101,9 +100,8 @@ class RemoteSessionStore(SessionStore):
     def get_user(self, session_id: SessionId) -> UserId | None:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        resp = self._api.post(
-            self._url("/user"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/user"), json=obj, headers=self._headers()))
         res: WorkerUserResponse = resp.json()
         user_id_str = res["user_id"]
         if user_id_str is None:
@@ -122,9 +120,8 @@ class RemoteSessionStore(SessionStore):
         obj["key"] = key
         obj["index"] = index
         obj["value"] = value
-        resp = self._api.post(
-            self._url("/value"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/value"), json=obj, headers=self._headers()))
         res: WorkerValueResponse = resp.json()
         assert res["success"]
 
@@ -134,9 +131,8 @@ class RemoteSessionStore(SessionStore):
         obj["op"] = "push"
         obj["key"] = key
         obj["value"] = value
-        resp = self._api.post(
-            self._url("/value"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/value"), json=obj, headers=self._headers()))
         res: WorkerValueResponse = resp.json()
         assert res["success"]
 
@@ -145,9 +141,8 @@ class RemoteSessionStore(SessionStore):
         obj["session"] = session_id.to_parseable()
         obj["op"] = "pop"
         obj["key"] = key
-        resp = self._api.post(
-            self._url("/value"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/value"), json=obj, headers=self._headers()))
         res: WorkerValueResponse = resp.json()
         assert res["success"]
         return res["value"]
@@ -159,9 +154,8 @@ class RemoteSessionStore(SessionStore):
         obj["op"] = "get"
         obj["key"] = key
         obj["index"] = index
-        resp = self._api.post(
-            self._url("/value"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/value"), json=obj, headers=self._headers()))
         res: WorkerValueResponse = resp.json()
         assert res["success"]
         return res["value"]
@@ -171,9 +165,8 @@ class RemoteSessionStore(SessionStore):
         obj["session"] = session_id.to_parseable()
         obj["op"] = "length"
         obj["key"] = key
-        resp = self._api.post(
-            self._url("/value"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/value"), json=obj, headers=self._headers()))
         res: WorkerValueResponse = resp.json()
         assert res["success"]
         return res["length"]
@@ -181,9 +174,8 @@ class RemoteSessionStore(SessionStore):
     def get_keys(self, session_id: SessionId) -> list[str]:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        resp = self._api.post(
-            self._url("/keys"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/keys"), json=obj, headers=self._headers()))
         res: WorkerKeysResponse = resp.json()
         return res["keys"]
 
@@ -191,9 +183,8 @@ class RemoteSessionStore(SessionStore):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         obj["key"] = key
-        resp = self._api.post(
-            self._url("/signal"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/signal"), json=obj, headers=self._headers()))
         res: WorkerSignalResponse = resp.json()
         assert res["signal"]
 
@@ -216,6 +207,8 @@ class RemoteSessionStore(SessionStore):
             obj["session"] = session_id.to_parseable()
             obj["key"] = key
             obj["timeout"] = timeout - time_passed
+            # NOTE: don't retry
+            # FIXME: think of a better retry strategy here
             resp = self._api.post(
                 self._url("/signal"), json=obj, headers=self._headers())
             resp.raise_for_status()
@@ -241,7 +234,7 @@ class RemoteSessionStore(SessionStore):
             obj["fragment"] = chunk_ix
             obj["complete"] = complete
             bchunk.seek(0, io.SEEK_SET)
-            resp = self._api.put(
+            resp = retry_on_disconnect(lambda: self._api.put(
                 self._url("/blob"),
                 data=obj,
                 files={
@@ -251,8 +244,7 @@ class RemoteSessionStore(SessionStore):
                         "application/octet-stream",
                     ),
                 },
-                headers=self._headers())
-            resp.raise_for_status()
+                headers=self._headers()))
             res: WorkerUploadResponse = resp.json()
             assert res["done"]
             assert not res["missing"]
@@ -279,9 +271,8 @@ class RemoteSessionStore(SessionStore):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         obj["blob"] = name
-        resp = self._api.post(
-            self._url("/blob"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/blob"), json=obj, headers=self._headers()))
         bout = io.BytesIO(resp.content)
         try:
             yield bout
@@ -295,18 +286,16 @@ class RemoteSessionStore(SessionStore):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         obj["blobs"] = sorted(set(names))
-        resp = self._api.post(
-            self._url("/hash"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/hash"), json=obj, headers=self._headers()))
         res: WorkerBlobHashResponse = resp.json()
         return res["blob_hashes"]
 
     def blob_list(self, session_id: SessionId) -> list[str]:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        resp = self._api.post(
-            self._url("/list"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/list"), json=obj, headers=self._headers()))
         res: WorkerBlobListResponse = resp.json()
         return res["blobs"]
 
@@ -314,17 +303,15 @@ class RemoteSessionStore(SessionStore):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         obj["blobs"] = sorted(set(names))
-        resp = self._api.delete(
-            self._url("/blob"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.delete(
+            self._url("/blob"), json=obj, headers=self._headers()))
         res: WorkerUploadResponse = resp.json()
         assert res["done"]
 
     def remove(self, session_id: SessionId) -> None:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        resp = self._api.delete(
-            self._url("/session"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.delete(
+            self._url("/session"), json=obj, headers=self._headers()))
         res: WorkerSessionResponse = resp.json()
         assert res["ok"]

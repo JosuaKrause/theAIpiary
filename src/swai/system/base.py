@@ -18,13 +18,19 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
+import time
+from collections.abc import Callable
 from typing import cast, get_args, Literal, TypeAlias, TypedDict
 
+import requests
 from scattermind.system.names import UName
 from scattermind.system.util import get_short_hash
 
 
 WorkerId: TypeAlias = str
+
+
+DEFAULT_WAIT = 1.0  # 1s
 
 
 def get_worker_id(user_email: UName, worker_name: str) -> WorkerId:
@@ -64,3 +70,32 @@ SessionInfoJSON = TypedDict('SessionInfoJSON', {
     "time": str | None,
     "summary": str | None,
 })
+
+
+def retry_on_disconnect(
+        cb: Callable[[], requests.Response],
+        *,
+        retries: int | None = None,
+        wait_before_retry: float = DEFAULT_WAIT) -> requests.Response:
+    cur_retries = 1 if retries is None else retries
+    while True:
+        try:
+            resp = cb()
+            resp.raise_for_status()
+            return resp
+        except ConnectionRefusedError:
+            if cur_retries <= 0:
+                raise
+        except requests.exceptions.HTTPError as err:
+            if err.errno != 61:
+                raise
+            if cur_retries <= 0:
+                raise
+        except requests.ConnectionError:
+            if cur_retries <= 0:
+                raise
+        if wait_before_retry > 0.0:
+            time.sleep(wait_before_retry)
+        cur_retries -= 1
+        if retries is None:
+            cur_retries = 1

@@ -884,7 +884,7 @@ def setup(
         prompt: str = meta["prompt"]
         task_id = start_llama_response(task_queue, model_ns, prompt, session)
         return {
-            "task": task_id.to_parseable(),
+            "task": None if task_id is None else task_id.to_parseable(),
             "status": task_queue.get_status(task_id),
         }
 

@@ -30,7 +30,7 @@ from swai.server_response_types import (
     TaskBidResponse,
     TaskFinishResponse,
 )
-from swai.system.base import WorkerStatus
+from swai.system.base import retry_on_disconnect, WorkerStatus
 from swai.system.user.manager import WorkerToken
 from swai_provider.env import envload_str
 from swai_provider.smind.worker_api import GraphProfile
@@ -55,13 +55,20 @@ class TaskHandler:
             "authorization": get_authorization(self._name, self._worker_token),
         }
 
-    def task_heartbeat(self, *, worker_status: WorkerStatus) -> float:
+    def task_heartbeat(
+            self,
+            *,
+            worker_status: WorkerStatus,
+            retries: int | None,
+            wait_before_retry: float) -> float:
         obj = self._json()
         obj["worker_name"] = self._worker_name
         obj["status"] = worker_status
-        resp = self._api.post(
-            self._url("/heartbeat"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/heartbeat"), json=obj, headers=self._headers()),
+            retries=retries,
+            wait_before_retry=wait_before_retry)
         res: HeartbeatResponse = resp.json()
         return res["timeout"]
 
@@ -79,9 +86,8 @@ class TaskHandler:
         obj["worker_name"] = self._worker_name
         obj["nss"] = [ns.get() for ns in graph_ns.keys()]
         obj["timeout"] = timeout
-        resp = self._api.post(
-            self._url("/bid"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/bid"), json=obj, headers=self._headers()))
         res: TaskBidResponse = resp.json()
         out_ns = res["ns"]
         out_task_id = res["task_id"]
@@ -103,8 +109,8 @@ class TaskHandler:
         obj["worker_name"] = self._worker_name
         obj["task_id"] = task_id.to_parseable()
         obj["response"] = response_to_redis(response)
-        resp = self._api.post(
-            self._url("/finish"), json=obj, headers=self._headers())
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/finish"), json=obj, headers=self._headers()))
         resp.raise_for_status()
         res: TaskFinishResponse = resp.json()
         assert res["well_done"]

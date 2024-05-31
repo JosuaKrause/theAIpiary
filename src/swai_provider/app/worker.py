@@ -20,6 +20,7 @@
 # all copies or substantial portions of the software.
 import sys
 import threading
+import traceback
 import uuid
 from typing import TypedDict
 
@@ -111,7 +112,10 @@ def task_loop() -> None:
         task_hnd.task_finish(task_id, response)
         print("done")
         is_busy = False
-        task_hnd.task_heartbeat(worker_status=get_status())
+        task_hnd.task_heartbeat(
+            worker_status=get_status(),
+            retries=None,
+            wait_before_retry=1.0)
 
     def hook() -> None:
         nonlocal done
@@ -124,11 +128,17 @@ def task_loop() -> None:
 
     def heartbeat() -> None:
         while not done:
-            hb_sleep = task_hnd.task_heartbeat(worker_status=get_status())
+            hb_sleep = task_hnd.task_heartbeat(
+                worker_status=get_status(),
+                retries=None,
+                wait_before_retry=1.0)
             if hb_sleep > 0.0:
                 with cond:
                     cond.wait(hb_sleep)
-        task_hnd.task_heartbeat(worker_status=get_status())
+        task_hnd.task_heartbeat(
+            worker_status=get_status(),
+            retries=3,
+            wait_before_retry=0.1)
         # FIXME: what to do if the heartbeat fails / errors out?
 
     th = threading.Thread(target=heartbeat, daemon=True)
@@ -141,7 +151,12 @@ def task_loop() -> None:
                 continue  # NOTE: no sleep!
             compute_task(maybe_task)
     finally:
+        if sys.exc_info()[1] is not None:
+            print(traceback.format_exc())
         done = True
         with cond:
             cond.notify_all()
-        task_hnd.task_heartbeat(worker_status=get_status())
+        task_hnd.task_heartbeat(
+            worker_status=get_status(),
+            retries=3,
+            wait_before_retry=0.1)
