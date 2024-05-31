@@ -124,7 +124,7 @@ run-provider:
 	BASE=$(BASE) ./sh/run_provider.sh
 
 run-server:
-	BOOTSTRAP_USERS=$(BOOTSTRAP_USERS) ./sh/run_server.sh
+	BASE=$(BASE) ./sh/run_server.sh
 
 run-ts:
 	yarn --cwd $(TS_ROOT) start
@@ -181,7 +181,7 @@ branch:
 	git rev-parse --abbrev-ref HEAD
 
 version-file:
-	./sh/versionfile.sh
+	VERSION_PATH=$(VERSION_PATH) ./sh/versionfile.sh
 
 current-version:
 	./sh/version.sh --current

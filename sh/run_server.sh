@@ -25,11 +25,15 @@ set -x
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-BASE="userdata/server"
-ENV_FILE="${ENV_FILE:-${BASE}/swai/server.env}"
-ROOT="../.."
+ROOT="$(pwd)"
 
+BASE="${BASE:-userdata/server}"
 mkdir -p "${BASE}/"
+pushd "${BASE}"
+BASE="$(pwd)"
+popd
+
+ENV_FILE="${ENV_FILE:-${BASE}/swai/server.env}"
 
 PYTHON="${PYTHON:-python}"
 DATE=$(date "+%Y-%m-%d")
@@ -48,27 +52,26 @@ start_redis() {
     mkdir -p "${REDIS_PATH}"
     pushd "${REDIS_PATH}"
     redis-server \
-        "../${ROOT}/local/redis/${REDIS_NAME}.conf" \
+        "${ROOT}/local/redis/${REDIS_NAME}.conf" \
         --port "${REDIS_PORT}" \
-        >> "redis-${DATE}.log" 2>&1 &
+        >> "${REDIS_PATH}/redis-${DATE}.log" 2>&1 &
     popd
 }
 
 start_server() {
     mkdir -p "${BASE}/swai/"
     pushd "src/"
-    HISTORY_PATH="../${BASE}/.cmd_history" \
-    CONFIG_PATH="../local/server.config.json" \
-    VERSION_PATH="../${BASE}/version.txt" \
+    HISTORY_PATH="${BASE}/.cmd_history" \
+    CONFIG_PATH="${ROOT}/local/server.config.json" \
+    VERSION_PATH="${BASE}/version.txt" \
         ${PYTHON} -u -m swai_server \
         --dedicated \
-        --env "../${ENV_FILE}" \
-        >> "../${BASE}/swai/swai_server-${DATE}.log" 2>&1 &
+        --env "${ENV_FILE}" \
+        >> "${BASE}/swai/swai_server-${DATE}.log" 2>&1 &
     popd
 }
 
-make -s version-file
-mv version.txt "${BASE}/version.txt"
+VERSION_PATH="${BASE}/version.txt" make -s version-file
 
 start_redis rserver 6385
 

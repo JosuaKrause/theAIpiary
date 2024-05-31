@@ -42,9 +42,7 @@ EnvInt = Literal[
     "PORT",
     "REDIS_PORT",
 ]
-EnvBool = Literal[
-    "BOOTSTRAP_USERS",
-]
+EnvBool = Literal["!"]  # FIXME: placeholder for actual env names
 
 
 def _envload(key: str, default: str | None) -> str:

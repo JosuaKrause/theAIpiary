@@ -149,7 +149,7 @@ def setup(
 
     max_upload = 120 * 1024 * 1024  # 120MiB
     server_timeout = 10 * 60
-    server.report_slow_requests = (30.0, report_slow_requests)
+    server.report_slow_requests = (64.0, report_slow_requests)
     server.max_file_size = max_upload
     server.max_chunk_size = max_upload
     server.timeout = server_timeout

@@ -25,11 +25,15 @@ set -x
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-BASE="${BASE:-userdata/provider}"
-ENV_FILE="${ENV_FILE:-${BASE}/swai/provider.env}"
-ROOT="../.."
+ROOT="$(pwd)"
 
+BASE="${BASE:-userdata/provider}"
 mkdir -p "${BASE}/"
+pushd "${BASE}"
+BASE="$(pwd)"
+popd
+
+ENV_FILE="${ENV_FILE:-${BASE}/swai/provider.env}"
 
 PYTHON="${PYTHON:-python}"
 DATE=$(date "+%Y-%m-%d")
@@ -55,9 +59,9 @@ start_redis() {
     mkdir -p "${REDIS_PATH}"
     pushd "${REDIS_PATH}"
     redis-server \
-        "../${ROOT}/local/redis/${REDIS_NAME}.conf" \
+        "${ROOT}/local/redis/${REDIS_NAME}.conf" \
         --port "${REDIS_PORT}" \
-        >> "redis-${DATE}.log" 2>&1 &
+        >> "${REDIS_PATH}/redis-${DATE}.log" 2>&1 &
     popd
 }
 
@@ -69,13 +73,13 @@ start_smind() {
     AIPIARY_USER="${AIPIARY_USER}" \
     AIPIARY_WORKER_TOKEN="${AIPIARY_WORKER_TOKEN}" \
         ${PYTHON} -u -m scattermind \
-        --env "../${ENV_FILE}" \
-        --version-file "../${BASE}/version.txt" \
-        --config "../local/smind-config.json" \
+        --env "${ENV_FILE}" \
+        --version-file "${BASE}/version.txt" \
+        --config "${ROOT}/local/smind-config.json" \
         --device "${DEVICE}" \
         worker \
-        --graph "../local/graphs/" \
-        >> "../${BASE}/smind/smind-${DATE}.log" 2>&1 &
+        --graph "${ROOT}/local/graphs/" \
+        >> "${BASE}/smind/smind-${DATE}.log" 2>&1 &
     popd
 }
 
@@ -85,16 +89,15 @@ start_provider() {
     AIPIARY_API_URL="${AIPIARY_API_URL}" \
     AIPIARY_USER="${AIPIARY_USER}" \
     AIPIARY_WORKER_TOKEN="${AIPIARY_WORKER_TOKEN}" \
-    CONFIG_PATH="../local/provider.config.json" \
-    VERSION_PATH="../${BASE}/version.txt" \
+    CONFIG_PATH="${ROOT}/local/provider.config.json" \
+    VERSION_PATH="${BASE}/version.txt" \
         exec \
         ${PYTHON} -u -m swai_provider \
-        --env "../${ENV_FILE}" \
-        >> "../${BASE}/swai/swai_provider-${DATE}.log" 2>&1
+        --env "${ENV_FILE}" \
+        >> "${BASE}/swai/swai_provider-${DATE}.log" 2>&1
 }
 
-make -s version-file
-mv version.txt "${BASE}/version.txt"
+VERSION_PATH="${BASE}/version.txt" make -s version-file
 
 start_redis rmain 6381
 start_redis rbody 6382

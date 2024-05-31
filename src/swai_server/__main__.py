@@ -64,7 +64,9 @@ def run() -> None:
     env_file: str | None = args.env
     if env_file:
         if not os.path.exists(env_file):
-            print(f"could not load env! {env_file} does not exist!")
+            print(
+                f"could not load env! {env_file} does not exist!\n"
+                "this is expected in production!")
         else:
             print(f"loading env {env_file}")
             load_dotenv(env_file)
