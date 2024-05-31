@@ -30,7 +30,7 @@ from scattermind.system.base import TaskId
 from scattermind.system.torch_util import get_arch
 from scattermind.system.util import get_time_str
 
-from swai.system.base import WorkerStatus
+from swai.system.base import DEFAULT_WAIT, WorkerStatus
 from swai_provider.app.task_hnd import TaskHandler
 from swai_provider.config import get_config
 from swai_provider.smind.worker_api import (
@@ -115,7 +115,7 @@ def task_loop() -> None:
         task_hnd.task_heartbeat(
             worker_status=get_status(),
             retries=None,
-            wait_before_retry=1.0)
+            wait_before_retry=DEFAULT_WAIT)
 
     def hook() -> None:
         nonlocal done
@@ -131,7 +131,7 @@ def task_loop() -> None:
             hb_sleep = task_hnd.task_heartbeat(
                 worker_status=get_status(),
                 retries=None,
-                wait_before_retry=1.0)
+                wait_before_retry=DEFAULT_WAIT)
             if hb_sleep > 0.0:
                 with cond:
                     cond.wait(hb_sleep)

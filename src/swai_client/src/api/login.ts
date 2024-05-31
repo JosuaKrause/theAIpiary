@@ -22,9 +22,11 @@
  */
 import { URL_PREFIX } from '../misc/constants';
 import {
+  ApiChangeCapability,
   ApiChatSessionsResponse,
   ApiLoginResponse,
   ApiPasswordResetTokenResponse,
+  ApiUserCapability,
   ApiUserListResponse,
   ApiWorkerInfoResponse,
   ApiWorkerTokenResponse,
@@ -39,6 +41,7 @@ import {
   WorkerInfo,
   WorkerToken,
   checkResponse,
+  toUserCapabilities,
   toUserOrMessage,
 } from './types';
 
@@ -59,6 +62,11 @@ export type LoginApiProvider = {
     resetToken: Readonly<ResetToken>,
     password: Readonly<Password>,
   ) => Promise<Readonly<User> | Readonly<LoginInfo>>;
+  changeCapability: (
+    name: Readonly<UserEmail>,
+    capability: ApiUserCapability,
+    setActive: boolean,
+  ) => Promise<void>;
   logout: () => Promise<Readonly<User> | Readonly<LoginInfo>>;
   getWorkerToken: () => Promise<Readonly<WorkerToken>>;
   listUsers: () => Promise<UserInfo[]>;
@@ -147,6 +155,26 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     const obj = (await res.json()) as ApiLoginResponse;
     return toUserOrMessage(obj);
   },
+  changeCapability: async (
+    name: Readonly<UserEmail>,
+    capability: ApiUserCapability,
+    setActive: boolean,
+  ) => {
+    const res = await fetch(`${URL_PREFIX}/user/capability`, {
+      method: 'PUT',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name,
+        capability,
+        set_has: setActive,
+      }),
+    });
+    checkResponse(res);
+    (await res.json()) as ApiChangeCapability; // TODO: maybe do something
+  },
   logout: async () => {
     const res = await fetch(`${URL_PREFIX}/user/logout`, {
       method: 'POST',
@@ -185,9 +213,10 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     });
     checkResponse(res);
     const { users } = (await res.json()) as ApiUserListResponse;
-    return users.map(({ email, display_name }) => ({
+    return users.map(({ email, display_name, capabilities }) => ({
       email,
       displayName: display_name,
+      capabilities: toUserCapabilities(capabilities),
     }));
   },
   listChats: async () => {

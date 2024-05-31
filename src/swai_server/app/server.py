@@ -39,6 +39,7 @@ from scattermind.system.util import get_time_str, parse_time_str, to_bool
 from swai.auth import parse_authorization
 from swai.clean import sanity_check
 from swai.server_response_types import (
+    ChangeCapabilityResponse,
     ChatInitResponse,
     ChatListResponse,
     ChatPromptResponse,
@@ -68,6 +69,7 @@ from swai.server_response_types import (
 from swai.system.base import SessionInfoJSON, STATUS_MAPPING, to_worker_status
 from swai.system.user.loader import load_user_manager
 from swai.system.user.manager import (
+    as_capability,
     DEFAULT_CAPABILITIES,
     HashPassword,
     RawPassword,
@@ -404,9 +406,12 @@ def setup(
 
         def get_user_info(user: UName) -> UserInfoResponse:
             info = sec_ctx.get_user_info(user_session, user)
+            capabilities = sec_ctx.maybe_list_capabilities(
+                user_session, user)
             return {
                 "email": info["email"].get(),
                 "display_name": info["display_name"],
+                "capabilities": sorted(capabilities),
             }
 
         return {
@@ -471,6 +476,22 @@ def setup(
         return {
             "logged": False,
             "message": "password set",
+        }
+
+    @server.json_put(f"{prefix}/user/capability")
+    @server.middleware(verify_user_session)
+    def _put_user_capability(
+            _req: QSRH, rargs: ReqArgs) -> ChangeCapabilityResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
+        args = rargs["post"]
+        user_name: str = args["name"]
+        user_email = UName(user_name)
+        capability = as_capability(args["capability"])
+        set_has = to_bool(args["set_has"])
+        sec_ctx.set_capability(
+            user_session, user_email, capability, has=set_has)
+        return {
+            "okay": True,
         }
 
     @server.json_post(f"{prefix}/user/logout")

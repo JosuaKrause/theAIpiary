@@ -199,6 +199,7 @@ const SendButton = styled.input`
   background-color: var(--button-background);
   flex-grow: 0;
   height: 3.5em;
+  vertical-align: middle;
   align-self: center;
 
   &:hover {

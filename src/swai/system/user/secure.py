@@ -243,6 +243,18 @@ class SecureContext:
             admin_capability=CAP_CHANGE_CAPABILITIES)
         return self._user_mng.list_capabilities(email)
 
+    def maybe_list_capabilities(
+            self,
+            who: SessionToken,
+            email: UName) -> set[CapabilityName]:
+        if not self.is_allowed(
+                who,
+                email=email,
+                own_capability=CAP_CHANGE_CAPABILITIES,
+                admin_capability=CAP_CHANGE_CAPABILITIES):
+            return set()
+        return self._user_mng.list_capabilities(email)
+
     def list_users(self, who: SessionToken) -> list[UName]:
         self.ensure_can_act(who, email=None, admin_capability=CAP_LIST_USERS)
         return list(self._user_mng.list_users())

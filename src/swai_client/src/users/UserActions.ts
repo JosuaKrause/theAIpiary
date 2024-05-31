@@ -22,6 +22,7 @@
  */
 import { DEFAULT_LOGIN_API, LoginApiProvider } from '../api/login';
 import {
+  ApiUserCapability,
   DisplayName,
   LoginInfo,
   Password,
@@ -82,6 +83,16 @@ export default class UserActions {
   ) {
     const user = await this.api.resetPassword(resetToken, password);
     updateUser(user);
+  }
+
+  async changeCapability(
+    email: Readonly<UserEmail>,
+    capability: ApiUserCapability,
+    setActive: boolean,
+    onDone: () => void,
+  ) {
+    await this.api.changeCapability(email, capability, setActive);
+    onDone();
   }
 
   async logout(updateUser: UserCallback) {

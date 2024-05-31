@@ -20,10 +20,15 @@
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the software.
  */
-import React, { MouseEventHandler, PureComponent } from 'react';
+import React, {
+  ChangeEventHandler,
+  MouseEventHandler,
+  PureComponent,
+} from 'react';
 import { ConnectedProps, connect } from 'react-redux';
 import styled, { css } from 'styled-components';
 import {
+  ApiUserCapability,
   DisplayName,
   SessionInfo,
   UserEmail,
@@ -31,6 +36,7 @@ import {
   WorkerInfo,
   WorkerStatus,
   WorkerToken,
+  toCapabilityList,
 } from '../api/types';
 import { redirectWelcome } from '../misc/common';
 import { WORKER_UPDATE } from '../misc/constants';
@@ -221,6 +227,134 @@ const SessionRow = styled.div`
   justify-content: start;
 `;
 
+const UserEntry = styled.div`
+  display: flex;
+  flex-direction: column;
+  justify-content: start;
+  width: 100%;
+`;
+
+const UserRow = styled.div`
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+
+  color: silver;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    color: lightgray;
+    background-color: var(--button-background);
+  }
+`;
+
+type ClickableUserRowProps = {
+  children: React.ReactNode;
+  setSelectedUser: (email: Readonly<UserEmail> | null) => void;
+  email: Readonly<UserEmail>;
+  isSelected: boolean;
+};
+
+class ClickableUserRow extends PureComponent<ClickableUserRowProps> {
+  onClick: MouseEventHandler<HTMLDivElement> = (e) => {
+    if (e.isDefaultPrevented()) {
+      return;
+    }
+    e.preventDefault();
+    const { isSelected, setSelectedUser, email } = this.props;
+    if (isSelected) {
+      setSelectedUser(null);
+    } else {
+      setSelectedUser(email);
+    }
+  };
+
+  render() {
+    const { children } = this.props;
+    return <UserRow onClick={this.onClick}>{children}</UserRow>;
+  }
+}
+
+const CapabilityEntry = styled.div`
+  display: flex;
+  flex-direction: row;
+  justify-content: end;
+  width: 100%;
+`;
+
+const CapabilityLabel = styled.label`
+  flex-grow: 0;
+  cursor: pointer;
+
+  &:hover {
+    color: silver;
+  }
+`;
+
+const CapabilityToggle = styled.input`
+  padding: var(--item-padding);
+  flex-grow: 0;
+`;
+
+type CapabilityToggleInputProps = {
+  setCapability: (
+    email: Readonly<UserEmail>,
+    capability: ApiUserCapability,
+    setActive: boolean,
+    onDone: () => void,
+  ) => void;
+  email: Readonly<UserEmail>;
+  capability: ApiUserCapability;
+  isActive: boolean;
+};
+type CapabilityToggleInputState = {
+  inFlight: boolean;
+};
+
+class CapabilityToggleInput extends PureComponent<
+  CapabilityToggleInputProps,
+  CapabilityToggleInputState
+> {
+  constructor(props: Readonly<CapabilityToggleInputProps>) {
+    super(props);
+    this.state = {
+      inFlight: false,
+    };
+  }
+
+  onChange: ChangeEventHandler<HTMLInputElement> = (e) => {
+    if (e.isDefaultPrevented()) {
+      return;
+    }
+    e.preventDefault();
+    const { inFlight } = this.state;
+    if (inFlight) {
+      return;
+    }
+    const { isActive, setCapability, capability, email } = this.props;
+    this.setState({ inFlight: true }, () => {
+      setCapability(email, capability, !isActive, () => {
+        this.setState({ inFlight: false });
+      });
+    });
+  };
+
+  render() {
+    const { isActive } = this.props;
+    const { inFlight } = this.state;
+    return (
+      <CapabilityToggle
+        type="checkbox"
+        checked={isActive}
+        disabled={inFlight}
+        onChange={this.onChange}
+      />
+    );
+  }
+}
+
 const Row = styled.div`
   display: flex;
   flex-direction: row;
@@ -257,6 +391,7 @@ type ProfileState = {
   createdUserMessage: string | null;
   workerToken: Readonly<WorkerToken> | null;
   inFlightUserCreation: boolean;
+  selectedUser: Readonly<UserEmail> | null;
 };
 
 class Profile extends PureComponent<ProfileProps, ProfileState> {
@@ -275,6 +410,7 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
       createdUserMessage: null,
       workerToken: null,
       inFlightUserCreation: false,
+      selectedUser: null,
     };
     this.createNameRef = React.createRef();
     this.createEmailRef = React.createRef();
@@ -293,6 +429,7 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
         createdUserMessage: null,
         workerToken: null,
         inFlightUserCreation: false,
+        selectedUser: null,
       },
     );
   }
@@ -407,10 +544,36 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
     );
   };
 
+  setSelectedUser = (email: Readonly<UserEmail> | null) => {
+    this.setState({
+      selectedUser: email,
+    });
+  };
+
+  setCapability = async (
+    email: Readonly<UserEmail>,
+    capability: ApiUserCapability,
+    setActive: boolean,
+    onDone: () => void,
+  ) => {
+    const { userActions } = this.props;
+    await userActions.changeCapability(email, capability, setActive, () => {
+      this.setState({ initUsers: false }, () => {
+        onDone();
+      });
+    });
+  };
+
   render() {
     const { user, appName } = this.props;
-    const { workerToken, createdUserMessage, users, chats, workers } =
-      this.state;
+    const {
+      workerToken,
+      createdUserMessage,
+      users,
+      chats,
+      workers,
+      selectedUser,
+    } = this.state;
     return (
       <VMain>
         <HeaderRow>
@@ -437,19 +600,54 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
         ) : null}
         <Group>
           <Row>
-            <Link href={`/chat`}>Start New Chat...</Link>
+            <Link href="/chat">Start New Chat...</Link>
           </Row>
         </Group>
         {users.length ? (
           <Group maxHeight={200}>
             <GroupTitle>Users</GroupTitle>
-            {users.map(({ email, displayName }) => (
-              <Row key={`${email}`}>
-                <RowSpan>
-                  {displayName} (<AutoHide title="@">{email}</AutoHide>)
-                </RowSpan>
-              </Row>
-            ))}
+            {users.map((userEntry) => {
+              const { email, displayName } = userEntry;
+              const isSelected = email === selectedUser;
+              console.log(
+                isSelected,
+                user && user.capabilities.changeCapabilities,
+                userEntry,
+              );
+              const rowKey = `${email}`.replaceAll(/[^a-zA-Z_0-9-]/g, '_');
+              return (
+                <Row key={rowKey}>
+                  <UserEntry>
+                    <ClickableUserRow
+                      email={email}
+                      isSelected={isSelected}
+                      setSelectedUser={this.setSelectedUser}>
+                      {displayName} (<AutoHide title="@">{email}</AutoHide>)
+                    </ClickableUserRow>
+                    {isSelected && user && user.capabilities.changeCapabilities
+                      ? toCapabilityList(userEntry).map(
+                          ({ name: capName, has: capHas }) => {
+                            const capKey = `${rowKey}_${capName}`;
+                            return (
+                              <CapabilityEntry key={capKey}>
+                                <CapabilityLabel>
+                                  {capName}
+                                  <CapabilityToggleInput
+                                    isActive={capHas}
+                                    capability={capName}
+                                    email={email}
+                                    setCapability={this.setCapability}
+                                  />
+                                </CapabilityLabel>
+                              </CapabilityEntry>
+                            );
+                          },
+                        )
+                      : null}
+                  </UserEntry>
+                </Row>
+              );
+            })}
           </Group>
         ) : null}
         {user && user.capabilities.createUser ? (

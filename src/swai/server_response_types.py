@@ -39,9 +39,13 @@ UserNotLogged = TypedDict('UserNotLogged', {
     "message": str,
 })
 LoginResponse = UserLogged | UserNotLogged
+ChangeCapabilityResponse = TypedDict('ChangeCapabilityResponse', {
+    "okay": bool,
+})
 UserInfoResponse = TypedDict('UserInfoResponse', {
     "email": str,
     "display_name": str,
+    "capabilities": list[CapabilityName],
 })
 UserListResponse = TypedDict('UserListResponse', {
     "users": list[UserInfoResponse],

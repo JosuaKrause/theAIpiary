@@ -137,7 +137,7 @@ export type LoginInfo = {
   message: string;
 };
 
-type ApiUserCapability =
+export type ApiUserCapability =
   | 'change_capabilities'
   | 'logout_other_user'
   | 'create_user'
@@ -163,9 +163,14 @@ export type ApiPasswordResetTokenResponse = {
   email: Readonly<UserEmail> | undefined;
 };
 
+export type ApiChangeCapability = {
+  okay: boolean;
+};
+
 type ApiUserInfoResponse = {
   email: Readonly<UserEmail>;
   display_name: Readonly<DisplayName>;
+  capabilities: Readonly<ApiUserCapability[]>;
 };
 export type ApiUserListResponse = {
   users: ApiUserInfoResponse[];
@@ -173,6 +178,7 @@ export type ApiUserListResponse = {
 export type UserInfo = {
   email: Readonly<UserEmail>;
   displayName: Readonly<DisplayName>;
+  capabilities: Readonly<UserCapabilities>;
 };
 
 export type WorkerInfo = {
@@ -206,20 +212,42 @@ const NO_CAPABILITIES: Readonly<UserCapabilities> = {
   registerOtherWorker: false,
 };
 
-export function toUserOrMessage(
-  userResp: Readonly<ApiLoginResponse>,
-): Readonly<User> | LoginInfo {
-  const { logged } = userResp;
-  if (!logged) {
-    const { message } = userResp;
-    return { logged: false, message };
+type CapabilityMapping = {
+  [key in keyof UserCapabilities]: ApiUserCapability;
+};
+
+export const CAPABILITY_MAP: CapabilityMapping = {
+  changeCapabilities: 'change_capabilities',
+  logoutOtherUser: 'logout_other_user',
+  createUser: 'create_user',
+  listUsers: 'list_users',
+  writeOtherChat: 'write_other_chat',
+  readOtherChat: 'read_other_chat',
+  registerOwnWorker: 'register_own_worker',
+  registerOtherWorker: 'register_other_worker',
+};
+
+type CapabilityItem = {
+  name: ApiUserCapability;
+  has: boolean;
+};
+
+export function toCapabilityList(user: UserInfo): CapabilityItem[] {
+  const { capabilities } = user;
+  let capKey: keyof UserCapabilities;
+  const res = [];
+  for (capKey in capabilities) {
+    res.push({
+      name: CAPABILITY_MAP[capKey],
+      has: capabilities[capKey],
+    });
   }
-  const {
-    capabilities: caps,
-    email,
-    display_name: displayName,
-    discord,
-  } = userResp;
+  return res;
+}
+
+export function toUserCapabilities(
+  caps: Readonly<ApiUserCapability[]>,
+): UserCapabilities {
   const capabilities: UserCapabilities = { ...NO_CAPABILITIES };
   caps.forEach((cap) => {
     switch (cap) {
@@ -249,11 +277,28 @@ export function toUserOrMessage(
         break;
     }
   });
+  return capabilities;
+}
+
+export function toUserOrMessage(
+  userResp: Readonly<ApiLoginResponse>,
+): Readonly<User> | LoginInfo {
+  const { logged } = userResp;
+  if (!logged) {
+    const { message } = userResp;
+    return { logged: false, message };
+  }
+  const {
+    capabilities: caps,
+    email,
+    display_name: displayName,
+    discord,
+  } = userResp;
   return {
     logged: true,
     email,
     displayName,
-    capabilities,
+    capabilities: toUserCapabilities(caps),
     discord,
   };
 }

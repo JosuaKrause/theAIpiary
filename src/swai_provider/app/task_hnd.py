@@ -64,11 +64,17 @@ class TaskHandler:
         obj = self._json()
         obj["worker_name"] = self._worker_name
         obj["status"] = worker_status
-        resp = retry_on_disconnect(
-            lambda: self._api.post(
-                self._url("/heartbeat"), json=obj, headers=self._headers()),
-            retries=retries,
-            wait_before_retry=wait_before_retry)
+        try:
+            resp = retry_on_disconnect(
+                lambda: self._api.post(
+                    self._url("/heartbeat"),
+                    json=obj,
+                    headers=self._headers()),
+                retries=retries,
+                wait_before_retry=wait_before_retry,
+                unify=ValueError)
+        except ValueError:
+            return wait_before_retry
         res: HeartbeatResponse = resp.json()
         return res["timeout"]
 
