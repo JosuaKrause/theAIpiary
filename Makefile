@@ -121,7 +121,7 @@ compose-provider:
 	./sh/compose_provider.sh
 
 run-provider:
-	./sh/run_provider.sh
+	BASE=$(BASE) ./sh/run_provider.sh
 
 run-server:
 	BOOTSTRAP_USERS=$(BOOTSTRAP_USERS) ./sh/run_server.sh

@@ -16,6 +16,7 @@ __pypackages__/
 venv
 .mypy_cache/
 /models/
+/prod/
 /userdata/
 /userdata*/
 /out.txt

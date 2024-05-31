@@ -25,7 +25,7 @@ set -x
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-BASE="userdata/provider"
+BASE="${BASE:-userdata/provider}"
 ENV_FILE="${ENV_FILE:-${BASE}/swai/provider.env}"
 ROOT="../.."
 
@@ -81,16 +81,16 @@ start_smind() {
 
 start_provider() {
     mkdir -p "${BASE}/swai/"
-    pushd "src/"
+    cd "src/"
     AIPIARY_API_URL="${AIPIARY_API_URL}" \
     AIPIARY_USER="${AIPIARY_USER}" \
     AIPIARY_WORKER_TOKEN="${AIPIARY_WORKER_TOKEN}" \
     CONFIG_PATH="../local/provider.config.json" \
     VERSION_PATH="../${BASE}/version.txt" \
+        exec \
         ${PYTHON} -u -m swai_provider \
         --env "../${ENV_FILE}" \
         >> "../${BASE}/swai/swai_provider-${DATE}.log" 2>&1
-    popd
 }
 
 make -s version-file
