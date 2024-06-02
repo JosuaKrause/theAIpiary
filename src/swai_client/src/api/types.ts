@@ -216,7 +216,7 @@ type CapabilityMapping = {
   [key in keyof UserCapabilities]: ApiUserCapability;
 };
 
-export const CAPABILITY_MAP: CapabilityMapping = {
+const CAPABILITY_MAP: CapabilityMapping = {
   changeCapabilities: 'change_capabilities',
   logoutOtherUser: 'logout_other_user',
   createUser: 'create_user',
