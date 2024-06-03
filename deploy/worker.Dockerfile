@@ -18,7 +18,6 @@ ENV NVIDIA_DRIVER_CAPABILITIES=all
 RUN conda update -y pip setuptools wheel conda filelock \
   && conda clean --all \
   && conda install -y python=3.11 pytorch=2.3.0 \
-  && conda uninstall python=3.10 \
   && conda clean --all
 # *****
 COPY Makefile .
