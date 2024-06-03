@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -e
 
 HAS_CUDA=1
 if ! command -v nvidia-smi &> /dev/null; then
@@ -31,10 +32,19 @@ if [ ! -f "${DOCKER_COMPOSE}" ]; then
 fi
 
 MODEL_FILE="userdata/models/Meta-Llama-3-8B-Instruct-IQ3_XS.gguf"
+MODEL_FOLDER=$(dirname "${MODEL_FILE}")
+MODEL_URL='https://huggingface.co/bartowski/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct-Q6_K.gguf?download=true'
+
+model_notice() {
+    echo "could not download model automatically."
+    echo "download the model from ${MODEL_URL} and place it in the model folder: ${MODEL_FOLDER}"
+    exit 1
+}
+
 if [ ! -f "${MODEL_FILE}" ]; then
-    mkdir -p $(dirname "${MODEL_FILE}")
+    mkdir -p "${MODEL_FOLDER}"
     echo "downloading ${MODEL_FILE}"
-    curl 'https://huggingface.co/bartowski/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct-Q6_K.gguf?download=true' -o "${MODEL_FILE}"
+    curl "${MODEL_URL}" -o "${MODEL_FILE}" || model_notice
 fi
 
 AIPIARY_ENV="userdata/swai/provider.env"
