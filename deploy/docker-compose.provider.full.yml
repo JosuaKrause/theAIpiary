@@ -1,0 +1,65 @@
+services:
+  rmain:
+    container_name: rmain
+    image: aipiary/aipiary-rmain:latest
+    restart: always
+    pull_policy: always
+    expose:
+      - 6379
+    volumes:
+      - ./userdata/rmain:/data
+  rdata:
+    container_name: rdata
+    image: aipiary/aipiary-rdata:latest
+    restart: always
+    pull_policy: always
+    expose:
+      - 6379
+    volumes:
+      - ./userdata/rdata:/data
+  rcache:
+    container_name: rcache
+    image: aipiary/aipiary-rcache:latest
+    restart: always
+    pull_policy: always
+    expose:
+      - 6379
+    volumes:
+      - ./userdata/rcache:/data
+  rbody:
+    container_name: rbody
+    image: aipiary/aipiary-rbody:latest
+    restart: always
+    pull_policy: always
+    expose:
+      - 6379
+    volumes:
+      - ./userdata/rbody:/data
+  worker:
+    image: aipiary/aipiary-worker:latest
+    restart: always
+    pull_policy: always
+    expose:
+      - 6380
+    volumes:
+      - ./userdata/swai:/swai
+      - ./userdata/models:/models
+      - ./userdata/smind_cache:/smind_cache
+      - ./userdata/smind_sess:/smind_sess
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+  api:
+    image: aipiary/aipiary-api:latest
+    restart: always
+    pull_policy: always
+    volumes:
+      - ./userdata/swai:/swai
+      - ./userdata/models:/models
+      - ./userdata/smind_cache:/smind_cache
+      - ./userdata/smind_sess:/smind_sess
+# eof
