@@ -231,13 +231,13 @@ def setup(
 
     def redirect_to_www(
             req: QSRH, path: str, _cookie: SimpleCookie | None) -> None:
-        proto, orig_host = req.get_original_host()
+        _proto, orig_host = req.get_original_host()
         orig_host = orig_host.removesuffix("/")
         if not orig_host.endswith("theaipiary.com"):
             return
         if orig_host == "theaipiary.com":
             orig_host = f"www.{orig_host}"
-        elif proto == "https":
+        else:
             return
         req.send_response(301, "Use www subdomain.")
         req.send_header("Location", f"https://www.{orig_host}{path}")
