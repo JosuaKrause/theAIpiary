@@ -203,6 +203,8 @@ def setup(
         config["user_mng"], admin_email=admin_email, admin_pw=admin_pw))
     model_ns = GNamespace("llama")
 
+    server.add_file_patterns(["*.sh", "*.bat"], blacklist=False)
+
     public_path = envload_path("UI_PATH", default="build/")
     server.bind_path("/", public_path)
 
@@ -224,6 +226,18 @@ def setup(
         cookie["user_session"]["path"] = "/"
         cookie["user_session"]["expires"] = "Thu, 01 Jan 1970 00:00:00 GMT"
         req.send_cookie(cookie)
+
+    def redirect_to_www(
+            req: QSRH, path: str, _cookie: SimpleCookie | None) -> None:
+        proto, orig_host = req.get_original_host()
+        orig_host = orig_host.removesuffix("/")
+        print(orig_host, path)
+        if orig_host != "theaipiary.com":
+            return
+        req.send_header("location", f"{proto}://www.{orig_host}{path}")
+        raise PreventDefaultResponse(302)
+
+    server.add_pre_middleware(redirect_to_www)
 
     def maybe_user_session(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
@@ -249,10 +263,7 @@ def setup(
             return Response("must be logged in", 401)
         user_email: UName | None = rargs["meta"].get("user_email")
         if user_email is None:
-            cookie = SimpleCookie()
-            cookie["user_session"] = ""
-            cookie["user_session"]["max-age"] = 0
-            req.send_cookie(cookie)
+            send_logout_cookie(req)
             return Response("must be logged in", 401)
         return okay
 
