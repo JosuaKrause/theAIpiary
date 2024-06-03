@@ -240,7 +240,7 @@ def setup(
         else:
             return
         req.send_response(301, "Use www subdomain.")
-        req.send_header("Location", f"https://www.{orig_host}{path}")
+        req.send_header("Location", f"https://{orig_host}{path}")
         req.end_headers()
         raise PreventDefaultResponse()
 
