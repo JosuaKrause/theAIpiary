@@ -16,9 +16,9 @@ ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
 RUN mkdir sh
 COPY sh/install.sh sh
-RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-server
-RUN conda clean --all
-RUN pip cache purge
+RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-server \
+  && conda clean --all \
+  && pip cache purge
 COPY LICENSE .
 COPY sh/ sh/
 COPY src/swai/ swai/
