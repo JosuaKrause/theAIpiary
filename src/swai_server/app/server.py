@@ -231,11 +231,12 @@ def setup(
             req: QSRH, path: str, _cookie: SimpleCookie | None) -> None:
         proto, orig_host = req.get_original_host()
         orig_host = orig_host.removesuffix("/")
-        print(orig_host, path)
         if orig_host != "theaipiary.com":
             return
-        req.send_header("location", f"{proto}://www.{orig_host}{path}")
-        raise PreventDefaultResponse(302)
+        req.send_response(301, "Use www subdomain.")
+        req.send_header("Location", f"{proto}://www.{orig_host}{path}")
+        req.end_headers()
+        raise PreventDefaultResponse()
 
     server.add_pre_middleware(redirect_to_www)
 
