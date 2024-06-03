@@ -47,7 +47,8 @@ const VMain = styled.div`
   @media (hover: none) and (max-width: 480px) {
     justify-content: start;
     max-width: 100%;
-    max-height: calc(100% - 65px);
+    height: 100%;
+    max-height: 100%;
   }
 `;
 
@@ -219,6 +220,10 @@ const InputText = styled.textarea`
   min-height: 6em;
   max-height: 30vh;
   resize: vertical;
+
+  @media (hover: none) and (max-width: 480px) {
+    max-height: 30%;
+  }
 `;
 
 const Link = styled.a`
