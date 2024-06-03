@@ -36,4 +36,4 @@ ENV CONFIG_PATH=-
 ENV ENV_FILE=/swai/provider.env
 EXPOSE ${PORT}
 ENTRYPOINT ["/bin/bash", "-l", "-c"]
-CMD ["python -u -m swai_provider --dedicated --env ${ENV_FILE}"]
+CMD ["python -u -m swai_provider --env ${ENV_FILE}"]
