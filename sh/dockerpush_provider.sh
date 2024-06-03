@@ -66,16 +66,12 @@ dpush() {
     else
         echo "${URL} already exists"
     fi
-    if ! docker pull "${URL_LATEST}" &> /dev/null ; then
-        echo "pushing ${IMAGE} to ${URL_LATEST}"
+    echo "pushing ${IMAGE} to ${URL_LATEST}"
 
-        docker tag "${IMAGE}" "${URL_LATEST}"
-        docker push "${URL_LATEST}"
-        docker rmi "${URL_LATEST}"
-        sleep 1
-    else
-        echo "${URL_LATEST} already exists"
-    fi
+    docker tag "${IMAGE}" "${URL_LATEST}"
+    docker push "${URL_LATEST}"
+    docker rmi "${URL_LATEST}"
+    sleep 1
 }
 
 dpush "worker" "${IMAGE_TAG}"
