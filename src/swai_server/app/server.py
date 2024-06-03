@@ -233,10 +233,14 @@ def setup(
             req: QSRH, path: str, _cookie: SimpleCookie | None) -> None:
         proto, orig_host = req.get_original_host()
         orig_host = orig_host.removesuffix("/")
-        if orig_host != "theaipiary.com":
+        if not orig_host.endswith("theaipiary.com"):
+            return
+        if orig_host == "theaipiary.com":
+            orig_host = f"www.{orig_host}"
+        elif proto == "https":
             return
         req.send_response(301, "Use www subdomain.")
-        req.send_header("Location", f"{proto}://www.{orig_host}{path}")
+        req.send_header("Location", f"https://www.{orig_host}{path}")
         req.end_headers()
         raise PreventDefaultResponse()
 
