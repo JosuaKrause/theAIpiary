@@ -203,7 +203,9 @@ def setup(
         config["user_mng"], admin_email=admin_email, admin_pw=admin_pw))
     model_ns = GNamespace("llama")
 
-    server.add_file_patterns(["*.sh", "*.bat"], blacklist=False)
+    # NOTE: not needed
+    # server.add_default_white_list()
+    # server.add_file_patterns(["*.sh", "*.bat"], blacklist=False)
 
     public_path = envload_path("UI_PATH", default="build/")
     server.bind_path("/", public_path)
