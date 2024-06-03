@@ -53,7 +53,9 @@ fi
 
 dpush() {
     IMAGE="${IMAGE_BASE}-$1:$2"
+    IMAGE_LATEST="${IMAGE_BASE}-$1"
     URL="${DOCKER_LOGIN_SERVER}${IMAGE}"
+    URL_LATEST="${DOCKER_LOGIN_SERVER}${IMAGE_LATEST}"
     if ! docker pull "${URL}" &> /dev/null ; then
         echo "pushing ${IMAGE} to ${URL}"
 
@@ -63,6 +65,16 @@ dpush() {
         sleep 1
     else
         echo "${URL} already exists"
+    fi
+    if ! docker pull "${URL_LATEST}" &> /dev/null ; then
+        echo "pushing ${IMAGE} to ${URL_LATEST}"
+
+        docker tag "${IMAGE}" "${URL_LATEST}"
+        docker push "${URL_LATEST}"
+        docker rmi "${URL_LATEST}"
+        sleep 1
+    else
+        echo "${URL_LATEST} already exists"
     fi
 }
 
