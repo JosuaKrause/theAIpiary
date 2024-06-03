@@ -47,8 +47,8 @@ const VMain = styled.div`
   @media (hover: none) and (max-width: 480px) {
     justify-content: start;
     max-width: 100%;
-    height: 100%;
-    max-height: 100%;
+    height: 100svh;
+    max-height: 100svh;
   }
 `;
 
