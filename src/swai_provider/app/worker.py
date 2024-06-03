@@ -127,6 +127,7 @@ def task_loop() -> None:
     add_shutdown_hook(hook)
 
     def heartbeat() -> None:
+        # FIXME: ping the worker as well
         while not done:
             hb_sleep = task_hnd.task_heartbeat(
                 worker_status=get_status(),

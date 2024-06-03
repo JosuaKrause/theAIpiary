@@ -133,6 +133,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set env
+        run: echo "IMAGE_TAG=$(make -s name)" >> $GITHUB_ENV
+
       - name: Build provider docker image
         run: |
           make -s build-provider
