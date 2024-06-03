@@ -26,14 +26,22 @@ cd "${BASE}"
 
 DOCKER_COMPOSE="docker-compose.yml"
 if [ ! -f "${DOCKER_COMPOSE}" ]; then
+    echo "downloading ${DOCKER_COMPOSE}"
     curl https://www.theaipiary.com/scripts/docker-compose.yml -o "${DOCKER_COMPOSE}"
+fi
+
+MODEL_FILE="userdata/models/Meta-Llama-3-8B-Instruct-IQ3_XS.gguf"
+if [ ! -f "${MODEL_FILE}" ]; then
+    mkdir -p $(dirname "${MODEL_FILE}")
+    echo "downloading ${MODEL_FILE}"
+    curl 'https://huggingface.co/bartowski/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct-Q6_K.gguf?download=true' -o "${MODEL_FILE}"
 fi
 
 AIPIARY_ENV="userdata/swai/provider.env"
 if [ ! -f "${AIPIARY_ENV}" ]; then
+    mkdir -p $(dirname "${AIPIARY_ENV}")
     read -p "AIpiary user name (email): " AIPIARY_USER
     read -p "AIpiary worker token: " AIPIARY_WORKER_TOKEN
-    mkdir -p $(dirname "${AIPIARY_ENV}")
     echo "AIPIARY_API_URL='https://www.theaipiary.com/'" > "${AIPIARY_ENV}"
     echo "AIPIARY_USER='${AIPIARY_USER}'" >> "${AIPIARY_ENV}"
     echo "AIPIARY_WORKER_TOKEN='${AIPIARY_WORKER_TOKEN}'" >> "${AIPIARY_ENV}"
