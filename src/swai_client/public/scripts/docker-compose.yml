@@ -62,4 +62,11 @@ services:
       - ./userdata/models:/models
       - ./userdata/smind_cache:/smind_cache
       - ./userdata/smind_sess:/smind_sess
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 # eof
