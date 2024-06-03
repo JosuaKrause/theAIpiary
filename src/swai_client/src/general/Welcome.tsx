@@ -23,8 +23,8 @@
 import React, { PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
 import styled from 'styled-components';
+import { StaticMarkdown } from '../misc/Markdown';
 import { RootState } from '../store';
-import { StaticMarkdown } from './Markdown';
 
 const VMain = styled.div`
   display: flex;
@@ -100,6 +100,7 @@ const SmallLink = styled.a`
 `;
 
 const Footnote = styled.div`
+  text-align: center;
   padding: 0;
   margin: 0;
   color: gray;

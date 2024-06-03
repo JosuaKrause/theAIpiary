@@ -38,6 +38,7 @@ import {
   WorkerToken,
   toCapabilityList,
 } from '../api/types';
+import { StaticMarkdown } from '../misc/Markdown';
 import { redirectWelcome } from '../misc/common';
 import { WORKER_UPDATE } from '../misc/constants';
 import { RootState } from '../store';
@@ -365,6 +366,11 @@ const RowSpan = styled.span`
   vertical-align: middle;
 `;
 
+const TextParagraph = styled.div`
+  text-align: justified;
+  margin-bottom: 10px;
+`;
+
 const RowParagraph = styled.p`
   text-align: left;
   width: 19vw;
@@ -609,11 +615,6 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
             {users.map((userEntry) => {
               const { email, displayName } = userEntry;
               const isSelected = email === selectedUser;
-              console.log(
-                isSelected,
-                user && user.capabilities.changeCapabilities,
-                userEntry,
-              );
               const rowKey = `${email}`.replaceAll(/[^a-zA-Z_0-9-]/g, '_');
               return (
                 <Row key={rowKey}>
@@ -707,7 +708,17 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
           <Group>
             <GroupTitle>Add Worker Bees</GroupTitle>
             <Row>
-              <AutoHide title="Get Worker Token">
+              <AutoHide title="➤ Add your GPU to the Swarm">
+                <TextParagraph>
+                  <StaticMarkdown
+                    appName={appName}
+                    url="/docs/worker.md"
+                  />
+                </TextParagraph>
+              </AutoHide>
+            </Row>
+            <Row>
+              <AutoHide title="➤ Get Worker Token">
                 <RowParagraph>
                   Creating a new worker token will disconnect all your current
                   worker bees!

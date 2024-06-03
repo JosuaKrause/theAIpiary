@@ -37,7 +37,6 @@ import UserActions from './users/UserActions';
 import UserButton from './users/UserButton';
 
 const Main = styled.div`
-  text-align: center;
   margin: 0 auto;
   height: 100vh;
   display: flex;

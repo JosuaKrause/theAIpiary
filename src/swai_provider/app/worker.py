@@ -21,9 +21,9 @@
 import sys
 import threading
 import traceback
-import uuid
 from typing import TypedDict
 
+import machineid
 from quick_server import add_shutdown_hook
 from scattermind.api.api import InputTypes
 from scattermind.system.base import TaskId
@@ -71,7 +71,7 @@ def get_version_strs() -> VersionDict:
 
 
 def get_worker_name() -> str:
-    device_id = f"{uuid.getnode():0>12x}"
+    device_id = f"{machineid.hashed_id('aipiary')}"
     arch = get_arch()
     return f"{device_id}-{arch}"
 

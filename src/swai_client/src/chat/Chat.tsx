@@ -30,7 +30,7 @@ import {
   SessionId,
   Thinking,
 } from '../api/types';
-import { Markdown } from '../general/Markdown';
+import { Markdown } from '../misc/Markdown';
 import { RootState } from '../store';
 import ChatActions from './ChatActions';
 import { setSession } from './ChatStateSlice';
