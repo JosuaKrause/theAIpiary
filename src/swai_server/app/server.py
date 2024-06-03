@@ -242,6 +242,7 @@ def setup(
         req.send_response(301, "Use www subdomain.")
         req.send_header("Location", f"https://{orig_host}{path}")
         req.end_headers()
+        print("next url", f"https://{orig_host}{path}")
         raise PreventDefaultResponse()
 
     server.add_pre_middleware(redirect_to_www)
