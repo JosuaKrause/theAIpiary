@@ -25,9 +25,14 @@ ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
 RUN mkdir sh
 COPY sh/install.sh sh
-# FIXME remove with 311 image
+# FIXME remove with 311 image *****
 ENV FORCE_CUDA=1
+# *****
 RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-worker
+# FIXME remove with 311 image *****
+RUN conda clean --all
+RUN pip cache purge
+# *****
 COPY LICENSE .
 COPY sh/ sh/
 COPY src/swai swai/

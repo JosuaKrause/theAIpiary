@@ -17,6 +17,8 @@ COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
 RUN mkdir sh
 COPY sh/install.sh sh
 RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-provider
+RUN conda clean --all
+RUN pip cache purge
 COPY LICENSE .
 COPY sh/ sh/
 COPY src/swai/ swai/
