@@ -21,9 +21,6 @@
  * all copies or substantial portions of the software.
  */
 import React, { PureComponent, ReactNode } from 'react';
-import ReactMarkdown from 'react-markdown';
-import { SpecialComponents } from 'react-markdown/lib/ast-to-react';
-import { NormalComponents } from 'react-markdown/lib/complex-types';
 import { ConnectedProps, connect } from 'react-redux';
 import styled, { css } from 'styled-components';
 import {
@@ -33,6 +30,7 @@ import {
   SessionId,
   Thinking,
 } from '../api/types';
+import { Markdown } from '../general/Markdown';
 import { RootState } from '../store';
 import ChatActions from './ChatActions';
 import { setSession } from './ChatStateSlice';
@@ -226,20 +224,6 @@ const InputText = styled.textarea`
   }
 `;
 
-const Link = styled.a`
-  color: var(--md-anchor);
-
-  &:visited {
-    color: var(--md-anchor);
-  }
-  &:active {
-    color: var(--md-anchor);
-  }
-  &:hover {
-    color: var(--md-anchor-hover);
-  }
-`;
-
 interface ChatProps extends ConnectChat {
   chatActions: ChatActions;
   ready: boolean;
@@ -253,12 +237,6 @@ type EmptyChatProps = {
 type ChatState = {
   messages: Readonly<Message[]>;
   thinking: Thinking;
-};
-
-const MD_COMPONENTS: Partial<
-  Omit<NormalComponents, keyof SpecialComponents> & SpecialComponents
-> = {
-  a: ({ node: _, ...props }) => <Link {...props} />,
 };
 
 class Chat extends PureComponent<ChatProps, ChatState> {
@@ -409,11 +387,7 @@ class Chat extends PureComponent<ChatProps, ChatState> {
               key={messages.length - ix - 1}
               role={role}>
               <ResponseMessage role={role}>
-                <ReactMarkdown
-                  skipHtml={true}
-                  components={MD_COMPONENTS}>
-                  {content}
-                </ReactMarkdown>
+                <Markdown>{content}</Markdown>
               </ResponseMessage>
             </ResponseElem>
           ))}

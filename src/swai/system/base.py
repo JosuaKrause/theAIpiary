@@ -72,6 +72,9 @@ SessionInfoJSON = TypedDict('SessionInfoJSON', {
 })
 
 
+CONNECTION_CODES: set[int] = {504}
+
+
 def retry_on_disconnect(
         cb: Callable[[], requests.Response],
         *,
@@ -99,6 +102,10 @@ def retry_on_disconnect(
     while True:
         try:
             resp = cb()
+            if resp.status_code in CONNECTION_CODES:
+                if cur_retries > 0:
+                    log_retry()
+                    continue
             resp.raise_for_status()
             return resp
         except ConnectionRefusedError as exc:

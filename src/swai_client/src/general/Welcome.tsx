@@ -24,6 +24,7 @@ import React, { PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
 import styled from 'styled-components';
 import { RootState } from '../store';
+import { StaticMarkdown } from './Markdown';
 
 const VMain = styled.div`
   display: flex;
@@ -44,7 +45,7 @@ const Img = styled.img`
   align-self: center;
 `;
 
-const Paragraph = styled.p`
+const Paragraph = styled.div`
   align-self: center;
   flex-grow: 0;
   text-align: justify;
@@ -61,6 +62,8 @@ const LinkParagraph = styled.p`
   flex-grow: 0;
   margin: 10px;
   padding: 5px;
+  padding-bottom: 2px;
+  margin-bottom: 3px;
   align-self: center;
 `;
 
@@ -96,6 +99,17 @@ const SmallLink = styled.a`
   }
 `;
 
+const Footnote = styled.div`
+  padding: 0;
+  margin: 0;
+  color: gray;
+  line-height: 10px;
+  font-size: 10px;
+
+  padding-bottom: 3px;
+  margin-bottom: 7px;
+`;
+
 interface WelcomeProps extends ConnectWelcome {
   appName: string;
 }
@@ -106,15 +120,11 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
     const { user, appName } = this.props;
     return (
       <VMain>
-        <h3>Welcome to the {appName}!</h3>
         <Paragraph>
-          The <strong>{appName}</strong> is a unique swarm-based ML compute
-          engine. Here, members can contribute their spare computational power
-          to create a collective intelligence. It&apos;s like a beehive buzzing
-          with activity, where every bee plays a part in the success of the
-          whole. But even those with limited computational resources can tap
-          into the hive&apos;s collective power, making advanced AI accessible
-          to all. Dive in and experience the power of swarm intelligence!
+          <StaticMarkdown
+            appName={appName}
+            url="/docs/welcome.md"
+          />
         </Paragraph>
         <LinkParagraph>
           {user ? (
@@ -140,6 +150,7 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
             Josua Krause
           </SmallLink>
         </LinkParagraph>
+        <Footnote>This page uses cookies!</Footnote>
       </VMain>
     );
   }
