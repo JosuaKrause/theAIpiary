@@ -42,12 +42,11 @@ const VMain = styled.div`
   justify-content: end;
   flex-direction: column;
   flex-grow: 1;
-  height: 100vh;
-  max-height: 100vh;
   max-width: 60vw;
 
   @media (hover: none) and (max-width: 480px) {
     justify-content: start;
+    max-width: 100%;
   }
 `;
 

@@ -24,7 +24,7 @@ from typing import cast, get_args, Literal, TypeAlias, TypedDict
 
 import requests
 from scattermind.system.names import UName
-from scattermind.system.util import get_short_hash
+from scattermind.system.util import get_short_hash, get_time_str
 
 
 WorkerId: TypeAlias = str
@@ -77,12 +77,20 @@ def retry_on_disconnect(
         *,
         retries: int | None = None,
         wait_before_retry: float = DEFAULT_WAIT,
-        unify: type[BaseException] | None = None) -> requests.Response:
+        unify: type[BaseException] | None = None,
+        include_general_http_errors: bool = False,
+        on_retry: Callable[[], None] | None = None) -> requests.Response:
     cur_retries = 1 if retries is None else retries
+
+    def log_retry() -> None:
+        print(f"{get_time_str()} could not connect to server! retrying...")
+
+    if on_retry is None:
+        on_retry = log_retry
 
     def handle(exc: BaseException) -> None:
         if cur_retries > 0:
-            print("could not connect to server! retrying...")
+            log_retry()
             return
         if unify is None:
             raise exc
@@ -96,7 +104,10 @@ def retry_on_disconnect(
         except ConnectionRefusedError as exc:
             handle(exc)
         except requests.exceptions.HTTPError as exc:
-            handle(exc)  # NOTE: also retry on general errors
+            if include_general_http_errors:
+                handle(exc)
+            else:
+                raise exc
         except requests.ConnectionError as exc:
             handle(exc)
         if wait_before_retry > 0.0:

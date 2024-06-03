@@ -83,7 +83,7 @@ def task_loop() -> None:
     smind = load_smind(smind_config)
     graphs = [load_graph(config, smind, "graph_llama.json")]
     worker_name = get_worker_name()
-    print(f"device name: {get_worker_name()}")
+    print(f"{get_time_str()} device name: {get_worker_name()}")
     task_hnd = TaskHandler(worker_name)
     cond = threading.Condition()
     done = False
@@ -107,10 +107,10 @@ def task_loop() -> None:
 
         is_busy = True
         graph, task_id, input_data = task
-        print(f"picked up {graph.get_ns()=} {task_id=}")
+        print(f"{get_time_str()} picked up {graph.get_ns()=} {task_id=}")
         response = execute_task(task_id, input_data, graph_profile=graph)
         task_hnd.task_finish(task_id, response)
-        print("done")
+        print(f"{get_time_str()} done")
         is_busy = False
         task_hnd.task_heartbeat(
             worker_status=get_status(),

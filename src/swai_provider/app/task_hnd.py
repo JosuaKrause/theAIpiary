@@ -72,6 +72,7 @@ class TaskHandler:
                     headers=self._headers()),
                 retries=retries,
                 wait_before_retry=wait_before_retry,
+                include_general_http_errors=True,
                 unify=ValueError)
         except ValueError:
             return wait_before_retry
