@@ -239,7 +239,6 @@ def setup(
             return
         orig_host = f"www.{orig_host}"
         req.send_header("Location", f"https://{orig_host}{path}")
-        print("next url", f"https://{orig_host}{path}")
         raise PreventDefaultResponse(301, "Use www subdomain.")
 
     server.add_pre_middleware(redirect_to_www)
