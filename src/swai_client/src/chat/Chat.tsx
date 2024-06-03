@@ -193,7 +193,7 @@ const InputBar = styled.div`
 const SendButton = styled.input`
   appearance: none;
   border-radius: var(--item-padding);
-  padding: var(--item-padding);
+  padding: 0 var(--item-padding);
   cursor: pointer;
   color: var(--main-text);
   background-color: var(--button-background);

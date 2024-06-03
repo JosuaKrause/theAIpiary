@@ -235,15 +235,12 @@ def setup(
         orig_host = orig_host.removesuffix("/")
         if not orig_host.endswith("theaipiary.com"):
             return
-        if orig_host == "theaipiary.com":
-            orig_host = f"www.{orig_host}"
-        else:
+        if orig_host != "theaipiary.com":
             return
-        req.send_response(301, "Use www subdomain.")
+        orig_host = f"www.{orig_host}"
         req.send_header("Location", f"https://{orig_host}{path}")
-        req.end_headers()
         print("next url", f"https://{orig_host}{path}")
-        raise PreventDefaultResponse()
+        raise PreventDefaultResponse(301, "Use www subdomain.")
 
     server.add_pre_middleware(redirect_to_www)
 
