@@ -21,7 +21,12 @@
 import os
 from typing import cast
 
-from llama_cpp import CreateChatCompletionStreamResponse, Llama, LlamaDiskCache
+from llama_cpp import (
+    CreateChatCompletionStreamResponse,
+    Llama,
+    llama_supports_gpu_offload,
+    LlamaDiskCache,
+)
 from scattermind.system.base import GraphId, NodeId, TaskId
 from scattermind.system.graph.graph import Graph
 from scattermind.system.graph.node import Node
@@ -82,6 +87,8 @@ class LlamaNode(Node):
         return "session"
 
     def do_load(self, roa: ReadonlyAccess) -> None:
+        print(f"LLAMA_CPP_LIB is {os.getenv('LLAMA_CPP_LIB')}")
+        print(f"{llama_supports_gpu_offload()=}")
         self._model = Llama(
             model_path=self.get_arg("model_path").get("str"),
             n_ctx=30000,
