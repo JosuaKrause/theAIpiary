@@ -21,9 +21,9 @@
 import sys
 import threading
 import traceback
+import uuid
 from typing import TypedDict
 
-import machineid
 from quick_server import add_shutdown_hook
 from scattermind.api.api import InputTypes
 from scattermind.system.base import TaskId
@@ -33,6 +33,7 @@ from scattermind.system.util import get_short_hash, get_time_str
 from swai.system.base import DEFAULT_WAIT, WorkerStatus
 from swai_provider.app.task_hnd import TaskHandler
 from swai_provider.config import get_config
+from swai_provider.env import envload_str
 from swai_provider.smind.worker_api import (
     execute_task,
     get_queue_stats,
@@ -70,20 +71,24 @@ def get_version_strs() -> VersionDict:
     }
 
 
-def get_worker_name() -> str:
-    device_id = get_short_hash(f"{machineid.hashed_id('aipiary')}")
+def get_worker_name(env_file: str) -> str:
+    device_id = envload_str("DEVICE_ID", default="")
+    if not device_id:
+        device_id = get_short_hash(uuid.uuid4().hex)
+        with open(env_file, "a", encoding="utf-8") as fout:
+            print(f"DEVICE_ID='{device_id}'", file=fout)
     arch = get_arch()
     return f"{device_id}-{arch}"
 
 
-def task_loop() -> None:
+def task_loop(env_file: str) -> None:
     config = get_config()
 
     smind_config = config["smind"]
     smind = load_smind(smind_config)
     graphs = [load_graph(config, smind, "graph_llama.json")]
-    worker_name = get_worker_name()
-    print(f"{get_time_str()} device name: {get_worker_name()}")
+    worker_name = get_worker_name(env_file)
+    print(f"{get_time_str()} device name: {worker_name}")
     task_hnd = TaskHandler(worker_name)
     cond = threading.Condition()
     done = False

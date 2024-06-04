@@ -34,20 +34,17 @@ def parse_args() -> argparse.Namespace:
         description="Run the provider worker")
     parser.add_argument(
         "--env",
-        default=None,
         help="loads the given env file at startup")
     return parser.parse_args()
 
 
 def run() -> None:
     args = parse_args()
-    env_file: str | None = args.env
-    if env_file:
-        if not os.path.exists(env_file):
-            print(f"could not load env! {env_file} does not exist!")
-        else:
-            print(f"loading env {env_file}")
-            load_dotenv(env_file)
+    env_file: str = args.env
+    if not os.path.exists(env_file):
+        raise ValueError(f"could not load env! {env_file} does not exist!")
+    print(f"loading env {env_file}")
+    load_dotenv(env_file)
     versions = get_version_strs()
     print(f"python version: {versions['python_version']}")
     print(f"app version: {versions['app_version']}")
@@ -55,7 +52,7 @@ def run() -> None:
     print(f"deploy time: {versions['deploy_time']}")
     print(f"start time: {versions['start_time']}")
     setup_shutdown()
-    task_loop()
+    task_loop(env_file)
 
 
 if __name__ == "__main__":

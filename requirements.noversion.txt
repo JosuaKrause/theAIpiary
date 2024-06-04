@@ -6,7 +6,6 @@ isort
 mypy
 numpy
 pre-commit
-py-machineid
 pycodestyle
 pylint
 pytest

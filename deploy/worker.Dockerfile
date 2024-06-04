@@ -1,5 +1,5 @@
-# FROM python:3.11-bookworm
-FROM pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime
+FROM pytorch/pytorch:2.3.0-cuda12.1-cudnn8-devel
+# FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 RUN apt-get update \
   && apt-get -y upgrade \
   && apt-get install -y --no-install-recommends \
@@ -9,22 +9,30 @@ RUN apt-get update \
   linux-libc-dev \
   libc6-dev \
   build-essential \
-  make
+  make \
+  wget \
+  gcc-11 \
+  g++-11
 WORKDIR /usr/src/app
 ENV CUDA_VERSION_SHORT=cu121
+# ENV PATH="/root/miniconda3/bin:${PATH}"
+# ARG PATH="/root/miniconda3/bin:${PATH}"
+# RUN wget -nv \
+#   https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+#   && mkdir /root/.conda \
+#   && bash Miniconda3-latest-Linux-x86_64.sh -b \
+#   && rm -f Miniconda3-latest-Linux-x86_64.sh
+# RUN conda --version
 # FIXME remove with 311 image *****
 # RUN apt-get update \
 #   && apt-get install -y software-properties-common wget \
-#   && wget https://developer.download.nvidia.com/compute/cuda/12.3.1/local_installers/cuda-repo-debian12-12-3-local_12.3.1-545.23.08-1_amd64.deb \
-#   && dpkg -i cuda-repo-debian12-12-3-local_12.3.1-545.23.08-1_amd64.deb \
-#   && cp /var/cuda-repo-debian12-12-3-local/cuda-*-keyring.gpg /usr/share/keyrings/ \
-#   && add-apt-repository contrib \
-#   && apt-get update \
-#   && apt-get -y install cuda-toolkit-12-3
-ENV PATH="/usr/local/nvidia/bin:${PATH}"
+#   && wget -nv https://developer.download.nvidia.com/compute/cuda/12.1.0/local_installers/cuda_12.1.0_530.30.02_linux.run \
+#   && /bin/bash cuda_12.1.0_530.30.02_linux.run
+# ENV PATH="/usr/local/nvidia/bin:${PATH}"
+RUN nvcc --version
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=all
-RUN conda update -y pip setuptools wheel conda filelock \
+RUN conda update -y pip setuptools wheel conda \
   && conda clean --all \
   && conda install -y python=3.11 pytorch=2.3.0 \
   && conda clean --all
@@ -36,11 +44,10 @@ RUN mkdir sh
 COPY sh/install.sh sh
 # FIXME remove with 311 image *****
 ENV FORCE_CUDA=1
-RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-worker
-# && conda clean --all \
-# && pip cache purge \
-# && CUDACXX=/usr/local/cuda-12/bin/nvcc CMAKE_ARGS="-DLLAMA_CUBLAS=on -DCMAKE_CUDA_ARCHITECTURES=all-major" FORCE_CMAKE=1 \
-# pip install llama-cpp-python --no-cache-dir --force-reinstall --upgrade
+ENV FORCE_BUILD_LLAMA=
+RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-worker \
+  && conda clean --all \
+  && pip cache purge
 # *****
 COPY LICENSE .
 COPY sh/ sh/

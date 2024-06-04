@@ -33,10 +33,11 @@ EnvPath = Literal[
     "VERSION_PATH",
 ]
 EnvStr = Literal[
-    "HOST",
     "AIPIARY_API_URL",
     "AIPIARY_USER",
     "AIPIARY_WORKER_TOKEN",
+    "HOST",
+    "DEVICE_ID",
 ]
 EnvInt = Literal[
     "PORT",
