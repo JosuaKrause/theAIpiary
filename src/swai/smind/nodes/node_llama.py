@@ -88,7 +88,8 @@ class LlamaNode(Node):
 
     def do_load(self, roa: ReadonlyAccess) -> None:
         lib = os.getenv('LLAMA_CPP_LIB')
-        print(f"LLAMA_CPP_LIB is {lib} {os.path.exists(lib)=}")
+        lib_exists = False if lib is None else os.path.exists(lib)
+        print(f"LLAMA_CPP_LIB is {lib} {lib_exists=}")
         print(f"{llama_supports_gpu_offload()=}")
         self._model = Llama(
             model_path=self.get_arg("model_path").get("str"),
