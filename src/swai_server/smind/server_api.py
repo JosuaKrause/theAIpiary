@@ -27,11 +27,14 @@ from scattermind.system.util import get_time_str
 
 from swai.clean import shorten
 from swai.smind.llama_session import (
+    append_new_message,
     ChunkPosition,
     get_active_task,
     get_model_output,
     get_visible_messages,
+    load_messages,
     load_system_prompt,
+    ROLE_USER,
     save_messages,
     set_active_task,
     set_interrupted,
@@ -98,6 +101,11 @@ def do_enqueue(
         ns: GNamespace,
         prompt: str,
         session: Session) -> TaskId:
+    with session.get_local_folder() as cache_dir:
+        msgs = load_messages(cache_dir)
+        if msgs is not None:
+            append_new_message(msgs, text=prompt, role=ROLE_USER)
+            save_messages(cache_dir, msgs)
     task_id = queue.enqueue_task(
         ns,
         {

@@ -39,8 +39,17 @@ from swai.smind.default_prompts import HELLO_PROMPT, SYSTEM_PROMPT
 ChunkPosition: TypeAlias = tuple[TaskId, int]
 
 
+Role = Literal["assistant", "user"]
+FullRole = Literal["system"] | Role
+
+
+ROLE_ASSISTANT: Literal["assistant"] = "assistant"
+ROLE_USER: Literal["user"] = "user"
+ROLE_SYSTEM: Literal["system"] = "system"
+
+
 VisibleMessage = TypedDict('VisibleMessage', {
-    "role": Literal["assistant", "user"],
+    "role": Role,
     "content": str,
 })
 
@@ -79,7 +88,7 @@ def get_visible_messages(session: Session) -> list[VisibleMessage]:
             "content": f"{msg['content']}",
         }
         for msg in msgs
-        if msg["role"] == "user" or msg["role"] == "assistant"
+        if msg["role"] == ROLE_USER or msg["role"] == ROLE_ASSISTANT
     ]
 
 
@@ -90,6 +99,36 @@ def load_messages(cache_dir: str) -> list[ChatCompletionRequestMessage] | None:
     with open_reads(msgs_file) as msgs_in:
         messages: list[ChatCompletionRequestMessage] = json.load(msgs_in)
     return messages
+
+
+def append_new_message(
+        messages: list[ChatCompletionRequestMessage],
+        *,
+        text: str,
+        role: Role) -> None:
+    if messages:
+        last_msg = messages[-1]
+        if last_msg["role"] == role and last_msg["content"] == text:
+            return
+    msg: ChatCompletionRequestMessage
+    if role == ROLE_USER:
+        msg = {
+            "role": ROLE_USER,
+            "content": text,
+        }
+    elif role == ROLE_ASSISTANT:
+        msg = {
+            "role": ROLE_ASSISTANT,
+            "content": text,
+        }
+    elif role == ROLE_SYSTEM:
+        msg = {
+            "role": ROLE_SYSTEM,
+            "content": text,
+        }
+    else:
+        raise ValueError(f"invalid {role=}")
+    messages.append(msg)
 
 
 def save_messages(
@@ -114,14 +153,14 @@ def load_system_prompt(cache_dir: str) -> list[ChatCompletionRequestMessage]:
         hello_prompt = HELLO_PROMPT
     messages: list[ChatCompletionRequestMessage] = [
         {
-            "role": "system",
+            "role": ROLE_SYSTEM,
             "content": system_prompt,
         },
     ]
     if hello_prompt:
         messages.append(
             {
-                "role": "assistant",
+                "role": ROLE_ASSISTANT,
                 "content": hello_prompt,
             })
     return messages

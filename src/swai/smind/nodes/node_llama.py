@@ -33,11 +33,14 @@ from scattermind.system.session.session import Session
 from scattermind.system.torch_util import str_to_tensor, tensor_to_str
 
 from swai.smind.llama_session import (
+    append_new_message,
     check_is_interrupted,
     handle_model_finish,
     handle_model_output,
     load_messages,
     load_system_prompt,
+    ROLE_ASSISTANT,
+    ROLE_USER,
     save_messages,
     set_active_task,
 )
@@ -109,11 +112,7 @@ class LlamaNode(Node):
         if messages is None:
             messages = load_system_prompt(cache_dir)
         if prompt:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": prompt,
-                })
+            append_new_message(messages, text=prompt, role=ROLE_USER)
         save_messages(cache_dir, messages)
         session.sync_out()
         response: list[str] = []
@@ -133,7 +132,7 @@ class LlamaNode(Node):
         full_response = "".join(response)
         messages.append(
             {
-                "role": "assistant",
+                "role": ROLE_ASSISTANT,
                 "content": full_response,
             })
 
