@@ -43,7 +43,7 @@ const VMain = styled.div`
   max-width: 60vw;
 
   @media (hover: none) and (max-width: 480px) {
-    justify-content: start;
+    justify-content: end;
     max-width: 100%;
     height: 100svh;
     max-height: 100svh;

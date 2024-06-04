@@ -28,7 +28,7 @@ from quick_server import add_shutdown_hook
 from scattermind.api.api import InputTypes
 from scattermind.system.base import TaskId
 from scattermind.system.torch_util import get_arch
-from scattermind.system.util import get_time_str
+from scattermind.system.util import get_short_hash, get_time_str
 
 from swai.system.base import DEFAULT_WAIT, WorkerStatus
 from swai_provider.app.task_hnd import TaskHandler
@@ -71,7 +71,7 @@ def get_version_strs() -> VersionDict:
 
 
 def get_worker_name() -> str:
-    device_id = f"{machineid.hashed_id('aipiary')}"
+    device_id = get_short_hash(f"{machineid.hashed_id('aipiary')}")
     arch = get_arch()
     return f"{device_id}-{arch}"
 
