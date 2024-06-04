@@ -85,7 +85,7 @@ class LlamaNode(Node):
         self._model = Llama(
             model_path=self.get_arg("model_path").get("str"),
             n_ctx=30000,
-            n_gpu_layers=30,
+            n_gpu_layers=5,
             seed=123,
             flash_attn=True)
 
