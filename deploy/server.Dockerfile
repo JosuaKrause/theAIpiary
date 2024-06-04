@@ -16,6 +16,7 @@ ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
 RUN mkdir sh
 COPY sh/install.sh sh
+ENV FORCE_CPU=1
 RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-server \
   && conda clean --all \
   && pip cache purge

@@ -128,6 +128,8 @@ fi
 LLAMA_CMAKE_ARGS=$(${PYTHON} -c "${PY_TORCH_VERIFY}")
 if [ ! -z "${FORCE_CUDA}" ]; then
     LLAMA_CMAKE_ARGS="-DLLAMA_CUDA=on"
+elif [ ! -z "${FORCE_CPU}" ]; then
+    LLAMA_CMAKE_ARGS=
 fi
 
 if grep -q "METAL" <<< "${LLAMA_CMAKE_ARGS}"; then
