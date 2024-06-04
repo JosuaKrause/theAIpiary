@@ -94,11 +94,11 @@ class LlamaNode(Node):
             model_path=self.get_arg("model_path").get("str"),
             n_ctx=30000,
             n_gpu_layers=28,
-            n_threads=6,
-            n_batch=521,
+            # n_threads=6,
+            # n_batch=521,
             seed=123,
-            verbose=True,
-            flash_attn=True)
+            # flash_attn=True,
+            verbose=True)
 
     def do_unload(self) -> None:
         self._model = None
