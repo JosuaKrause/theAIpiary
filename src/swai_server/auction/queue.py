@@ -187,6 +187,11 @@ class TaskQueue:
             worker_status = to_worker_status(raw_status)
         if user_email is None:
             worker_status = "unknown"
+        # NOTE: uncomment to clean up worker list
+        if worker_status == "unknown":
+            with self._redis.pipeline() as pipe:
+                pipe.delete(self.worker_user_key(worker_id))
+                pipe.delete(self.worker_heartbeat_key(worker_id))
         return {
             "email": user_email,
             "status": worker_status,

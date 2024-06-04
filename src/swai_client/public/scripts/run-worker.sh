@@ -32,7 +32,7 @@ if [ ! -f "${DOCKER_COMPOSE}" ]; then
 fi
 
 MODEL_FILE="userdata/models/Meta-Llama-3-8B-Instruct-IQ3_XS.gguf"
-MODEL_URL='https://huggingface.co/bartowski/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct-Q6_K.gguf?download=true'
+MODEL_URL='https://aipiary.blob.core.windows.net/models/Meta-Llama-3-8B-Instruct-IQ3_XS.gguf'
 
 model_notice() {
     echo "could not download model automatically."
