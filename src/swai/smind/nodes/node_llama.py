@@ -21,10 +21,9 @@
 import os
 from typing import cast
 
-from llama_cpp import (
+from llama_cpp import (  # llama_supports_gpu_offload,
     CreateChatCompletionStreamResponse,
     Llama,
-    llama_supports_gpu_offload,
     LlamaDiskCache,
 )
 from scattermind.system.base import GraphId, NodeId, TaskId
@@ -90,7 +89,7 @@ class LlamaNode(Node):
         lib = os.getenv('LLAMA_CPP_LIB')
         lib_exists = False if lib is None else os.path.exists(lib)
         print(f"LLAMA_CPP_LIB is {lib} {lib_exists=}")
-        print(f"{llama_supports_gpu_offload()=}")
+        # print(f"{llama_supports_gpu_offload()=}")
         self._model = Llama(
             model_path=self.get_arg("model_path").get("str"),
             n_ctx=30000,
