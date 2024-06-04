@@ -18,6 +18,8 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
+import traceback
+
 from scattermind.system.base import TaskId, UserId
 from scattermind.system.names import GNamespace
 from scattermind.system.response import response_ok, TASK_COMPLETE
@@ -34,6 +36,7 @@ from swai.smind.llama_session import (
     get_visible_messages,
     load_messages,
     load_system_prompt,
+    ROLE_ASSISTANT,
     ROLE_USER,
     save_messages,
     set_active_task,
@@ -77,16 +80,32 @@ def start_llama_response(
     if prev_task_id is not None:
         set_interrupted(session, prev_task_id)
         result = queue.wait_for(prev_task_id, timeout=DEFAULT_TIMEOUT)
+        bad_result = False
         if result is None:
             # FIXME: how to handle if a worker disappears, the user cancels,
             # and then the worker comes back
-            raise ValueError(
-                f"could not terminate previous task {prev_task_id}")
-        try:
-            response_ok(result, no_warn=True)
-        except ValueError as exc:
-            raise ValueError("error computing previous response") from exc
+            print(f"could not terminate previous task {prev_task_id}")
+            bad_result = True
+        else:
+            try:
+                response_ok(result, no_warn=True)
+            except ValueError:
+                print(traceback.format_exc())
+                print("error computing previous response")
+                bad_result = True
+        set_active_task(session, None)
         queue.clear_task(prev_task_id)
+        if bad_result:
+            partial_response, _ = get_model_output(
+                session, (prev_task_id, 0), 0.1)
+            partial_response = partial_response.strip()
+            if partial_response:
+                with session.get_local_folder() as cache_dir:
+                    msgs = load_messages(cache_dir)
+                    if msgs is not None:
+                        append_new_message(
+                            msgs, text=partial_response, role=ROLE_ASSISTANT)
+                        save_messages(cache_dir, msgs)
     if not prompt:
         return None
     return do_enqueue(queue, ns, prompt, session)

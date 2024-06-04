@@ -35,6 +35,7 @@ from scattermind.system.torch_util import str_to_tensor, tensor_to_str
 from swai.smind.llama_session import (
     append_new_message,
     check_is_interrupted,
+    get_active_task,
     handle_model_finish,
     handle_model_output,
     load_messages,
@@ -136,10 +137,12 @@ class LlamaNode(Node):
                 "content": full_response,
             })
 
-        save_messages(cache_dir, messages)
-        # FIXME: use state
-        # save_state(model, cache_dir)
-        set_active_task(session, None)
+        # NOTE: if the task is not the same anymore our response is ignored!
+        if get_active_task(session) == task_id:
+            save_messages(cache_dir, messages)
+            # FIXME: use state
+            # save_state(model, cache_dir)
+            set_active_task(session, None)
         return full_response
 
     def execute_tasks(self, state: ComputeState) -> None:
