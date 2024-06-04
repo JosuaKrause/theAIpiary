@@ -97,7 +97,7 @@ class LlamaNode(Node):
             # n_threads=6,
             # n_batch=521,
             seed=123,
-            # flash_attn=True,
+            flash_attn=True,
             verbose=True)
 
     def do_unload(self) -> None:
