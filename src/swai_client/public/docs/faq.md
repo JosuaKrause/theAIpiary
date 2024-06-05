@@ -56,7 +56,7 @@
 
   By using models through the **<appName>** you are implicitly agreeing to
   their respective licenses and terms. The **<appName>** is *not* responsible
-  *nor* liable for any such license breaches or violations.
+  *nor* liable for any license breaches or violations.
 
 - **Discord**
 
