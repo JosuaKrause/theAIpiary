@@ -36,22 +36,13 @@ PYTHON?=python
 TS_ROOT?=src/swai_client/
 DOCKER_COMPOSE_OUT?=docker-compose.server.yml
 
-deploy-server: \
-	build-server \
-	dockerpush-server \
-	show-server-yml
-
-deploy-provider: \
-	build-provider \
-	dockerpush-provider
-
 build-provider:
 	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) ./sh/build_provider.sh
 
 show-server-yml:
-	echo "================================================="
-    grep -Ev '^\s*$|^\s*\#' "$(DOCKER_COMPOSE_OUT)"
-    echo "# eof"
+	@echo "================================================="
+	grep -Ev '^\s*$|^\s*\#' "$(DOCKER_COMPOSE_OUT)"
+	@echo "# eof"
 
 build-provider-dev:
 	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) DEV=1 ./sh/build_provider.sh
@@ -222,3 +213,12 @@ allapps:
 
 create-admin-pw:
 	cd src && $(PYTHON) -m swai.system.user
+
+deploy-server: \
+	build-server \
+	dockerpush-server \
+	show-server-yml
+
+deploy-provider: \
+	build-provider \
+	dockerpush-provider
