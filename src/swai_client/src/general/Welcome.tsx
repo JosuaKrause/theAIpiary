@@ -25,12 +25,23 @@ import { ConnectedProps, connect } from 'react-redux';
 import styled from 'styled-components';
 import { StaticMarkdown } from '../misc/Markdown';
 import { RootState } from '../store';
+import AutoHide from '../users/AutoHide';
 
 const VMain = styled.div`
   display: flex;
   flex-direction: column;
   justify-content: start;
   min-height: 100vh;
+`;
+
+const Loading = styled.div`
+  margin: 10px;
+  padding: 5px;
+  height: 170.75px;
+
+  @media (hover: none) and (max-width: 480px) {
+    height: 267.438px;
+  }
 `;
 
 const Filler = styled.div`
@@ -56,6 +67,13 @@ const Paragraph = styled.div`
   @media (hover: none) and (max-width: 480px) {
     max-width: 100vw;
   }
+`;
+
+const ShortParagraph = styled.div`
+  margin-top: -10px;
+  align-self: center;
+  flex-grow: 0;
+  text-align: center;
 `;
 
 const LinkParagraph = styled.p`
@@ -100,6 +118,7 @@ const SmallLink = styled.a`
 `;
 
 const Footnote = styled.div`
+  flex-shrink: 0;
   text-align: center;
   padding: 0;
   margin: 0;
@@ -124,8 +143,9 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
         <Paragraph>
           <StaticMarkdown
             appName={appName}
-            url="/docs/welcome.md"
-          />
+            url="/docs/welcome.md">
+            <Loading />
+          </StaticMarkdown>
         </Paragraph>
         <LinkParagraph>
           {user ? (
@@ -142,7 +162,26 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
           ) : (
             <Link href="/login">Login</Link>
           )}
+          <Link href="/faq">FAQ</Link>
         </LinkParagraph>
+        {user ? null : (
+          <React.Fragment>
+            <Paragraph>
+              For now, this community is invite only.
+              <br />
+              If you want to join, please contact us:
+            </Paragraph>
+            <ShortParagraph>
+              <AutoHide title="[@]">
+                <StaticMarkdown
+                  appName={appName}
+                  url="/docs/contact.md">
+                  [@]
+                </StaticMarkdown>
+              </AutoHide>
+            </ShortParagraph>
+          </React.Fragment>
+        )}
         <Img src="/logo_inv_lg.png" />
         <Filler />
         <LinkParagraph>
@@ -151,7 +190,7 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
             Josua Krause
           </SmallLink>
         </LinkParagraph>
-        <Footnote>This page uses cookies!</Footnote>
+        <Footnote>This page uses cookies to improve the experience!</Footnote>
       </VMain>
     );
   }

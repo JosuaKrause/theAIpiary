@@ -47,6 +47,7 @@ const VMain = styled.div`
     max-width: 100%;
     height: 100svh;
     max-height: 100svh;
+    min-height: 100svh;
   }
 `;
 

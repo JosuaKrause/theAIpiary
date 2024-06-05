@@ -592,6 +592,11 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
           </HeaderBand>
           <Discord />
         </HeaderRow>
+        <Group>
+          <Row>
+            <Link href="/faq">Read the FAQ</Link>
+          </Row>
+        </Group>
         {chats.length ? (
           <SessionGroup maxHeight={200}>
             <GroupTitle>Chats</GroupTitle>

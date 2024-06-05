@@ -1,2 +1,13 @@
 User-agent: *
-Disallow:
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /faq
+
+Disallow: /chat
+Disallow: /profile
+Disallow: /reset-password
+
+Disallow: /docs/
+Disallow: /scripts/
+Disallow: /api/

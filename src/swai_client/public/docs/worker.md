@@ -7,6 +7,7 @@ subsystem. After that, download the [run-worker.sh](/scripts/run-worker.sh),
 move it to the folder of your choice, and make it executable:
 `chmod +x run-worker.sh`. You can run it now via `./run-worker.sh`.
 The script will prompt you for your user name (your email address) and your
-worker token (obtain below). The script will also download the
-Llama 3 model. Once everything works you will be able to see your worker bee in
+worker token (obtain below). If the script is not able to automatically
+download the Llama 3 model, follow its instructions to do so manually.
+Once everything works you will be able to see your worker bee in
 the worker list above.

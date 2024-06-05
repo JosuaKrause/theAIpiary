@@ -40,10 +40,15 @@ const Link = styled.a`
   }
 `;
 
+const Paragraph = styled.p`
+  padding: 5px;
+`;
+
 const MD_COMPONENTS: Partial<
   Omit<NormalComponents, keyof SpecialComponents> & SpecialComponents
 > = {
   a: ({ node: _, ...props }) => <Link {...props} />,
+  p: ({ node: _, ...props }) => <Paragraph {...props} />,
 };
 
 type MarkdownProps = {
@@ -66,6 +71,8 @@ export class Markdown extends PureComponent<MarkdownProps> {
 type StaticMarkdownProps = {
   url: string | null;
   appName: string;
+  backLink?: string;
+  children?: React.ReactNode;
 };
 type StaticMarkdownState = {
   content: string | null;
@@ -86,7 +93,7 @@ export class StaticMarkdown extends PureComponent<
 
   componentDidMount() {
     this.componentDidUpdate(
-      { appName: '', url: null },
+      { appName: '', url: null, children: null },
       { content: null, inFlight: false },
     );
   }
@@ -96,7 +103,7 @@ export class StaticMarkdown extends PureComponent<
     _prevState: Readonly<StaticMarkdownState>,
   ) {
     const { url: prevUrl } = prevProps;
-    const { url, appName } = this.props;
+    const { url, appName, backLink } = this.props;
     const { content, inFlight } = this.state;
     if (content && prevUrl !== url) {
       this.setState({ inFlight: false, content: null });
@@ -113,8 +120,10 @@ export class StaticMarkdown extends PureComponent<
           if (url !== contentUrl) {
             return;
           }
+          const c1 = content.replaceAll('<appName>', appName);
+          const c2 = backLink ? c1.replaceAll('<backLink>', backLink) : c1;
           this.setState({
-            content: content.replaceAll('<appName>', appName),
+            content: c2,
             inFlight: false,
           });
         },
@@ -123,9 +132,10 @@ export class StaticMarkdown extends PureComponent<
   }
 
   render() {
+    const { children } = this.props;
     const { content } = this.state;
     if (!content) {
-      return null;
+      return children;
     }
     return <Markdown>{content}</Markdown>;
   }

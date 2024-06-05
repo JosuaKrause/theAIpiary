@@ -29,6 +29,7 @@ import Chat from './chat/Chat';
 import ChatActions from './chat/ChatActions';
 import { setSession } from './chat/ChatStateSlice';
 import Welcome from './general/Welcome';
+import { StaticMarkdown } from './misc/Markdown';
 import { RootState } from './store';
 import Login from './users/Login';
 import Profile from './users/Profile';
@@ -55,6 +56,26 @@ const HMain = styled.div`
     justify-content: start;
     align-items: start;
     flex-direction: column-reverse;
+  }
+`;
+
+const VMain = styled.div`
+  display: flex;
+  flex-direction: column;
+  justify-content: start;
+  min-height: 100vh;
+`;
+
+const FullText = styled.div`
+  align-self: center;
+  flex-grow: 0;
+  text-align: justify;
+  margin: 10px;
+  padding: 5px;
+  max-width: 42vw;
+
+  @media (hover: none) and (max-width: 480px) {
+    max-width: 100vw;
   }
 `;
 
@@ -134,7 +155,7 @@ class App extends PureComponent<AppProps, AppState> {
   }
 
   render() {
-    const { appName } = this.props;
+    const { appName, user } = this.props;
     const { ready } = this.state;
     return (
       <Main>
@@ -178,6 +199,25 @@ class App extends PureComponent<AppProps, AppState> {
                 }
               />
               <Route
+                path="/faq"
+                element={
+                  <VMain>
+                    <UserButton
+                      userActions={this.userActions}
+                      redirect={false}
+                      show={false}>
+                      <FullText>
+                        <StaticMarkdown
+                          appName={appName}
+                          backLink={user ? '/profile' : '/'}
+                          url="/docs/faq.md"
+                        />
+                      </FullText>
+                    </UserButton>
+                  </VMain>
+                }
+              />
+              <Route
                 path="/"
                 element={
                   <UserButton
@@ -198,6 +238,7 @@ class App extends PureComponent<AppProps, AppState> {
 
 const connector = connect((state: RootState) => ({
   session: state.chatState.currentSession,
+  user: state.userState.currentUser,
 }));
 
 export default connector(App);
