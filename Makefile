@@ -41,7 +41,7 @@ build-provider:
 
 show-server-yml:
 	@echo "================================================="
-	grep -Ev '^\s*$|^\s*\#' "$(DOCKER_COMPOSE_OUT)"
+	@grep -Ev '^\s*$|^\s*\#' "$(DOCKER_COMPOSE_OUT)"
 	@echo "# eof"
 
 build-provider-dev:
@@ -178,25 +178,25 @@ uuid:
 	python -c "import uuid; print(f'{uuid.uuid4().hex}')"
 
 name:
-	git describe --tags --match `git tag --merged | sort -rV | head -n 1`
+	@git describe --tags --match `git tag --merged | sort -rV | head -n 1`
 
 commit:
-	git describe --match NOTATAG --always --abbrev=40 --dirty='*'
+	@git describe --match NOTATAG --always --abbrev=40 --dirty='*'
 
 branch:
-	git rev-parse --abbrev-ref HEAD
+	@git rev-parse --abbrev-ref HEAD
 
 version-file:
 	VERSION_PATH=$(VERSION_PATH) ./sh/versionfile.sh
 
 current-version:
-	./sh/version.sh --current
+	@./sh/version.sh --current
 
 next-version:
-	./sh/version.sh
+	@./sh/version.sh
 
 git-check:
-	./sh/git_check.sh
+	@./sh/git_check.sh
 
 pre-commit:
 	pre-commit install
