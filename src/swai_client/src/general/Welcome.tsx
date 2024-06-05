@@ -191,7 +191,9 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
             Josua Krause
           </SmallLink>
         </LinkParagraph>
-        <Footnote>This page uses cookies to improve the experience!</Footnote>
+        <Footnote>
+          This page uses cookies to improve your user experience!
+        </Footnote>
       </VMain>
     );
   }
