@@ -225,9 +225,7 @@ echo "make sure to call make dockerpush-server before updating"
 if [ ! -z "${DEV}" ]; then
     echo "run 'make compose-server' next to start the app on http://localhost:8080/login/"
 elif [ -z "${CI}" ]; then
-    echo "================================================="
-    grep -Ev '^\s*$|^\s*\#' "${DOCKER_COMPOSE_OUT}"
-    echo "# eof"
+    DOCKER_COMPOSE_OUT="${DOCKER_COMPOSE_OUT}" make -s show-server-yml
 else
     echo "run 'make build-server' locally (without dockerpush) to get the docker compose file"
 fi
