@@ -35,6 +35,17 @@ export LANG=C
 PYTHON?=python
 TS_ROOT?=src/swai_client/
 
+deploy-server: \
+		build-server \
+		dockerpush-server
+	echo "================================================="
+    grep -Ev '^\s*$|^\s*\#' "docker-compose.server.yml"
+    echo "# eof"
+
+deploy-provider: \
+	build-provider \
+	dockerpush-provider
+
 build-provider:
 	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) ./sh/build_provider.sh
 
