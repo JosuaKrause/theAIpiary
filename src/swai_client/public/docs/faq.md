@@ -46,10 +46,21 @@
   connection between users and their ML tasks. Worker bees do *not* know which
   user has initiated the task they are currently computing. Keep in mind,
   however, that the tasks themselves have to be made available to the worker
-  and, as such, workers have are at least partially aware of what the data they
+  and, as such, workers are at least partially aware of what the data they
   are processing is about. If Personal Identifyable Information is part of this
   there is a possibility that a connection to a user could be established. We
   are taking security and privacy very seriously and are continuously working
   on making the system more secure and private for everyone.
+
+- **Model Licenses**
+
+  By using models through the **<appName>** you are implicitly agreeing to
+  their respective licenses and terms. The **<appName>** is *not* responsible
+  *nor* liable for any such license breaches or violations.
+
+- **Discord**
+
+  If you have further comments, suggestions, or questions head to Discord. The
+  link to the Discord server can be found on your profile page.
 
 [Back](<backLink>)
