@@ -617,48 +617,55 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
         {users.length ? (
           <Group maxHeight={200}>
             <GroupTitle>Users</GroupTitle>
-            {users.map((userEntry) => {
-              const { email, displayName } = userEntry;
-              const isSelected = email === selectedUser;
-              const rowKey = `${email}`.replaceAll(/[^a-zA-Z_0-9-]/g, '_');
-              return (
-                <Row key={rowKey}>
-                  <UserEntry>
-                    <ClickableUserRow
-                      email={email}
-                      isSelected={isSelected}
-                      setSelectedUser={this.setSelectedUser}>
-                      {displayName} (<AutoHide title="@">{email}</AutoHide>)
-                    </ClickableUserRow>
-                    {isSelected && user && user.capabilities.changeCapabilities
-                      ? toCapabilityList(userEntry).map(
-                          ({ name: capName, has: capHas }) => {
-                            const capKey = `${rowKey}_${capName}`;
-                            return (
-                              <CapabilityEntry key={capKey}>
-                                <CapabilityLabel>
-                                  {capName}
-                                  <CapabilityToggleInput
-                                    isActive={capHas}
-                                    capability={capName}
-                                    email={email}
-                                    setCapability={this.setCapability}
-                                  />
-                                </CapabilityLabel>
-                              </CapabilityEntry>
-                            );
-                          },
-                        )
-                      : null}
-                  </UserEntry>
-                </Row>
-              );
-            })}
+            <AutoHide title="➤ View Users">
+              {users.map((userEntry) => {
+                const { email, displayName } = userEntry;
+                const isSelected = email === selectedUser;
+                const rowKey = `${email}`.replaceAll(/[^a-zA-Z_0-9-]/g, '_');
+                return (
+                  <Row key={rowKey}>
+                    <UserEntry>
+                      <ClickableUserRow
+                        email={email}
+                        isSelected={isSelected}
+                        setSelectedUser={this.setSelectedUser}>
+                        {displayName} (<AutoHide title="@">{email}</AutoHide>)
+                      </ClickableUserRow>
+                      {isSelected &&
+                      user &&
+                      user.capabilities.changeCapabilities
+                        ? toCapabilityList(userEntry).map(
+                            ({ name: capName, has: capHas }) => {
+                              const capKey = `${rowKey}_${capName}`;
+                              return (
+                                <CapabilityEntry key={capKey}>
+                                  <CapabilityLabel>
+                                    {capName}
+                                    <CapabilityToggleInput
+                                      isActive={capHas}
+                                      capability={capName}
+                                      email={email}
+                                      setCapability={this.setCapability}
+                                    />
+                                  </CapabilityLabel>
+                                </CapabilityEntry>
+                              );
+                            },
+                          )
+                        : null}
+                    </UserEntry>
+                  </Row>
+                );
+              })}
+            </AutoHide>
           </Group>
         ) : null}
         {user && user.capabilities.createUser ? (
           <Group>
             <GroupTitle>Create User</GroupTitle>
+            <RowParagraph>
+              Creating a new user will immediately send a welcome email!
+            </RowParagraph>
             <Row>
               <Label htmlFor="createemail">New User Email:</Label>
               <InputText

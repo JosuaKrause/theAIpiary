@@ -71,6 +71,7 @@ const Paragraph = styled.div`
 
 const ShortParagraph = styled.div`
   margin-top: -10px;
+  padding-top: -5px;
   align-self: center;
   flex-grow: 0;
   text-align: center;

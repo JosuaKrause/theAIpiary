@@ -155,7 +155,7 @@ body {
   font-style: normal;
   font-variant: normal;
   font-weight: 400;
-  line-height: 23px;
+  line-height: 20px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--main-background);
@@ -173,4 +173,17 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
   white-space: nowrap;
+}
+
+ul {
+  margin-left: 10px;
+  padding-left: 5px;
+}
+
+li {
+  padding: 5px 0;
+}
+
+li p {
+  margin: 5px;
 }

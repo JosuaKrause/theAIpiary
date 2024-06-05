@@ -41,7 +41,7 @@ const Link = styled.a`
 `;
 
 const Paragraph = styled.p`
-  padding: 5px;
+  padding: 0;
 `;
 
 const MD_COMPONENTS: Partial<
