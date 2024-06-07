@@ -406,7 +406,7 @@ class Chat extends PureComponent<ChatProps, ChatState> {
             aria-label="Type your message..."
             autoCorrect="off"
             placeholder="Type your message..."
-            autoFocus={false}></InputText>
+            autoFocus={true}></InputText>
           <SendButton
             type="button"
             value={ACTIVE_THINKING.includes(thinking) ? 'Stop' : 'Send'}
