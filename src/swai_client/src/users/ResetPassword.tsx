@@ -316,7 +316,7 @@ export default class ResetPassword extends PureComponent<
               />
             </ResetPasswordElement>
             <ResetPasswordElement>
-              <ResetPasswordLink href="/login">Back</ResetPasswordLink>
+              <ResetPasswordLink href="/login">Login</ResetPasswordLink>
               <ResetPasswordSubmit
                 type="submit"
                 value="Send Email"
