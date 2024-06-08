@@ -1,4 +1,6 @@
+accelerate==0.31.0
 bcrypt~=4.1.0
+diffusers==0.28.2
 mypy>=1.10.0
 numpy==1.26.4
 python-dotenv==1.0.1
