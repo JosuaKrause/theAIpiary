@@ -25,7 +25,7 @@ from typing import TypedDict
 
 from scattermind.system.names import UName
 
-from swai.system.user.manager import ResetToken, UserInfo
+from swai_server.system.user.manager import ResetToken, UserInfo
 
 
 EmailConfig = TypedDict('EmailConfig', {

@@ -4,7 +4,7 @@ import sys
 
 from redipy.util import python_module
 
-from swai.system.user.manager import hash_password, RawPassword
+from swai_server.system.user.manager import hash_password, RawPassword
 
 
 def parse_args() -> argparse.Namespace:

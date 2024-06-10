@@ -24,7 +24,7 @@ from scattermind.system.response import TaskStatus
 
 from swai.smind.llama_session import VisibleMessage
 from swai.system.base import SessionInfoJSON, WorkerId, WorkerStatus
-from swai.system.user.manager import CapabilityName, WorkerToken
+from swai.system.user import CapabilityName, WorkerToken
 
 
 UserLogged = TypedDict('UserLogged', {

@@ -25,7 +25,7 @@ from quick_server import PreventDefaultResponse
 from scattermind.system.base import UserId
 from scattermind.system.names import UName
 
-from swai.system.user.manager import (
+from swai.system.user import (
     CAP_CHANGE_CAPABILITIES,
     CAP_CREATE_USER,
     CAP_LIST_USERS,
@@ -35,12 +35,14 @@ from swai.system.user.manager import (
     CAP_REGISTER_OWN_WORKER,
     CAP_WRITE_OTHER_CHAT,
     CapabilityName,
+    WorkerToken,
+)
+from swai_server.system.user.manager import (
     RawPassword,
     ResetToken,
     SessionToken,
     UserInfo,
     UserManager,
-    WorkerToken,
 )
 
 

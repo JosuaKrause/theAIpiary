@@ -34,7 +34,7 @@ from swai.server_response_types import (
     WorkerValueResponse,
 )
 from swai.system.base import retry_on_disconnect
-from swai.system.user.manager import WorkerToken
+from swai.system.user import WorkerToken
 from swai_provider.env import envload_str
 
 

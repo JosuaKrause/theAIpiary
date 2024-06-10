@@ -31,7 +31,7 @@ from swai.server_response_types import (
     TaskFinishResponse,
 )
 from swai.system.base import retry_on_disconnect, WorkerStatus
-from swai.system.user.manager import WorkerToken
+from swai.system.user import WorkerToken
 from swai_provider.env import envload_str
 from swai_provider.smind.worker_api import GraphProfile
 

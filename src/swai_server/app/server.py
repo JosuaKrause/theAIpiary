@@ -67,16 +67,6 @@ from swai.server_response_types import (
     WorkerValueResponse,
 )
 from swai.system.base import SessionInfoJSON, STATUS_MAPPING, to_worker_status
-from swai.system.user.loader import load_user_manager
-from swai.system.user.manager import (
-    as_capability,
-    DEFAULT_CAPABILITIES,
-    HashPassword,
-    RawPassword,
-    ResetToken,
-    SessionToken,
-)
-from swai.system.user.secure import SecureContext
 from swai_server.app.email import (
     EmailConfig,
     is_valid_email_config,
@@ -95,6 +85,16 @@ from swai_server.smind.server_api import (
     retrieve_llama_response,
     start_llama_response,
 )
+from swai_server.system.user.loader import load_user_manager
+from swai_server.system.user.manager import (
+    as_capability,
+    DEFAULT_CAPABILITIES,
+    HashPassword,
+    RawPassword,
+    ResetToken,
+    SessionToken,
+)
+from swai_server.system.user.secure import SecureContext
 from swai_server.version import get_version
 
 

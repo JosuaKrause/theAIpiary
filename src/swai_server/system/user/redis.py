@@ -27,15 +27,14 @@ from scattermind.system.base import UserId
 from scattermind.system.names import UName
 from scattermind.system.util import get_short_hash, short_hash_size
 
-from swai.system.user.manager import (
+from swai.system.user import CapabilityName, WorkerToken
+from swai_server.system.user.manager import (
     as_capability,
-    CapabilityName,
     HashPassword,
     ResetToken,
     SessionToken,
     UserInfo,
     UserManager,
-    WorkerToken,
 )
 
 

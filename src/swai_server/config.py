@@ -26,8 +26,8 @@ from redipy import RedisConfig
 from scattermind.system.io import open_reads, open_writes
 from scattermind.system.session.loader import SessionStoreModule
 
-from swai.system.user.loader import UserManagerModule
 from swai_server.env import envload_int, envload_path, envload_str
+from swai_server.system.user.loader import UserManagerModule
 
 
 Config = TypedDict('Config', {
