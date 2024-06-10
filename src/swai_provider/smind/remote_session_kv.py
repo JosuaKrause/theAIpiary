@@ -18,28 +18,19 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
-import io
 import time
-import uuid
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
-from typing import IO, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 import requests
-from scattermind.system.base import L_REMOTE, Locality, SessionId, UserId
+from scattermind.system.base import L_REMOTE, Locality, SessionId
 from scattermind.system.names import UName
-from scattermind.system.session.session import Session, SessionStore
+from scattermind.system.session.session import SessionKeyValue
 
 from swai.auth import get_authorization
 from swai.server_response_types import (
-    WorkerBlobHashResponse,
-    WorkerBlobListResponse,
     WorkerKeysResponse,
-    WorkerSessionListResponse,
-    WorkerSessionResponse,
     WorkerSignalResponse,
-    WorkerUploadResponse,
-    WorkerUserResponse,
     WorkerValueResponse,
 )
 from swai.system.base import retry_on_disconnect
@@ -50,20 +41,15 @@ from swai_provider.env import envload_str
 T = TypeVar('T')
 
 
-class RemoteSessionStore(SessionStore):
-    def __init__(
-            self,
-            cache_path: str,
-            is_shared: bool) -> None:
+class RemoteSessionKeyValue(SessionKeyValue):
+    def __init__(self) -> None:
         # FIXME: use timeouts
-        super().__init__(cache_path=cache_path, is_shared=is_shared)
         self._name = UName(envload_str("AIPIARY_USER"))
         self._worker_token: WorkerToken = envload_str("AIPIARY_WORKER_TOKEN")
         self._api_url = envload_str("AIPIARY_API_URL").removesuffix("/")
         self._api = requests.Session()
 
-    @staticmethod
-    def locality() -> Locality:
+    def locality(self) -> Locality:
         return L_REMOTE
 
     def _url(self, path: str) -> str:
@@ -76,37 +62,6 @@ class RemoteSessionStore(SessionStore):
         return {
             "authorization": get_authorization(self._name, self._worker_token),
         }
-
-    def register_session(self, user_id: UserId, session_id: SessionId) -> None:
-        obj = self._json()
-        obj["user_id"] = user_id.to_parseable()
-        obj["session"] = session_id.to_parseable()
-        resp = retry_on_disconnect(lambda: self._api.put(
-            self._url("/session"), json=obj, headers=self._headers()))
-        res: WorkerSessionResponse = resp.json()
-        assert res["ok"]
-
-    def get_sessions(self, user_id: UserId) -> Iterable[Session]:
-        obj = self._json()
-        obj["user_id"] = user_id.to_parseable()
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/session"), json=obj, headers=self._headers()))
-        res: WorkerSessionListResponse = resp.json()
-        yield from (
-            self.get_session(SessionId.parse(session))
-            for session in res["sessions"]
-        )
-
-    def get_user(self, session_id: SessionId) -> UserId | None:
-        obj = self._json()
-        obj["session"] = session_id.to_parseable()
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/user"), json=obj, headers=self._headers()))
-        res: WorkerUserResponse = resp.json()
-        user_id_str = res["user_id"]
-        if user_id_str is None:
-            return None
-        return UserId.parse(user_id_str)
 
     def set_value(
             self,
@@ -215,103 +170,6 @@ class RemoteSessionStore(SessionStore):
             res: WorkerSignalResponse = resp.json()
             assert "signal" in res
 
-    @contextmanager
-    def open_blob_write(
-            self, session_id: SessionId, name: str) -> Iterator[IO[bytes]]:
-        bout = io.BytesIO()
-        yield bout
-        bout.seek(0, io.SEEK_SET)
-        upload_id = uuid.uuid4().hex
-        chunk_size = 1024 * 10  # 10kiB
-        # FIXME: parallelize and use the missing field
-
-        def send_chunk(
-                chunk_ix: int, bchunk: IO[bytes], *, complete: bool) -> None:
-            obj = self._json()
-            obj["session"] = session_id.to_parseable()
-            obj["blob"] = name
-            obj["upload_id"] = upload_id
-            obj["fragment"] = chunk_ix
-            obj["complete"] = complete
-            bchunk.seek(0, io.SEEK_SET)
-            resp = retry_on_disconnect(lambda: self._api.put(
-                self._url("/blob"),
-                data=obj,
-                files={
-                    "blob": (
-                        "blob",
-                        bchunk,
-                        "application/octet-stream",
-                    ),
-                },
-                headers=self._headers()))
-            res: WorkerUploadResponse = resp.json()
-            assert res["done"]
-            assert not res["missing"]
-
-        ix = 0
-        complete = False
-        bchunk: io.BytesIO | None = None
-        while True:
-            cur = bout.read(chunk_size)
-            if not cur:
-                complete = True
-            if bchunk is not None:
-                send_chunk(ix, bchunk, complete=complete)
-                ix += 1
-            if complete:
-                break
-            bchunk = io.BytesIO(cur)
-        if bchunk is None:
-            send_chunk(ix, io.BytesIO(), complete=True)
-
-    @contextmanager
-    def open_blob_read(
-            self, session_id: SessionId, name: str) -> Iterator[IO[bytes]]:
-        obj = self._json()
-        obj["session"] = session_id.to_parseable()
-        obj["blob"] = name
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/blob"), json=obj, headers=self._headers()))
-        bout = io.BytesIO(resp.content)
-        try:
-            yield bout
-        finally:
-            bout.close()
-
-    def blob_hash(
-            self,
-            session_id: SessionId,
-            names: Iterable[str]) -> dict[str, str]:
-        obj = self._json()
-        obj["session"] = session_id.to_parseable()
-        obj["blobs"] = sorted(set(names))
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/hash"), json=obj, headers=self._headers()))
-        res: WorkerBlobHashResponse = resp.json()
-        return res["blob_hashes"]
-
-    def blob_list(self, session_id: SessionId) -> list[str]:
-        obj = self._json()
-        obj["session"] = session_id.to_parseable()
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/list"), json=obj, headers=self._headers()))
-        res: WorkerBlobListResponse = resp.json()
-        return res["blobs"]
-
-    def blob_remove(self, session_id: SessionId, names: list[str]) -> None:
-        obj = self._json()
-        obj["session"] = session_id.to_parseable()
-        obj["blobs"] = sorted(set(names))
-        resp = retry_on_disconnect(lambda: self._api.delete(
-            self._url("/blob"), json=obj, headers=self._headers()))
-        res: WorkerUploadResponse = resp.json()
-        assert res["done"]
-
     def remove(self, session_id: SessionId) -> None:
-        obj = self._json()
-        obj["session"] = session_id.to_parseable()
-        resp = retry_on_disconnect(lambda: self._api.delete(
-            self._url("/session"), json=obj, headers=self._headers()))
-        res: WorkerSessionResponse = resp.json()
-        assert res["ok"]
+        # NOTE: handled by RemoteSessionUser
+        pass
