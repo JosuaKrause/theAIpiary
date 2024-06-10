@@ -106,6 +106,10 @@ lint-ts:
 lint-ts-fix:
 	yarn --cwd $(TS_ROOT) lint --fix
 
+lint-x-imports:
+	! grep -I -s swai_server -r src/swai_provider
+	! grep -I -s swai_provider -r src/swai_server
+
 lint-all: \
 	lint-comment \
 	lint-emptyinit \

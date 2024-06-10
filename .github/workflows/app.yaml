@@ -76,6 +76,10 @@ jobs:
         run: |
           make install PYTHON=python
 
+      - name: Lint Code (do not cross import between server and client)
+        run: |
+          make lint-x-imports
+
       - name: Lint Code (use uppercase TODO, XXX, FIXME, NOTE and explain nopep8)
         run: |
           make lint-comment
