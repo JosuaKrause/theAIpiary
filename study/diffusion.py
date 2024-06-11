@@ -67,7 +67,6 @@ def run() -> None:
     pipe = pipeline.to(torch.device("mps"))
     if len(args) > 1:
         for arg in args[1:]:
-            iters = 50
             print(f"reading {arg}")
             with open(arg, "r", encoding="utf-8") as pin:
                 while True:

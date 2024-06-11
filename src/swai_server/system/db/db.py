@@ -107,6 +107,7 @@ class DBConnector:
             table.__table__.name, schema=self._schema)
 
     def create_tables(self, tables: list[type['Base']]) -> None:
+        # pylint: disable=import-outside-toplevel
         from swai_server.system.db.base import Base
 
         Base.metadata.create_all(
@@ -116,6 +117,7 @@ class DBConnector:
 
     @staticmethod
     def all_tables() -> list[type['Base']]:
+        # pylint: disable=import-outside-toplevel
         from swai_server.system.db.base import Base
 
         return [
