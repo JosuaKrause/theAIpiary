@@ -8,6 +8,7 @@ isort
 mypy
 numpy
 pre-commit
+psycopg2
 pycodestyle
 pylint
 pytest
