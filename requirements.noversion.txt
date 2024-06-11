@@ -20,4 +20,5 @@ scattermind
 SQLAlchemy
 SQLAlchemy[mypy]
 torch
+types-psycopg2
 types-requests

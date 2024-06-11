@@ -11,3 +11,4 @@ scattermind>=0.4.1
 SQLAlchemy==2.0.9
 SQLAlchemy[mypy]==2.0.9
 torch==2.3.0
+types-psycopg2==2.9.21.2
