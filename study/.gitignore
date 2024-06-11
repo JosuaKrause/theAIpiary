@@ -1,2 +1,5 @@
 *.jpg
-.model
+model.txt
+prompts.txt
+out/*
+!out/.empty

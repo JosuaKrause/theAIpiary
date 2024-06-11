@@ -17,5 +17,7 @@ quick-server
 redipy
 requests
 scattermind
+SQLAlchemy
+SQLAlchemy[mypy]
 torch
 types-requests
