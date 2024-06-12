@@ -3,3 +3,4 @@ model.txt
 prompts.txt
 out/*
 !out/.empty
+*.zip
