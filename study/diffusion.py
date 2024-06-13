@@ -76,8 +76,11 @@ def run() -> None:
                     if text:
                         render(pipe, text, iters, n_per)
     else:
-        text = input("prompt: ")
-        render(pipe, text, iters, n_per)
+        while True:
+            text = input("prompt: ").strip()
+            if not text:
+                break
+            render(pipe, text, iters, n_per)
 
     # accelerate
     # diffusers
