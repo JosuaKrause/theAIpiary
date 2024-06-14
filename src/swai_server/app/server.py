@@ -854,94 +854,99 @@ def setup(
         }
 
     # # # SECURE # # #
-    server.add_middleware(verify_user_session)
+    with server.middlewares(verify_user_session):
 
-    # *** chat ***
+        # *** chat ***
 
-    @server.json_post(f"{prefix}/chat/list")
-    def _post_chat_list(_req: QSRH, rargs: ReqArgs) -> ChatListResponse:
-        user_session: SessionToken = rargs["meta"]["user_session"]
-        user_email: UName = rargs["meta"]["user_email"]
-        user_id = sec_ctx.get_user_id(user_session, user_email)
-        sessions = list_sessions(session_store, user_id)
+        @server.json_post(f"{prefix}/chat/list")
+        def _post_chat_list(_req: QSRH, rargs: ReqArgs) -> ChatListResponse:
+            user_session: SessionToken = rargs["meta"]["user_session"]
+            user_email: UName = rargs["meta"]["user_email"]
+            user_id = sec_ctx.get_user_id(user_session, user_email)
+            sessions = list_sessions(session_store, user_id)
 
-        def sort_key(info: SessionInfoJSON) -> float:
-            timestamp = (
-                0
-                if info["time"] is None
-                else parse_time_str(info["time"]).timestamp())
-            return timestamp
+            def sort_key(info: SessionInfoJSON) -> float:
+                timestamp = (
+                    0
+                    if info["time"] is None
+                    else parse_time_str(info["time"]).timestamp())
+                return timestamp
 
-        return {
-            "model_sessions": sorted(
-                (
-                    get_session_info(session)
-                    for session in sessions
-                ),
-                key=sort_key,
-                reverse=True),
-        }
+            return {
+                "model_sessions": sorted(
+                    (
+                        get_session_info(session)
+                        for session in sessions
+                    ),
+                    key=sort_key,
+                    reverse=True),
+            }
 
-    @server.json_post(f"{prefix}/chat/new")
-    def _post_chat_new(_req: QSRH, rargs: ReqArgs) -> ChatInitResponse:
-        user_session: SessionToken = rargs["meta"]["user_session"]
-        user_email: UName = rargs["meta"]["user_email"]
-        user_id = sec_ctx.get_user_id(user_session, user_email)
-        session, messages = init_llama(session_store, user_id)
-        return {
-            "model_session": session.get_session_id().to_parseable(),
-            "messages": messages,
-        }
+        @server.json_post(f"{prefix}/chat/new")
+        def _post_chat_new(_req: QSRH, rargs: ReqArgs) -> ChatInitResponse:
+            user_session: SessionToken = rargs["meta"]["user_session"]
+            user_email: UName = rargs["meta"]["user_email"]
+            user_id = sec_ctx.get_user_id(user_session, user_email)
+            session, messages = init_llama(session_store, user_id)
+            return {
+                "model_session": session.get_session_id().to_parseable(),
+                "messages": messages,
+            }
 
-    @server.json_post(f"{prefix}/chat/recover")
-    @server.middleware(verify_model_session_read)
-    def _post_chat_recover(_req: QSRH, rargs: ReqArgs) -> ChatRecoverResponse:
-        meta = rargs["meta"]
-        session: Session = meta["model_session"]
-        try:
-            messages, task_id = recover_llama_chat(
-                task_queue, model_ns, session)
-        except FileNotFoundError as exc:
-            raise PreventDefaultResponse(404, "session not available") from exc
-        return {
-            "messages": messages,
-            "task": None if task_id is None else task_id.to_parseable(),
-            "status": task_queue.get_status(task_id),
-        }
+        @server.json_post(f"{prefix}/chat/recover")
+        @server.middleware(verify_model_session_read)
+        def _post_chat_recover(
+                _req: QSRH, rargs: ReqArgs) -> ChatRecoverResponse:
+            meta = rargs["meta"]
+            session: Session = meta["model_session"]
+            try:
+                messages, task_id = recover_llama_chat(
+                    task_queue, model_ns, session)
+            except FileNotFoundError as exc:
+                raise PreventDefaultResponse(
+                    404, "session not available") from exc
+            return {
+                "messages": messages,
+                "task": None if task_id is None else task_id.to_parseable(),
+                "status": task_queue.get_status(task_id),
+            }
 
-    @server.json_post(f"{prefix}/chat/prompt")
-    @server.middleware(verify_model_session_write)
-    @server.middleware(verify_prompt)
-    def _post_chat_prompt(_req: QSRH, rargs: ReqArgs) -> ChatPromptResponse:
-        meta = rargs["meta"]
-        session: Session = meta["model_session"]
-        prompt: str = meta["prompt"]
-        task_id = start_llama_response(task_queue, model_ns, prompt, session)
-        return {
-            "task": None if task_id is None else task_id.to_parseable(),
-            "status": task_queue.get_status(task_id),
-        }
+        @server.json_post(f"{prefix}/chat/prompt")
+        @server.middleware(verify_model_session_write)
+        @server.middleware(verify_prompt)
+        def _post_chat_prompt(
+                _req: QSRH, rargs: ReqArgs) -> ChatPromptResponse:
+            meta = rargs["meta"]
+            session: Session = meta["model_session"]
+            prompt: str = meta["prompt"]
+            task_id = start_llama_response(
+                task_queue, model_ns, prompt, session)
+            return {
+                "task": None if task_id is None else task_id.to_parseable(),
+                "status": task_queue.get_status(task_id),
+            }
 
-    @server.json_post(f"{prefix}/chat/response")
-    @server.middleware(verify_model_session_read)
-    def _post_chat_response(_req: QSRH, rargs: ReqArgs) -> ChatTextResponse:
-        args = rargs["post"]
-        meta = rargs["meta"]
-        session: Session = meta["model_session"]
-        task_id = TaskId.parse(args["task"])
-        index = int(args["index"])
-        diff, next_pos = retrieve_llama_response(session, (task_id, index))
-        if next_pos is not None:
-            task_out, next_index = next_pos
-        else:
-            task_out = None
-            next_index = None
-        return {
-            "diff": diff,
-            "task": None if task_out is None else task_out.to_parseable(),
-            "next_index": next_index,
-            "status": task_queue.get_status(task_out),
-        }
+        @server.json_post(f"{prefix}/chat/response")
+        @server.middleware(verify_model_session_read)
+        def _post_chat_response(
+                _req: QSRH, rargs: ReqArgs) -> ChatTextResponse:
+            args = rargs["post"]
+            meta = rargs["meta"]
+            session: Session = meta["model_session"]
+            task_id = TaskId.parse(args["task"])
+            index = int(args["index"])
+            diff, next_pos = retrieve_llama_response(session, (task_id, index))
+            if next_pos is not None:
+                task_out, next_index = next_pos
+            else:
+                task_out = None
+                next_index = None
+            return {
+                "diff": diff,
+                "task": None if task_out is None else task_out.to_parseable(),
+                "next_index": next_index,
+                "status": task_queue.get_status(task_out),
+            }
 
     return server, prefix
 

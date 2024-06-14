@@ -31,7 +31,7 @@ jobs:
       - name: Cache node modules
         uses: actions/cache@v3
         with:
-          path: ui/node_modules/
+          path: src/swai_client/node_modules/
           key: v1-${{ matrix.node }}-${{ hashFiles('src/swai_client/yarn.lock') }}
 
       - name: Yarn Install
