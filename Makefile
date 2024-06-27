@@ -226,3 +226,6 @@ deploy-server: \
 deploy-provider: \
 	build-provider \
 	dockerpush-provider
+
+publish:
+	./sh/deploy.sh
