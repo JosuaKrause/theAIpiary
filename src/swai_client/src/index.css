@@ -40,6 +40,7 @@ a:visited {
 }
 
 a:hover,
+a:active,
 a:focus {
   color: #444;
 }
@@ -82,6 +83,8 @@ pre {
   border: 1px solid silver;
   background-color: lightgray;
   color: black;
+  width: 100%;
+  white-space: pre-wrap;
 }
 
 .response-user pre {
@@ -93,6 +96,8 @@ pre {
 }
 
 code {
+  width: 100%;
+  white-space: pre-wrap;
   font-family: 'Courier New', Courier, monospace;
   font-weight: 500;
   line-height: 15px;

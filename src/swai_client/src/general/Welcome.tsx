@@ -99,7 +99,9 @@ const Link = styled.a`
     color: silver;
   }
 
-  &:hover {
+  &:hover,
+  &:active,
+  &:focus {
     color: lightgray;
     background-color: var(--button-background);
   }
@@ -113,7 +115,9 @@ const SmallLink = styled.a`
     color: silver;
   }
 
-  &:hover {
+  &:hover,
+  &:active,
+  &:focus {
     color: lightgray;
   }
 `;

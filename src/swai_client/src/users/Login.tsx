@@ -89,7 +89,8 @@ const LoginLink = styled.a`
     background-color: var(--button-background);
   }
 
-  &:hover {
+  &:hover,
+  &:focus {
     color: var(--main-text);
     background-color: var(--button-hover);
   }

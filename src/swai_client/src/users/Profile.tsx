@@ -105,7 +105,9 @@ const Link = styled.a`
     color: silver;
   }
 
-  &:hover {
+  &:hover,
+  &:active,
+  &:focus {
     color: lightgray;
     background-color: var(--button-background);
   }
@@ -125,7 +127,9 @@ const SessionLink = styled.a`
     color: silver;
   }
 
-  &:hover {
+  &:hover,
+  &:active,
+  &:focus {
     color: lightgray;
     background-color: var(--button-background);
   }

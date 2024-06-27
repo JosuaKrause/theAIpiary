@@ -35,7 +35,8 @@ const Link = styled.a`
   &:active {
     color: var(--md-anchor);
   }
-  &:hover {
+  &:hover,
+  &:focus {
     color: var(--md-anchor-hover);
   }
 `;
