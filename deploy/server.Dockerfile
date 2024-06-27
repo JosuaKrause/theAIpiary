@@ -16,7 +16,10 @@ ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
 RUN mkdir sh
 COPY sh/install.sh sh
-RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-server
+ENV FORCE_CPU=1
+RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-server \
+  && conda clean --all \
+  && pip cache purge
 COPY LICENSE .
 COPY sh/ sh/
 COPY src/swai/ swai/
@@ -24,7 +27,8 @@ COPY src/swai_server swai_server/
 COPY buildtmp_server/build build/
 ENV UI_PATH=build/
 RUN python -m compileall .
-COPY version.txt .
+ENV VERSION_PATH=version.txt
+COPY version.server.txt ${VERSION_PATH}
 ARG PORT=8080
 ARG CONFIG_PATH
 COPY "${CONFIG_PATH}" config.json

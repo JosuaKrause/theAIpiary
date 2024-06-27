@@ -55,14 +55,15 @@ cp "deploy/smind-config.json" "${SMIND_CFG}"
 cp -R "deploy/graphs/" "${SMIND_GRS}"
 
 IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
-IMAGE_BASE="swai-provider"
+IMAGE_BASE="aipiary"
 
 if [ ! -z "${DEV}" ]; then
     IMAGE_BASE="${IMAGE_BASE}-dev"
 fi
 
-make -s version-file
-trap 'rm -- version.txt' EXIT
+VERSION_PATH="version.provider.txt"
+VERSION_PATH="${VERSION_PATH}" make -s version-file
+trap "rm -- ${VERSION_PATH}" EXIT
 
 echo "building ${IMAGE_BASE}"
 
@@ -133,16 +134,6 @@ if [ ! -z "${DEVMODE}" ]; then
     replace_lib "${REQUIREMENTS_WORKER_FILE}" "quick-server" "${QUICK_SERVER_PATH}" "${QUICK_SERVER_URL}" "${QUICK_SERVER_BRANCH}"
     replace_lib "${REQUIREMENTS_WORKER_FILE}" "redipy" "${REDIPY_PATH}" "${REDIPY_URL}" "${REDIPY_BRANCH}"
     replace_lib "${REQUIREMENTS_WORKER_FILE}" "scattermind" "${SMIND_PATH}" "${SMIND_URL}" "${SMIND_BRANCH}"
-fi
-
-if [ ! -z "${DEV}" ]; then
-    DOCKER_COMPOSE_OUT="docker-compose.provider.dev.yml"
-    WEBAPP_STORAGE_HOME="./userdata/provider/"
-    DOCKER_LOGIN_SERVER=
-else
-    DOCKER_COMPOSE_OUT="docker-compose.provider.yml"
-    WEBAPP_STORAGE_HOME=
-    DOCKER_LOGIN_SERVER=
 fi
 
 docker_build() {
@@ -226,61 +217,3 @@ docker_build \
     --build-arg "REDIS_RUN_SCRIPT=${REDIS_RUN_SCRIPT}" \
     -f deploy/redis.Dockerfile \
     .
-
-DEFAULT_ENV_FILE=deploy/default.provider.env
-echo "# created by sh/build_provider.sh" > "${DEFAULT_ENV_FILE}"
-echo "DOCKER_WORKER=${IMAGE_BASE}-worker:${IMAGE_TAG}" >> "${DEFAULT_ENV_FILE}"
-echo "DOCKER_PROVIDER=${IMAGE_BASE}-api:${IMAGE_TAG}" >> "${DEFAULT_ENV_FILE}"
-echo "DOCKER_RMAIN=${IMAGE_BASE}-rmain:${REDIS_DOCKER_VERSION}" >> "${DEFAULT_ENV_FILE}"
-echo "DOCKER_RDATA=${IMAGE_BASE}-rdata:${REDIS_DOCKER_VERSION}" >> "${DEFAULT_ENV_FILE}"
-echo "DOCKER_RCACHE=${IMAGE_BASE}-rcache:${REDIS_DOCKER_VERSION}" >> "${DEFAULT_ENV_FILE}"
-echo "DOCKER_RBODY=${IMAGE_BASE}-rbody:${REDIS_DOCKER_VERSION}" >> "${DEFAULT_ENV_FILE}"
-if [ ! -z "${WEBAPP_STORAGE_HOME}" ]; then
-    echo "{WEBAPP_STORAGE_HOME}=${WEBAPP_STORAGE_HOME}" >> "${DEFAULT_ENV_FILE}"
-fi
-
-! read -r -d '' PY_COMPOSE <<'EOF'
-import os
-import sys
-
-prefix = sys.argv[1]
-dcompose = sys.argv[2]
-denv = sys.argv[3]
-dout = sys.argv[4]
-substitute = {}
-with open(denv, "r", encoding="utf-8") as fin:
-    for line in fin:
-        line = line.rstrip().split("#", 1)[0].strip()
-        if not line:
-            continue
-        variable, value = line.split("=", 1)
-        variable = f"${variable}".strip()
-        value = f"{value.strip()}"
-        if variable.startswith("$DOCKER_"):
-            value = f"{prefix}{value}"
-        if value.startswith("@"):
-            with open(value[1:], "r", encoding="utf-8") as tin:
-                value = tin.read()
-        substitute[variable] = value
-with open(dcompose, "r", encoding="utf-8") as din:
-    content = din.read()
-for variable, value in sorted(
-        substitute.items(), key=lambda e: len(e[0]), reverse=True):
-    content = content.replace(variable, value)
-with open(dout, "w", encoding="utf-8") as fout:
-    fout.write(content)
-EOF
-
-${PYTHON} -c "${PY_COMPOSE}" "${DOCKER_LOGIN_SERVER}" "deploy/docker-compose.provider.yml" "${DEFAULT_ENV_FILE}" "${DOCKER_COMPOSE_OUT}"
-
-echo "docker compose is ready at ${DOCKER_COMPOSE_OUT}"
-echo "make sure to call make dockerpush before updating"
-if [ ! -z "${DEV}" ]; then
-    echo "run 'make compose-provider' next to start the provider"
-elif [ -z "${CI}" ]; then
-    echo "================================================="
-    grep -Ev '^\s*$|^\s*\#' "${DOCKER_COMPOSE_OUT}"
-    echo "# eof"
-else
-    echo "run 'make build-provider' locally (without dockerpush) to get the docker compose file"
-fi

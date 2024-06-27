@@ -31,7 +31,7 @@ jobs:
       - name: Cache node modules
         uses: actions/cache@v3
         with:
-          path: ui/node_modules/
+          path: src/swai_client/node_modules/
           key: v1-${{ matrix.node }}-${{ hashFiles('src/swai_client/yarn.lock') }}
 
       - name: Yarn Install
@@ -75,6 +75,10 @@ jobs:
       - name: Install dependencies
         run: |
           make install PYTHON=python
+
+      - name: Lint Code (do not cross import between server and client)
+        run: |
+          make lint-x-imports
 
       - name: Lint Code (use uppercase TODO, XXX, FIXME, NOTE and explain nopep8)
         run: |
@@ -123,3 +127,38 @@ jobs:
       - name: Lint Code (pylint)
         run: |
           make lint-pylint
+
+  build_pipeline:
+    name: Build
+    needs: [lints_pipeline, ts_pipeline]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build provider docker image
+        run: |
+          make -s build-provider
+
+      - name: Push provider docker image
+        run: |
+          make -s dockerpush-provider
+        env:
+          DOCKER_USER: ${{ secrets.DOCKER_USER }}
+          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: AZ Docker login
+        uses: azure/docker-login@v1
+        with:
+          login-server: acclabdocker.azurecr.io
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build server docker image
+        run: |
+          make -s build-server
+
+      - name: Push server docker image
+        run: |
+          make -s dockerpush-server

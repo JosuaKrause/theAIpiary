@@ -34,9 +34,15 @@ export LANG=C
 
 PYTHON?=python
 TS_ROOT?=src/swai_client/
+DOCKER_COMPOSE_OUT?=docker-compose.server.yml
 
 build-provider:
 	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) ./sh/build_provider.sh
+
+show-server-yml:
+	@echo "================================================="
+	@grep -Ev '^\s*$|^\s*\#' "$(DOCKER_COMPOSE_OUT)"
+	@echo "# eof"
 
 build-provider-dev:
 	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) DEV=1 ./sh/build_provider.sh
@@ -100,6 +106,10 @@ lint-ts:
 lint-ts-fix:
 	yarn --cwd $(TS_ROOT) lint --fix
 
+lint-x-imports:
+	! grep -I -s swai_server -r src/swai_provider
+	! grep -I -s swai_provider -r src/swai_server
+
 lint-all: \
 	lint-comment \
 	lint-emptyinit \
@@ -121,16 +131,22 @@ compose-provider:
 	./sh/compose_provider.sh
 
 run-provider:
-	./sh/run_provider.sh
+	BASE=$(BASE) ./sh/run_provider.sh
 
 run-server:
-	BOOTSTRAP_USERS=$(BOOTSTRAP_USERS) ./sh/run_server.sh
+	BASE=$(BASE) ./sh/run_server.sh
 
 run-ts:
 	yarn --cwd $(TS_ROOT) start
 
-dockerpush:
-	./sh/dockerpush.sh
+azlogin:
+	./sh/azlogin.sh
+
+dockerpush-provider:
+	./sh/dockerpush_provider.sh
+
+dockerpush-server:
+	./sh/dockerpush_server.sh
 
 install:
 	PYTHON=$(PYTHON) REQUIREMENTS_PATH=$(REQUIREMENTS_PATH) ./sh/install.sh
@@ -166,25 +182,25 @@ uuid:
 	python -c "import uuid; print(f'{uuid.uuid4().hex}')"
 
 name:
-	git describe --tags --match `git tag --merged | sort -rV | head -n 1`
+	@git describe --tags --match `git tag --merged | sort -rV | head -n 1`
 
 commit:
-	git describe --match NOTATAG --always --abbrev=40 --dirty='*'
+	@git describe --match NOTATAG --always --abbrev=40 --dirty='*'
 
 branch:
-	git rev-parse --abbrev-ref HEAD
+	@git rev-parse --abbrev-ref HEAD
 
 version-file:
-	./sh/versionfile.sh
+	VERSION_PATH=$(VERSION_PATH) ./sh/versionfile.sh
 
 current-version:
-	./sh/version.sh --current
+	@./sh/version.sh --current
 
 next-version:
-	./sh/version.sh
+	@./sh/version.sh
 
 git-check:
-	./sh/git_check.sh
+	@./sh/git_check.sh
 
 pre-commit:
 	pre-commit install
@@ -201,3 +217,15 @@ allapps:
 
 create-admin-pw:
 	cd src && $(PYTHON) -m swai.system.user
+
+deploy-server: \
+	build-server \
+	dockerpush-server \
+	show-server-yml
+
+deploy-provider: \
+	build-provider \
+	dockerpush-provider
+
+publish:
+	./sh/deploy.sh

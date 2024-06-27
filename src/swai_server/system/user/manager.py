@@ -21,44 +21,29 @@
 import hmac
 import uuid
 from collections.abc import Iterable
-from typing import cast, get_args, Literal, TypeAlias, TypedDict
+from typing import cast, TypeAlias, TypedDict
 
 import bcrypt
 from scattermind.system.base import UserId
 from scattermind.system.names import UName
 from scattermind.system.util import get_text_hash
 
+from swai.system.user import (
+    CAP_REGISTER_OWN_WORKER,
+    CAPABILITIES,
+    CapabilityName,
+    WorkerToken,
+)
+
 
 SessionToken: TypeAlias = str
 ResetToken: TypeAlias = str
 RawPassword: TypeAlias = str
 HashPassword: TypeAlias = str
-WorkerToken: TypeAlias = str
 
 
 INVALID_WORKER_TOKEN: WorkerToken = uuid.UUID(
     "87f3fabee0ca4feaa42d8f40e5cdc303").hex
-
-
-CapabilityName = Literal[
-    "change_capabilities",
-    "logout_other_user",
-    "create_user",
-    "list_users",
-    "write_other_chat",
-    "read_other_chat",
-    "register_own_worker",
-    "register_other_worker",
-]
-CAPABILITIES: tuple[CapabilityName] = get_args(CapabilityName)
-CAP_CHANGE_CAPABILITIES: CapabilityName = "change_capabilities"
-CAP_LOGOUT_OTHER_USER: CapabilityName = "logout_other_user"
-CAP_CREATE_USER: CapabilityName = "create_user"
-CAP_LIST_USERS: CapabilityName = "list_users"
-CAP_WRITE_OTHER_CHAT: CapabilityName = "write_other_chat"
-CAP_READ_OTHER_CHAT: CapabilityName = "read_other_chat"
-CAP_REGISTER_OWN_WORKER: CapabilityName = "register_own_worker"
-CAP_REGISTER_OTHER_WORKER: CapabilityName = "register_other_worker"
 
 
 DEFAULT_CAPABILITIES: set[CapabilityName] = {

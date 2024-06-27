@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+#
 # Copyright (c) 2024 Josua Krause - All Rights Reserved
 #
 # THE CONTENTS OF THIS PROJECT ARE PROPRIETARY AND CONFIDENTIAL.
@@ -18,31 +20,40 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
-from typing import Literal, TypedDict
+#
+set -e
 
-from redipy import RedisConfig
-from scattermind.system.names import UName
+cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-from swai.system.user.manager import RawPassword, UserManager
+IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
+IMAGE_BASE="aipiary-server"
 
+DOCKER_LOGIN_SERVER="aipiary.azurecr.io/"
 
-RedisUserManagerModule = TypedDict('RedisUserManagerModule', {
-    "name": Literal["redis"],
-    "cfg": RedisConfig,
-})
+DEVMODE_CONF_FILE="deploy/devmode.conf"
+REDIS_VERSION_FILE="deploy/redis.version"
 
+source "${DEVMODE_CONF_FILE}"
+source "${REDIS_VERSION_FILE}"
 
-UserManagerModule = RedisUserManagerModule
+if [ ! -z "${DEVMODE}" ]; then
+    REDIS_DOCKER_VERSION="${REDIS_DOCKER_VERSION}-devmode"
+fi
 
+dpush() {
+    IMAGE="${IMAGE_BASE}-$1:$2"
+    URL="${DOCKER_LOGIN_SERVER}${IMAGE}"
+    if ! docker pull "${URL}" &> /dev/null ; then
+        echo "pushing ${IMAGE} to ${URL}"
 
-def load_user_manager(
-        module: UserManagerModule,
-        *,
-        admin_email: UName | None,
-        admin_pw: RawPassword | None) -> UserManager:
-    # pylint: disable=import-outside-toplevel
-    if module["name"] == "redis":
-        from swai.system.user.redis import RedisUserManager
-        return RedisUserManager(
-            cfg=module["cfg"], admin_email=admin_email, admin_pw=admin_pw)
-    raise ValueError(f"unknown session store: {module['name']}")
+        docker tag "${IMAGE}" "${URL}"
+        docker push "${URL}"
+        docker rmi "${URL}"
+        sleep 1
+    else
+        echo "${URL} already exists"
+    fi
+}
+
+dpush "api" "${IMAGE_TAG}"
+dpush "rserver" "${REDIS_DOCKER_VERSION}"

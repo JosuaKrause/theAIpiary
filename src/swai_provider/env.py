@@ -33,18 +33,17 @@ EnvPath = Literal[
     "VERSION_PATH",
 ]
 EnvStr = Literal[
+    "AIPIARY_API_URL",
+    "AIPIARY_USER",
+    "AIPIARY_WORKER_TOKEN",
     "HOST",
-    "SWAI_API_URL",
-    "SWAI_USER",
-    "SWAI_WORKER_TOKEN",
+    "DEVICE_ID",
 ]
 EnvInt = Literal[
     "PORT",
     "REDIS_PORT",
 ]
-EnvBool = Literal[
-    "BOOTSTRAP_USERS",
-]
+EnvBool = Literal["!"]  # FIXME: placeholder for actual env names
 
 
 def _envload(key: str, default: str | None) -> str:

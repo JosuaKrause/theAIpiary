@@ -25,6 +25,8 @@ set -e
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-make -s name > version.txt
-make -s commit >> version.txt
-date +"%Y-%m-%dT%H:%M:%S%z" >> version.txt
+VERSION_PATH="${VERSION_PATH:-version.txt}"
+
+make -s name > "${VERSION_PATH}"
+make -s commit >> "${VERSION_PATH}"
+date +"%Y-%m-%dT%H:%M:%S%z" >> "${VERSION_PATH}"

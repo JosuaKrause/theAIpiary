@@ -18,13 +18,19 @@
 #
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the software.
+import time
+from collections.abc import Callable
 from typing import cast, get_args, Literal, TypeAlias, TypedDict
 
+import requests
 from scattermind.system.names import UName
-from scattermind.system.util import get_short_hash
+from scattermind.system.util import get_short_hash, get_time_str
 
 
 WorkerId: TypeAlias = str
+
+
+DEFAULT_WAIT = 17.0  # 17s
 
 
 def get_worker_id(user_email: UName, worker_name: str) -> WorkerId:
@@ -64,3 +70,55 @@ SessionInfoJSON = TypedDict('SessionInfoJSON', {
     "time": str | None,
     "summary": str | None,
 })
+
+
+CONNECTION_CODES: set[int] = {504}
+
+
+def retry_on_disconnect(
+        cb: Callable[[], requests.Response],
+        *,
+        retries: int | None = None,
+        wait_before_retry: float = DEFAULT_WAIT,
+        unify: type[BaseException] | None = None,
+        include_general_http_errors: bool = False,
+        on_retry: Callable[[], None] | None = None) -> requests.Response:
+    cur_retries = 1 if retries is None else retries
+
+    def log_retry() -> None:
+        print(f"{get_time_str()} could not connect to server! retrying...")
+
+    if on_retry is None:
+        on_retry = log_retry
+
+    def handle(exc: BaseException) -> None:
+        if cur_retries > 0:
+            log_retry()
+            return
+        if unify is None:
+            raise exc
+        raise unify() from exc
+
+    while True:
+        try:
+            resp = cb()
+            if resp.status_code in CONNECTION_CODES:
+                if cur_retries > 0:
+                    log_retry()
+                    continue
+            resp.raise_for_status()
+            return resp
+        except ConnectionRefusedError as exc:
+            handle(exc)
+        except requests.exceptions.HTTPError as exc:
+            if include_general_http_errors:
+                handle(exc)
+            else:
+                raise exc
+        except requests.ConnectionError as exc:
+            handle(exc)
+        if wait_before_retry > 0.0:
+            time.sleep(wait_before_retry)
+        cur_retries -= 1
+        if retries is None:
+            cur_retries = 1

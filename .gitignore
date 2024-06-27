@@ -16,6 +16,7 @@ __pypackages__/
 venv
 .mypy_cache/
 /models/
+/prod/
 /userdata/
 /userdata*/
 /out.txt
@@ -24,7 +25,7 @@ venv
 /deploy/default.provider.env
 /deploy/default.server.env
 /version.txt
-/docker-compose.provider.dev.yml
-/docker-compose.provider.yml
+/version.server.txt
+/version.provider.txt
 /docker-compose.server.dev.yml
 /docker-compose.server.yml

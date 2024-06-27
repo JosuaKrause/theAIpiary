@@ -47,6 +47,9 @@ export default class AutoHide extends PureComponent<
   }
 
   onClick: React.MouseEventHandler<HTMLSpanElement> = (e) => {
+    if (e.isDefaultPrevented()) {
+      return;
+    }
     e.preventDefault();
     this.setState({ hide: false });
   };

@@ -20,6 +20,7 @@
 # all copies or substantial portions of the software.
 import sys
 import threading
+import traceback
 import uuid
 from typing import TypedDict
 
@@ -27,11 +28,12 @@ from quick_server import add_shutdown_hook
 from scattermind.api.api import InputTypes
 from scattermind.system.base import TaskId
 from scattermind.system.torch_util import get_arch
-from scattermind.system.util import get_time_str
+from scattermind.system.util import get_short_hash, get_time_str
 
-from swai.system.base import WorkerStatus
+from swai.system.base import DEFAULT_WAIT, WorkerStatus
 from swai_provider.app.task_hnd import TaskHandler
 from swai_provider.config import get_config
+from swai_provider.env import envload_str
 from swai_provider.smind.worker_api import (
     execute_task,
     get_queue_stats,
@@ -69,20 +71,24 @@ def get_version_strs() -> VersionDict:
     }
 
 
-def get_worker_name() -> str:
-    device_id = f"{uuid.getnode():0>12x}"
+def get_worker_name(env_file: str) -> str:
+    device_id = envload_str("DEVICE_ID", default="")
+    if not device_id:
+        device_id = get_short_hash(uuid.uuid4().hex)
+        with open(env_file, "a", encoding="utf-8") as fout:
+            print(f"DEVICE_ID='{device_id}'", file=fout)
     arch = get_arch()
     return f"{device_id}-{arch}"
 
 
-def task_loop() -> None:
+def task_loop(env_file: str) -> None:
     config = get_config()
 
     smind_config = config["smind"]
     smind = load_smind(smind_config)
     graphs = [load_graph(config, smind, "graph_llama.json")]
-    worker_name = get_worker_name()
-    print(f"device name: {get_worker_name()}")
+    worker_name = get_worker_name(env_file)
+    print(f"{get_time_str()} device name: {worker_name}")
     task_hnd = TaskHandler(worker_name)
     cond = threading.Condition()
     done = False
@@ -106,12 +112,15 @@ def task_loop() -> None:
 
         is_busy = True
         graph, task_id, input_data = task
-        print(f"picked up {graph.get_ns()=} {task_id=}")
+        print(f"{get_time_str()} picked up {graph.get_ns()=} {task_id=}")
         response = execute_task(task_id, input_data, graph_profile=graph)
         task_hnd.task_finish(task_id, response)
-        print("done")
+        print(f"{get_time_str()} done")
         is_busy = False
-        task_hnd.task_heartbeat(worker_status=get_status())
+        task_hnd.task_heartbeat(
+            worker_status=get_status(),
+            retries=None,
+            wait_before_retry=DEFAULT_WAIT)
 
     def hook() -> None:
         nonlocal done
@@ -123,12 +132,19 @@ def task_loop() -> None:
     add_shutdown_hook(hook)
 
     def heartbeat() -> None:
+        # FIXME: ping the worker as well
         while not done:
-            hb_sleep = task_hnd.task_heartbeat(worker_status=get_status())
+            hb_sleep = task_hnd.task_heartbeat(
+                worker_status=get_status(),
+                retries=None,
+                wait_before_retry=DEFAULT_WAIT)
             if hb_sleep > 0.0:
                 with cond:
                     cond.wait(hb_sleep)
-        task_hnd.task_heartbeat(worker_status=get_status())
+        task_hnd.task_heartbeat(
+            worker_status=get_status(),
+            retries=3,
+            wait_before_retry=0.1)
         # FIXME: what to do if the heartbeat fails / errors out?
 
     th = threading.Thread(target=heartbeat, daemon=True)
@@ -141,7 +157,12 @@ def task_loop() -> None:
                 continue  # NOTE: no sleep!
             compute_task(maybe_task)
     finally:
+        if sys.exc_info()[1] is not None:
+            print(traceback.format_exc())
         done = True
         with cond:
             cond.notify_all()
-        task_hnd.task_heartbeat(worker_status=get_status())
+        task_hnd.task_heartbeat(
+            worker_status=get_status(),
+            retries=3,
+            wait_before_retry=0.1)

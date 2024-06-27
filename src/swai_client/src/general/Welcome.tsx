@@ -23,13 +23,25 @@
 import React, { PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
 import styled from 'styled-components';
+import { StaticMarkdown } from '../misc/Markdown';
 import { RootState } from '../store';
+import AutoHide from '../users/AutoHide';
 
 const VMain = styled.div`
   display: flex;
   flex-direction: column;
   justify-content: start;
   min-height: 100vh;
+`;
+
+const Loading = styled.div`
+  margin: 10px;
+  padding: 5px;
+  height: 170.75px;
+
+  @media (hover: none) and (max-width: 480px) {
+    height: 267.438px;
+  }
 `;
 
 const Filler = styled.div`
@@ -44,7 +56,7 @@ const Img = styled.img`
   align-self: center;
 `;
 
-const Paragraph = styled.p`
+const Paragraph = styled.div`
   align-self: center;
   flex-grow: 0;
   text-align: justify;
@@ -57,10 +69,20 @@ const Paragraph = styled.p`
   }
 `;
 
+const ShortParagraph = styled.div`
+  margin-top: -10px;
+  padding-top: -5px;
+  align-self: center;
+  flex-grow: 0;
+  text-align: center;
+`;
+
 const LinkParagraph = styled.p`
   flex-grow: 0;
   margin: 10px;
   padding: 5px;
+  padding-bottom: 2px;
+  margin-bottom: 3px;
   align-self: center;
 `;
 
@@ -77,7 +99,9 @@ const Link = styled.a`
     color: silver;
   }
 
-  &:hover {
+  &:hover,
+  &:active,
+  &:focus {
     color: lightgray;
     background-color: var(--button-background);
   }
@@ -91,9 +115,24 @@ const SmallLink = styled.a`
     color: silver;
   }
 
-  &:hover {
+  &:hover,
+  &:active,
+  &:focus {
     color: lightgray;
   }
+`;
+
+const Footnote = styled.div`
+  flex-shrink: 0;
+  text-align: center;
+  padding: 0;
+  margin: 0;
+  color: gray;
+  line-height: 10px;
+  font-size: 10px;
+
+  padding-bottom: 3px;
+  margin-bottom: 7px;
 `;
 
 interface WelcomeProps extends ConnectWelcome {
@@ -106,15 +145,12 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
     const { user, appName } = this.props;
     return (
       <VMain>
-        <h3>Welcome to the {appName}!</h3>
         <Paragraph>
-          The <strong>{appName}</strong> is a unique swarm-based ML compute
-          engine. Here, members can contribute their spare computational power
-          to create a collective intelligence. It&apos;s like a beehive buzzing
-          with activity, where every bee plays a part in the success of the
-          whole. But even those with limited computational resources can tap
-          into the hive&apos;s collective power, making advanced AI accessible
-          to all. Dive in and experience the power of swarm intelligence!
+          <StaticMarkdown
+            appName={appName}
+            url="/docs/welcome.md">
+            <Loading />
+          </StaticMarkdown>
         </Paragraph>
         <LinkParagraph>
           {user ? (
@@ -131,7 +167,26 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
           ) : (
             <Link href="/login">Login</Link>
           )}
+          <Link href="/faq">FAQ</Link>
         </LinkParagraph>
+        {user ? null : (
+          <React.Fragment>
+            <Paragraph>
+              For now, this community is invite only.
+              <br />
+              If you want to join, please contact us:
+            </Paragraph>
+            <ShortParagraph>
+              <AutoHide title="[@]">
+                <StaticMarkdown
+                  appName={appName}
+                  url="/docs/contact.md">
+                  [@]
+                </StaticMarkdown>
+              </AutoHide>
+            </ShortParagraph>
+          </React.Fragment>
+        )}
         <Img src="/logo_inv_lg.png" />
         <Filler />
         <LinkParagraph>
@@ -140,6 +195,9 @@ class Welcome extends PureComponent<WelcomeProps, WelcomeState> {
             Josua Krause
           </SmallLink>
         </LinkParagraph>
+        <Footnote>
+          This page uses cookies to improve your user experience!
+        </Footnote>
       </VMain>
     );
   }

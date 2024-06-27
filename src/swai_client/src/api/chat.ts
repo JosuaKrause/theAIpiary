@@ -24,6 +24,7 @@ import { URL_PREFIX } from '../misc/constants';
 import { timeout } from '../misc/util';
 import {
   ApiChatInitResponse,
+  ApiChatPromptResponse,
   ApiChatTextResponse,
   ChatInitResponse,
   ChatPromptResponse,
@@ -141,11 +142,17 @@ export const DEFAULT_CHAT_API: ChatApiProvider = {
         }),
       });
       checkResponse(res);
-      return await res.json();
+      const { task, status } = (await res.json()) as ApiChatPromptResponse;
+      return {
+        error: false,
+        task,
+        status,
+      };
     } catch (err) {
       console.error(err);
       return {
-        task: null,
+        error: true,
+        message: 'see logs for details...',
       };
     }
   },

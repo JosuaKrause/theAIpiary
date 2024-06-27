@@ -1,2 +1,14 @@
 User-agent: *
-Disallow:
+Allow: /
+Allow: /login
+Allow: /faq
+
+Disallow: /chat
+Disallow: /profile
+Disallow: /reset-password
+
+Disallow: /docs/
+Disallow: /scripts/
+Disallow: /api/
+
+Sitemap: https://www.theaipiary.com/sitemap.xml

@@ -25,7 +25,7 @@ from quick_server import PreventDefaultResponse
 from scattermind.system.base import UserId
 from scattermind.system.names import UName
 
-from swai.system.user.manager import (
+from swai.system.user import (
     CAP_CHANGE_CAPABILITIES,
     CAP_CREATE_USER,
     CAP_LIST_USERS,
@@ -35,12 +35,14 @@ from swai.system.user.manager import (
     CAP_REGISTER_OWN_WORKER,
     CAP_WRITE_OTHER_CHAT,
     CapabilityName,
+    WorkerToken,
+)
+from swai_server.system.user.manager import (
     RawPassword,
     ResetToken,
     SessionToken,
     UserInfo,
     UserManager,
-    WorkerToken,
 )
 
 
@@ -241,6 +243,18 @@ class SecureContext:
             email=email,
             own_capability=CAP_CHANGE_CAPABILITIES,
             admin_capability=CAP_CHANGE_CAPABILITIES)
+        return self._user_mng.list_capabilities(email)
+
+    def maybe_list_capabilities(
+            self,
+            who: SessionToken,
+            email: UName) -> set[CapabilityName]:
+        if not self.is_allowed(
+                who,
+                email=email,
+                own_capability=CAP_CHANGE_CAPABILITIES,
+                admin_capability=CAP_CHANGE_CAPABILITIES):
+            return set()
         return self._user_mng.list_capabilities(email)
 
     def list_users(self, who: SessionToken) -> list[UName]:

@@ -24,7 +24,7 @@ from scattermind.system.response import TaskStatus
 
 from swai.smind.llama_session import VisibleMessage
 from swai.system.base import SessionInfoJSON, WorkerId, WorkerStatus
-from swai.system.user.manager import CapabilityName, WorkerToken
+from swai.system.user import CapabilityName, WorkerToken
 
 
 UserLogged = TypedDict('UserLogged', {
@@ -39,9 +39,13 @@ UserNotLogged = TypedDict('UserNotLogged', {
     "message": str,
 })
 LoginResponse = UserLogged | UserNotLogged
+ChangeCapabilityResponse = TypedDict('ChangeCapabilityResponse', {
+    "okay": bool,
+})
 UserInfoResponse = TypedDict('UserInfoResponse', {
     "email": str,
     "display_name": str,
+    "capabilities": list[CapabilityName],
 })
 UserListResponse = TypedDict('UserListResponse', {
     "users": list[UserInfoResponse],
@@ -123,7 +127,7 @@ ChatRecoverResponse = TypedDict('ChatRecoverResponse', {
     "status": TaskStatus,
 })
 ChatPromptResponse = TypedDict('ChatPromptResponse', {
-    "task": str,
+    "task": str | None,
     "status": TaskStatus,
 })
 ChatTextResponse = TypedDict('ChatTextResponse', {

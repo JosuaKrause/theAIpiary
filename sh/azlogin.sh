@@ -25,42 +25,7 @@ set -e
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
-IMAGE_BASE="swai"
-DOCKER_LOGIN_SERVER=${DOCKER_LOGIN_SERVER:-"INVALID"}
-if [ "${DOCKER_LOGIN_SERVER}" == "INVALID" ]; then
-    echo "no login server set"
-    exit 1
-fi
+DOCKER_REGISTRY="aipiary"
 
-DEVMODE_CONF_FILE="deploy/devmode.conf"
-REDIS_VERSION_FILE="deploy/redis.version"
-
-source "${DEVMODE_CONF_FILE}"
-source "${REDIS_VERSION_FILE}"
-
-if [ ! -z "${DEVMODE}" ]; then
-    REDIS_DOCKER_VERSION="${REDIS_DOCKER_VERSION}-devmode"
-fi
-
-dpush() {
-    IMAGE="${IMAGE_BASE}-$1:$2"
-    URL="${DOCKER_LOGIN_SERVER}${IMAGE}"
-    if ! docker pull "${URL}" &> /dev/null ; then
-        echo "pushing ${IMAGE} to ${URL}"
-
-        docker tag "${IMAGE}" "${URL}"
-        docker push "${URL}"
-        docker rmi "${URL}"
-        sleep 1
-    else
-        echo "${URL} already exists"
-    fi
-}
-
-dpush "worker" "${IMAGE_TAG}"
-dpush "api" "${IMAGE_TAG}"
-dpush "rmain" "${REDIS_DOCKER_VERSION}"
-dpush "rdata" "${REDIS_DOCKER_VERSION}"
-dpush "rcache" "${REDIS_DOCKER_VERSION}"
-dpush "rbody" "${REDIS_DOCKER_VERSION}"
+az login
+az acr login --name "${DOCKER_REGISTRY}"

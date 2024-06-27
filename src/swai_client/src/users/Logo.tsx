@@ -39,7 +39,9 @@ const Link = styled.a`
     color: black;
   }
 
-  &:hover {
+  &:hover,
+  &:active,
+  &:focus {
     background-color: white;
     color: black;
     opacity: 0.9;

@@ -26,8 +26,8 @@ from redipy import RedisConfig
 from scattermind.system.io import open_reads, open_writes
 from scattermind.system.session.loader import SessionStoreModule
 
-from swai.system.user.loader import UserManagerModule
 from swai_server.env import envload_int, envload_path, envload_str
+from swai_server.system.user.loader import UserManagerModule
 
 
 Config = TypedDict('Config', {
@@ -59,16 +59,38 @@ def config_template() -> Config:
             "prefix": "tasks",
         },
         "session_store": {
-            "name": "redis",
-            "cfg": {
-                "host": "INVALID",
-                "passwd": "",
-                "path": "swai_server/session/redis",
-                "port": 6379,
-                "prefix": "sessions",
+            "user": {
+                "name": "redis",
+                "cfg": {
+                    "host": "INVALID",
+                    "passwd": "",
+                    "path": "swai_server/session/redis",
+                    "port": 6379,
+                    "prefix": "sessions",
+                },
+            },
+            "key_value": {
+                "name": "redis",
+                "cfg": {
+                    "host": "INVALID",
+                    "passwd": "",
+                    "path": "swai_server/session/redis",
+                    "port": 6379,
+                    "prefix": "sessions",
+                },
+            },
+            "blob": {
+                "name": "disk",
+                "cfg": {
+                    "host": "INVALID",
+                    "passwd": "",
+                    "path": "swai_server/session/redis",
+                    "port": 6379,
+                    "prefix": "sessions",
+                },
+                "disk_path": "swai_server/session/disk",
             },
             "cache_path": "swai_server/session/cache",
-            "disk_path": "swai_server/session/disk",
             "is_shared": False,
         },
         "user_mng": {
@@ -113,16 +135,38 @@ def get_config() -> Config:
                 "prefix": envload_str("REDIS_PREFIX"),
             },
             "session_store": {
-                "name": "redis",
-                "cfg": {
-                    "host": envload_str("REDIS_HOST"),
-                    "passwd": envload_str("REDIS_PW"),
-                    "path": envload_path("REDIS_PATH"),
-                    "port": envload_int("REDIS_PORT"),
-                    "prefix": envload_str("REDIS_PREFIX"),
+                "user": {
+                    "name": "redis",
+                    "cfg": {
+                        "host": envload_str("REDIS_HOST"),
+                        "passwd": envload_str("REDIS_PW"),
+                        "path": envload_path("REDIS_PATH"),
+                        "port": envload_int("REDIS_PORT"),
+                        "prefix": envload_str("REDIS_PREFIX"),
+                    },
+                },
+                "key_value": {
+                    "name": "redis",
+                    "cfg": {
+                        "host": envload_str("REDIS_HOST"),
+                        "passwd": envload_str("REDIS_PW"),
+                        "path": envload_path("REDIS_PATH"),
+                        "port": envload_int("REDIS_PORT"),
+                        "prefix": envload_str("REDIS_PREFIX"),
+                    },
+                },
+                "blob": {
+                    "name": "disk",
+                    "cfg": {
+                        "host": envload_str("REDIS_HOST"),
+                        "passwd": envload_str("REDIS_PW"),
+                        "path": envload_path("REDIS_PATH"),
+                        "port": envload_int("REDIS_PORT"),
+                        "prefix": envload_str("REDIS_PREFIX"),
+                    },
+                    "disk_path": os.path.join(session_root, "disk"),
                 },
                 "cache_path": os.path.join(session_root, "cache"),
-                "disk_path": os.path.join(session_root, "disk"),
                 "is_shared": False,
             },
             "user_mng": {

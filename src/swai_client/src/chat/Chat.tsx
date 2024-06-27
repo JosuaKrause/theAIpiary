@@ -21,12 +21,16 @@
  * all copies or substantial portions of the software.
  */
 import React, { PureComponent, ReactNode } from 'react';
-import ReactMarkdown from 'react-markdown';
-import { SpecialComponents } from 'react-markdown/lib/ast-to-react';
-import { NormalComponents } from 'react-markdown/lib/complex-types';
 import { ConnectedProps, connect } from 'react-redux';
 import styled, { css } from 'styled-components';
-import { Message, Role, SessionId, Thinking } from '../api/types';
+import {
+  ACTIVE_THINKING,
+  Message,
+  Role,
+  SessionId,
+  Thinking,
+} from '../api/types';
+import { Markdown } from '../misc/Markdown';
 import { RootState } from '../store';
 import ChatActions from './ChatActions';
 import { setSession } from './ChatStateSlice';
@@ -36,24 +40,26 @@ const VMain = styled.div`
   justify-content: end;
   flex-direction: column;
   flex-grow: 1;
-  height: 100vh;
-  max-height: 100vh;
   max-width: 60vw;
 
   @media (hover: none) and (max-width: 480px) {
-    justify-content: start;
+    justify-content: end;
+    max-width: 100%;
+    height: 100svh;
+    max-height: 100svh;
+    min-height: 100svh;
   }
 `;
 
 type ResponseProps = {
-  isThinking: Thinking;
+  thinking: Thinking;
 };
 
-function styleResponse(isThinking: Thinking) {
-  if (isThinking === 'inactive') {
+function styleResponse(thinking: Thinking) {
+  if (thinking === 'inactive') {
     return css``;
   }
-  if (isThinking === 'queued') {
+  if (thinking === 'queued') {
     return css`
       &:before {
         display: block;
@@ -66,7 +72,7 @@ function styleResponse(isThinking: Thinking) {
       }
     `;
   }
-  if (isThinking === 'error') {
+  if (thinking === 'error') {
     return css`
       &:before {
         display: block;
@@ -106,7 +112,7 @@ const Response = styled.div<ResponseProps>`
     padding-top: 65px;
   }
 
-  ${({ isThinking }) => styleResponse(isThinking)}
+  ${({ thinking }) => styleResponse(thinking)}
 `;
 
 type ResponseElemProps = {
@@ -175,12 +181,32 @@ const InputBar = styled.div`
   flex-grow: 0;
   margin: 3px;
   display: flex;
-  flex-direction: column;
-  justify-content: end;
+  flex-direction: row;
+  justify-content: space-between;
 
   @media (hover: none) and (max-width: 480px) {
     width: calc(100vw - 5px);
     height: auto;
+  }
+`;
+
+const SendButton = styled.input`
+  appearance: none;
+  border-radius: var(--item-padding);
+  padding: 0 var(--item-padding);
+  cursor: pointer;
+  color: var(--main-text);
+  background-color: var(--button-background);
+  flex-grow: 0;
+  height: 3.5em;
+  vertical-align: middle;
+  align-self: center;
+
+  &:hover {
+    background-color: var(--button-hover);
+  }
+  &:active {
+    background-color: var(--button-active);
   }
 `;
 
@@ -193,19 +219,9 @@ const InputText = styled.textarea`
   min-height: 6em;
   max-height: 30vh;
   resize: vertical;
-`;
 
-const Link = styled.a`
-  color: var(--md-anchor);
-
-  &:visited {
-    color: var(--md-anchor);
-  }
-  &:active {
-    color: var(--md-anchor);
-  }
-  &:hover {
-    color: var(--md-anchor-hover);
+  @media (hover: none) and (max-width: 480px) {
+    max-height: 30%;
   }
 `;
 
@@ -221,13 +237,7 @@ type EmptyChatProps = {
 
 type ChatState = {
   messages: Readonly<Message[]>;
-  isThinking: Thinking;
-};
-
-const MD_COMPONENTS: Partial<
-  Omit<NormalComponents, keyof SpecialComponents> & SpecialComponents
-> = {
-  a: ({ node: _, ...props }) => <Link {...props} />,
+  thinking: Thinking;
 };
 
 class Chat extends PureComponent<ChatProps, ChatState> {
@@ -237,7 +247,7 @@ class Chat extends PureComponent<ChatProps, ChatState> {
     super(props);
     this.state = {
       messages: [],
-      isThinking: 'inactive',
+      thinking: 'inactive',
     };
     this.inputRef = React.createRef();
   }
@@ -294,8 +304,8 @@ class Chat extends PureComponent<ChatProps, ChatState> {
     dispatch(setSession({ session }));
   };
 
-  setThinking = (isThinking: Thinking) => {
-    this.setState({ isThinking });
+  setThinking = (thinking: Thinking) => {
+    this.setState({ thinking });
   };
 
   appendMessage = (msg: Readonly<Message>) => {
@@ -322,6 +332,14 @@ class Chat extends PureComponent<ChatProps, ChatState> {
     }
   };
 
+  onSend: React.MouseEventHandler<HTMLInputElement> = async (e) => {
+    if (e.defaultPrevented) {
+      return;
+    }
+    e.preventDefault();
+    await this.doSend(true);
+  };
+
   onTextKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = async (
     e,
   ) => {
@@ -332,41 +350,45 @@ class Chat extends PureComponent<ChatProps, ChatState> {
       return;
     }
     e.preventDefault();
+    await this.doSend(false);
+  };
+
+  async doSend(viaClick: boolean) {
     const inputText = this.inputRef.current;
     if (inputText === null) {
       return;
     }
     const { chatActions, session } = this.props;
     const prompt = inputText.value;
-    if (!prompt || !session) {
+    if (!session) {
+      return;
+    }
+    const { thinking } = this.state;
+    if (!prompt && (!viaClick || !ACTIVE_THINKING.includes(thinking))) {
       return;
     }
     let first = true;
-    chatActions.sendMessage(session, prompt, this.setThinking, (msg) => {
+    await chatActions.sendMessage(session, prompt, this.setThinking, (msg) => {
       this.appendMessage(msg);
       if (first) {
         inputText.value = '';
         first = false;
       }
     });
-  };
+  }
 
   render(): ReactNode {
-    const { messages, isThinking } = this.state;
+    const { messages, thinking } = this.state;
     const revMessages = [...messages].reverse();
     return (
       <VMain>
-        <Response isThinking={isThinking}>
+        <Response thinking={thinking}>
           {revMessages.map(({ role, content }, ix) => (
             <ResponseElem
               key={messages.length - ix - 1}
               role={role}>
               <ResponseMessage role={role}>
-                <ReactMarkdown
-                  skipHtml={true}
-                  components={MD_COMPONENTS}>
-                  {content}
-                </ReactMarkdown>
+                <Markdown>{content}</Markdown>
               </ResponseMessage>
             </ResponseElem>
           ))}
@@ -384,7 +406,12 @@ class Chat extends PureComponent<ChatProps, ChatState> {
             aria-label="Type your message..."
             autoCorrect="off"
             placeholder="Type your message..."
-            autoFocus={false}></InputText>
+            autoFocus={true}></InputText>
+          <SendButton
+            type="button"
+            value={ACTIVE_THINKING.includes(thinking) ? 'Stop' : 'Send'}
+            onClick={this.onSend}
+          />
         </InputBar>
       </VMain>
     );

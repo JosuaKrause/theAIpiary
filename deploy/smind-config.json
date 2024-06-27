@@ -69,7 +69,15 @@
     "scratch": "/smind_cache/"
   },
   "sessions": {
-    "name": "swai_provider.smind.remote_session",
+    "user": {
+      "name": "swai_provider.smind.remote_session_user"
+    },
+    "key_value": {
+      "name": "swai_provider.smind.remote_session_kv"
+    },
+    "blob": {
+      "name": "swai_provider.smind.remote_session_blob"
+    },
     "cache_path": "/smind_sess/cache/",
     "is_shared": false
   },

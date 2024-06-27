@@ -76,8 +76,9 @@ const LoginInputText = styled.input`
 
 const LoginLink = styled.a`
   text-decoration: none;
-  border-radius: var(--item-padding);
-  padding: var(--item-padding);
+  border-radius: calc(var(--item-padding) * 0.5);
+  padding: calc(var(--item-padding) * 0.5);
+  margin: calc(var(--item-padding) * 0.5);
   cursor: pointer;
   color: var(--main-text);
   background-color: var(--button-background);
@@ -88,7 +89,8 @@ const LoginLink = styled.a`
     background-color: var(--button-background);
   }
 
-  &:hover {
+  &:hover,
+  &:focus {
     color: var(--main-text);
     background-color: var(--button-hover);
   }
@@ -100,8 +102,9 @@ const LoginLink = styled.a`
 
 const LoginSubmit = styled.input`
   appearance: none;
-  border-radius: var(--item-padding);
-  padding: var(--item-padding);
+  border-radius: calc(var(--item-padding) * 0.5);
+  padding: calc(var(--item-padding) * 0.5);
+  margin: calc(var(--item-padding) * 0.5);
   cursor: pointer;
   color: var(--main-text);
   background-color: var(--button-background);
@@ -221,6 +224,7 @@ export default class Login extends PureComponent<LoginProps, LoginState> {
             />
           </LoginElement>
           <LoginElement>
+            <LoginLink href="/">Back</LoginLink>
             <LoginLink href="/reset-password">Forgot Password</LoginLink>
             <LoginSubmit
               type="submit"

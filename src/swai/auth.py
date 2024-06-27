@@ -20,7 +20,7 @@
 # all copies or substantial portions of the software.
 from scattermind.system.names import UName
 
-from swai.system.user.manager import WorkerToken
+from swai.system.user import WorkerToken
 
 
 def parse_authorization(auth: str) -> tuple[UName, WorkerToken]:

@@ -46,15 +46,16 @@ cp "deploy/run_redis.sh" "${REDIS_RUN_SCRIPT}"
 cp "deploy/server.config.json" "${CONFIG_PATH}"
 
 IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
-IMAGE_BASE="swai-server"
+IMAGE_BASE="aipiary-server"
 PORT="${PORT:-8080}"
 
 if [ ! -z "${DEV}" ]; then
     IMAGE_BASE="${IMAGE_BASE}-dev"
 fi
 
-make -s version-file
-trap 'rm -- version.txt' EXIT
+VERSION_PATH=version.server.txt
+VERSION_PATH="${VERSION_PATH}" make -s version-file
+trap "rm -- ${VERSION_PATH}" EXIT
 
 echo "building ${IMAGE_BASE}"
 
@@ -129,7 +130,7 @@ if [ ! -z "${DEV}" ]; then
 else
     DOCKER_COMPOSE_OUT="docker-compose.server.yml"
     WEBAPP_STORAGE_HOME=
-    DOCKER_LOGIN_SERVER=
+    DOCKER_LOGIN_SERVER="aipiary.azurecr.io/"
 fi
 
 make install-ts
@@ -220,13 +221,11 @@ EOF
 ${PYTHON} -c "${PY_COMPOSE}" "${DOCKER_LOGIN_SERVER}" "deploy/docker-compose.server.yml" "${DEFAULT_ENV_FILE}" "${DOCKER_COMPOSE_OUT}"
 
 echo "docker compose is ready at ${DOCKER_COMPOSE_OUT}"
-echo "make sure to call make dockerpush before updating"
+echo "make sure to call make dockerpush-server before updating"
 if [ ! -z "${DEV}" ]; then
     echo "run 'make compose-server' next to start the app on http://localhost:8080/login/"
 elif [ -z "${CI}" ]; then
-    echo "================================================="
-    grep -Ev '^\s*$|^\s*\#' "${DOCKER_COMPOSE_OUT}"
-    echo "# eof"
+    DOCKER_COMPOSE_OUT="${DOCKER_COMPOSE_OUT}" make -s show-server-yml
 else
     echo "run 'make build-server' locally (without dockerpush) to get the docker compose file"
 fi

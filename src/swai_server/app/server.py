@@ -39,6 +39,7 @@ from scattermind.system.util import get_time_str, parse_time_str, to_bool
 from swai.auth import parse_authorization
 from swai.clean import sanity_check
 from swai.server_response_types import (
+    ChangeCapabilityResponse,
     ChatInitResponse,
     ChatListResponse,
     ChatPromptResponse,
@@ -66,15 +67,6 @@ from swai.server_response_types import (
     WorkerValueResponse,
 )
 from swai.system.base import SessionInfoJSON, STATUS_MAPPING, to_worker_status
-from swai.system.user.loader import load_user_manager
-from swai.system.user.manager import (
-    DEFAULT_CAPABILITIES,
-    HashPassword,
-    RawPassword,
-    ResetToken,
-    SessionToken,
-)
-from swai.system.user.secure import SecureContext
 from swai_server.app.email import (
     EmailConfig,
     is_valid_email_config,
@@ -93,6 +85,16 @@ from swai_server.smind.server_api import (
     retrieve_llama_response,
     start_llama_response,
 )
+from swai_server.system.user.loader import load_user_manager
+from swai_server.system.user.manager import (
+    as_capability,
+    DEFAULT_CAPABILITIES,
+    HashPassword,
+    RawPassword,
+    ResetToken,
+    SessionToken,
+)
+from swai_server.system.user.secure import SecureContext
 from swai_server.version import get_version
 
 
@@ -120,7 +122,7 @@ def get_version_strs() -> VersionDict:
     return {
         "python_version_detail": py_version_detail,
         "python_version": py_version,
-        "server_version": f"SWAIserver/{version_name[1:]}",
+        "server_version": f"AIpiaryServer/{version_name[1:]}",
         "app_version": version_name,
         "commit": version_hash,
         "deploy_time": version_date,
@@ -149,13 +151,11 @@ def setup(
 
     max_upload = 120 * 1024 * 1024  # 120MiB
     server_timeout = 10 * 60
-    server.report_slow_requests = (30.0, report_slow_requests)
+    server.report_slow_requests = (64.0, report_slow_requests)
     server.max_file_size = max_upload
     server.max_chunk_size = max_upload
     server.timeout = server_timeout
     server.socket.settimeout(server_timeout)
-
-    server.link_empty_favicon_fallback()
 
     server.cross_origin = True  # FIXME: for now...
 
@@ -201,6 +201,10 @@ def setup(
         config["user_mng"], admin_email=admin_email, admin_pw=admin_pw))
     model_ns = GNamespace("llama")
 
+    # NOTE: not needed
+    # server.add_default_white_list()
+    # server.add_file_patterns(["*.sh", "*.bat"], blacklist=False)
+
     public_path = envload_path("UI_PATH", default="build/")
     server.bind_path("/", public_path)
 
@@ -222,6 +226,20 @@ def setup(
         cookie["user_session"]["path"] = "/"
         cookie["user_session"]["expires"] = "Thu, 01 Jan 1970 00:00:00 GMT"
         req.send_cookie(cookie)
+
+    def redirect_to_www(
+            req: QSRH, path: str, _cookie: SimpleCookie | None) -> None:
+        _proto, orig_host = req.get_original_host()
+        orig_host = orig_host.removesuffix("/")
+        if not orig_host.endswith("theaipiary.com"):
+            return
+        if orig_host != "theaipiary.com":
+            return
+        orig_host = f"www.{orig_host}"
+        req.send_header("Location", f"https://{orig_host}{path}")
+        raise PreventDefaultResponse(301, "Use www subdomain.")
+
+    server.add_pre_middleware(redirect_to_www)
 
     def maybe_user_session(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:
@@ -247,10 +265,7 @@ def setup(
             return Response("must be logged in", 401)
         user_email: UName | None = rargs["meta"].get("user_email")
         if user_email is None:
-            cookie = SimpleCookie()
-            cookie["user_session"] = ""
-            cookie["user_session"]["max-age"] = 0
-            req.send_cookie(cookie)
+            send_logout_cookie(req)
             return Response("must be logged in", 401)
         return okay
 
@@ -404,9 +419,12 @@ def setup(
 
         def get_user_info(user: UName) -> UserInfoResponse:
             info = sec_ctx.get_user_info(user_session, user)
+            capabilities = sec_ctx.maybe_list_capabilities(
+                user_session, user)
             return {
                 "email": info["email"].get(),
                 "display_name": info["display_name"],
+                "capabilities": sorted(capabilities),
             }
 
         return {
@@ -471,6 +489,22 @@ def setup(
         return {
             "logged": False,
             "message": "password set",
+        }
+
+    @server.json_put(f"{prefix}/user/capability")
+    @server.middleware(verify_user_session)
+    def _put_user_capability(
+            _req: QSRH, rargs: ReqArgs) -> ChangeCapabilityResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
+        args = rargs["post"]
+        user_name: str = args["name"]
+        user_email = UName(user_name)
+        capability = as_capability(args["capability"])
+        set_has = to_bool(args["set_has"])
+        sec_ctx.set_capability(
+            user_session, user_email, capability, has=set_has)
+        return {
+            "okay": True,
         }
 
     @server.json_post(f"{prefix}/user/logout")
@@ -820,94 +854,99 @@ def setup(
         }
 
     # # # SECURE # # #
-    server.add_middleware(verify_user_session)
+    with server.middlewares(verify_user_session):
 
-    # *** chat ***
+        # *** chat ***
 
-    @server.json_post(f"{prefix}/chat/list")
-    def _post_chat_list(_req: QSRH, rargs: ReqArgs) -> ChatListResponse:
-        user_session: SessionToken = rargs["meta"]["user_session"]
-        user_email: UName = rargs["meta"]["user_email"]
-        user_id = sec_ctx.get_user_id(user_session, user_email)
-        sessions = list_sessions(session_store, user_id)
+        @server.json_post(f"{prefix}/chat/list")
+        def _post_chat_list(_req: QSRH, rargs: ReqArgs) -> ChatListResponse:
+            user_session: SessionToken = rargs["meta"]["user_session"]
+            user_email: UName = rargs["meta"]["user_email"]
+            user_id = sec_ctx.get_user_id(user_session, user_email)
+            sessions = list_sessions(session_store, user_id)
 
-        def sort_key(info: SessionInfoJSON) -> float:
-            timestamp = (
-                0
-                if info["time"] is None
-                else parse_time_str(info["time"]).timestamp())
-            return timestamp
+            def sort_key(info: SessionInfoJSON) -> float:
+                timestamp = (
+                    0
+                    if info["time"] is None
+                    else parse_time_str(info["time"]).timestamp())
+                return timestamp
 
-        return {
-            "model_sessions": sorted(
-                (
-                    get_session_info(session)
-                    for session in sessions
-                ),
-                key=sort_key,
-                reverse=True),
-        }
+            return {
+                "model_sessions": sorted(
+                    (
+                        get_session_info(session)
+                        for session in sessions
+                    ),
+                    key=sort_key,
+                    reverse=True),
+            }
 
-    @server.json_post(f"{prefix}/chat/new")
-    def _post_chat_new(_req: QSRH, rargs: ReqArgs) -> ChatInitResponse:
-        user_session: SessionToken = rargs["meta"]["user_session"]
-        user_email: UName = rargs["meta"]["user_email"]
-        user_id = sec_ctx.get_user_id(user_session, user_email)
-        session, messages = init_llama(session_store, user_id)
-        return {
-            "model_session": session.get_session_id().to_parseable(),
-            "messages": messages,
-        }
+        @server.json_post(f"{prefix}/chat/new")
+        def _post_chat_new(_req: QSRH, rargs: ReqArgs) -> ChatInitResponse:
+            user_session: SessionToken = rargs["meta"]["user_session"]
+            user_email: UName = rargs["meta"]["user_email"]
+            user_id = sec_ctx.get_user_id(user_session, user_email)
+            session, messages = init_llama(session_store, user_id)
+            return {
+                "model_session": session.get_session_id().to_parseable(),
+                "messages": messages,
+            }
 
-    @server.json_post(f"{prefix}/chat/recover")
-    @server.middleware(verify_model_session_read)
-    def _post_chat_recover(_req: QSRH, rargs: ReqArgs) -> ChatRecoverResponse:
-        meta = rargs["meta"]
-        session: Session = meta["model_session"]
-        try:
-            messages, task_id = recover_llama_chat(
-                task_queue, model_ns, session)
-        except FileNotFoundError as exc:
-            raise PreventDefaultResponse(404, "session not available") from exc
-        return {
-            "messages": messages,
-            "task": None if task_id is None else task_id.to_parseable(),
-            "status": task_queue.get_status(task_id),
-        }
+        @server.json_post(f"{prefix}/chat/recover")
+        @server.middleware(verify_model_session_read)
+        def _post_chat_recover(
+                _req: QSRH, rargs: ReqArgs) -> ChatRecoverResponse:
+            meta = rargs["meta"]
+            session: Session = meta["model_session"]
+            try:
+                messages, task_id = recover_llama_chat(
+                    task_queue, model_ns, session)
+            except FileNotFoundError as exc:
+                raise PreventDefaultResponse(
+                    404, "session not available") from exc
+            return {
+                "messages": messages,
+                "task": None if task_id is None else task_id.to_parseable(),
+                "status": task_queue.get_status(task_id),
+            }
 
-    @server.json_post(f"{prefix}/chat/prompt")
-    @server.middleware(verify_model_session_write)
-    @server.middleware(verify_prompt)
-    def _post_chat_prompt(_req: QSRH, rargs: ReqArgs) -> ChatPromptResponse:
-        meta = rargs["meta"]
-        session: Session = meta["model_session"]
-        prompt: str = meta["prompt"]
-        task_id = start_llama_response(task_queue, model_ns, prompt, session)
-        return {
-            "task": task_id.to_parseable(),
-            "status": task_queue.get_status(task_id),
-        }
+        @server.json_post(f"{prefix}/chat/prompt")
+        @server.middleware(verify_model_session_write)
+        @server.middleware(verify_prompt)
+        def _post_chat_prompt(
+                _req: QSRH, rargs: ReqArgs) -> ChatPromptResponse:
+            meta = rargs["meta"]
+            session: Session = meta["model_session"]
+            prompt: str = meta["prompt"]
+            task_id = start_llama_response(
+                task_queue, model_ns, prompt, session)
+            return {
+                "task": None if task_id is None else task_id.to_parseable(),
+                "status": task_queue.get_status(task_id),
+            }
 
-    @server.json_post(f"{prefix}/chat/response")
-    @server.middleware(verify_model_session_read)
-    def _post_chat_response(_req: QSRH, rargs: ReqArgs) -> ChatTextResponse:
-        args = rargs["post"]
-        meta = rargs["meta"]
-        session: Session = meta["model_session"]
-        task_id = TaskId.parse(args["task"])
-        index = int(args["index"])
-        diff, next_pos = retrieve_llama_response(session, (task_id, index))
-        if next_pos is not None:
-            task_out, next_index = next_pos
-        else:
-            task_out = None
-            next_index = None
-        return {
-            "diff": diff,
-            "task": None if task_out is None else task_out.to_parseable(),
-            "next_index": next_index,
-            "status": task_queue.get_status(task_out),
-        }
+        @server.json_post(f"{prefix}/chat/response")
+        @server.middleware(verify_model_session_read)
+        def _post_chat_response(
+                _req: QSRH, rargs: ReqArgs) -> ChatTextResponse:
+            args = rargs["post"]
+            meta = rargs["meta"]
+            session: Session = meta["model_session"]
+            task_id = TaskId.parse(args["task"])
+            index = int(args["index"])
+            diff, next_pos = retrieve_llama_response(session, (task_id, index))
+            if next_pos is not None:
+                task_out, next_index = next_pos
+            else:
+                task_out = None
+                next_index = None
+            return {
+                "diff": diff,
+                "task": None if task_out is None else task_out.to_parseable(),
+                "next_index": next_index,
+                "status": task_queue.get_status(task_out),
+            }
 
     return server, prefix
 

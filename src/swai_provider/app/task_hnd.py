@@ -30,8 +30,8 @@ from swai.server_response_types import (
     TaskBidResponse,
     TaskFinishResponse,
 )
-from swai.system.base import WorkerStatus
-from swai.system.user.manager import WorkerToken
+from swai.system.base import retry_on_disconnect, WorkerStatus
+from swai.system.user import WorkerToken
 from swai_provider.env import envload_str
 from swai_provider.smind.worker_api import GraphProfile
 
@@ -39,9 +39,9 @@ from swai_provider.smind.worker_api import GraphProfile
 class TaskHandler:
     def __init__(self, worker_name: str) -> None:
         self._worker_name = worker_name
-        self._name = UName(envload_str("SWAI_USER"))
-        self._worker_token: WorkerToken = envload_str("SWAI_WORKER_TOKEN")
-        self._api_url = envload_str("SWAI_API_URL").removesuffix("/")
+        self._name = UName(envload_str("AIPIARY_USER"))
+        self._worker_token: WorkerToken = envload_str("AIPIARY_WORKER_TOKEN")
+        self._api_url = envload_str("AIPIARY_API_URL").removesuffix("/")
         self._api = requests.Session()
 
     def _url(self, path: str) -> str:
@@ -55,13 +55,27 @@ class TaskHandler:
             "authorization": get_authorization(self._name, self._worker_token),
         }
 
-    def task_heartbeat(self, *, worker_status: WorkerStatus) -> float:
+    def task_heartbeat(
+            self,
+            *,
+            worker_status: WorkerStatus,
+            retries: int | None,
+            wait_before_retry: float) -> float:
         obj = self._json()
         obj["worker_name"] = self._worker_name
         obj["status"] = worker_status
-        resp = self._api.post(
-            self._url("/heartbeat"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        try:
+            resp = retry_on_disconnect(
+                lambda: self._api.post(
+                    self._url("/heartbeat"),
+                    json=obj,
+                    headers=self._headers()),
+                retries=retries,
+                wait_before_retry=wait_before_retry,
+                include_general_http_errors=True,
+                unify=ValueError)
+        except ValueError:
+            return wait_before_retry
         res: HeartbeatResponse = resp.json()
         return res["timeout"]
 
@@ -79,9 +93,8 @@ class TaskHandler:
         obj["worker_name"] = self._worker_name
         obj["nss"] = [ns.get() for ns in graph_ns.keys()]
         obj["timeout"] = timeout
-        resp = self._api.post(
-            self._url("/bid"), json=obj, headers=self._headers())
-        resp.raise_for_status()
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/bid"), json=obj, headers=self._headers()))
         res: TaskBidResponse = resp.json()
         out_ns = res["ns"]
         out_task_id = res["task_id"]
@@ -103,8 +116,8 @@ class TaskHandler:
         obj["worker_name"] = self._worker_name
         obj["task_id"] = task_id.to_parseable()
         obj["response"] = response_to_redis(response)
-        resp = self._api.post(
-            self._url("/finish"), json=obj, headers=self._headers())
+        resp = retry_on_disconnect(lambda: self._api.post(
+            self._url("/finish"), json=obj, headers=self._headers()))
         resp.raise_for_status()
         res: TaskFinishResponse = resp.json()
         assert res["well_done"]

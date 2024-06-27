@@ -37,16 +37,16 @@ from swai_server.app.server import (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog=f"python -m {python_module()}",
-        description="Run the SWAI API server")
+        description="Run the AIpiary API server")
     parser.add_argument(
         "--address",
         default=None,
-        help="the address of the SWAI API server")
+        help="the address of the AIpiary API server")
     parser.add_argument(
         "--port",
         default=None,
         type=int,
-        help="the port of the SWAI API server")
+        help="the port of the AIpiary API server")
     parser.add_argument(
         "--env",
         default=None,
@@ -64,7 +64,9 @@ def run() -> None:
     env_file: str | None = args.env
     if env_file:
         if not os.path.exists(env_file):
-            print(f"could not load env! {env_file} does not exist!")
+            print(
+                f"could not load env! {env_file} does not exist!\n"
+                "this is expected in production!")
         else:
             print(f"loading env {env_file}")
             load_dotenv(env_file)

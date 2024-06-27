@@ -21,7 +21,11 @@
 import os
 from typing import cast
 
-from llama_cpp import CreateChatCompletionStreamResponse, Llama, LlamaDiskCache
+from llama_cpp import (  # llama_supports_gpu_offload,
+    CreateChatCompletionStreamResponse,
+    Llama,
+    LlamaDiskCache,
+)
 from scattermind.system.base import GraphId, NodeId, TaskId
 from scattermind.system.graph.graph import Graph
 from scattermind.system.graph.node import Node
@@ -33,11 +37,15 @@ from scattermind.system.session.session import Session
 from scattermind.system.torch_util import str_to_tensor, tensor_to_str
 
 from swai.smind.llama_session import (
+    append_new_message,
     check_is_interrupted,
+    get_active_task,
     handle_model_finish,
     handle_model_output,
     load_messages,
     load_system_prompt,
+    ROLE_ASSISTANT,
+    ROLE_USER,
     save_messages,
     set_active_task,
 )
@@ -78,9 +86,19 @@ class LlamaNode(Node):
         return "session"
 
     def do_load(self, roa: ReadonlyAccess) -> None:
+        lib = os.getenv("LLAMA_CPP_LIB")
+        lib_exists = False if lib is None else os.path.exists(lib)
+        print(f"LLAMA_CPP_LIB is {lib} {lib_exists=}")
+        # print(f"{llama_supports_gpu_offload()=}")
         self._model = Llama(
             model_path=self.get_arg("model_path").get("str"),
-            n_ctx=30000)
+            n_ctx=30000,
+            n_gpu_layers=33,
+            # n_threads=6,
+            # n_batch=521,
+            seed=123,
+            # flash_attn=True,
+            verbose=True)
 
     def do_unload(self) -> None:
         self._model = None
@@ -109,11 +127,7 @@ class LlamaNode(Node):
         if messages is None:
             messages = load_system_prompt(cache_dir)
         if prompt:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": prompt,
-                })
+            append_new_message(messages, text=prompt, role=ROLE_USER)
         save_messages(cache_dir, messages)
         session.sync_out()
         response: list[str] = []
@@ -133,14 +147,16 @@ class LlamaNode(Node):
         full_response = "".join(response)
         messages.append(
             {
-                "role": "assistant",
+                "role": ROLE_ASSISTANT,
                 "content": full_response,
             })
 
-        save_messages(cache_dir, messages)
-        # FIXME: use state
-        # save_state(model, cache_dir)
-        set_active_task(session, None)
+        # NOTE: if the task is not the same anymore our response is ignored!
+        if get_active_task(session) == task_id:
+            save_messages(cache_dir, messages)
+            # FIXME: use state
+            # save_state(model, cache_dir)
+            set_active_task(session, None)
         return full_response
 
     def execute_tasks(self, state: ComputeState) -> None:

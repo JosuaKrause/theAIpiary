@@ -37,7 +37,7 @@ export default class ChatActions {
     session: Readonly<SessionId> | undefined,
     setMessages: (messages: Readonly<Message[]>) => void,
     setSession: (session: Readonly<SessionId>) => void,
-    setThinking: (isThinking: Thinking) => void,
+    setThinking: (thinking: Thinking) => void,
     appendMessage: (msg: Readonly<Message>) => void,
   ) {
     this.responseNum = 0;
@@ -60,7 +60,7 @@ export default class ChatActions {
   async readResponse(
     session: Readonly<SessionId>,
     task: Readonly<TaskId>,
-    setThinking: (isThinking: Thinking) => void,
+    setThinking: (thinking: Thinking) => void,
     appendMessage: (msg: Readonly<Message>) => void,
   ) {
     let index = 0;
@@ -101,18 +101,26 @@ export default class ChatActions {
   async sendMessage(
     session: Readonly<SessionId>,
     prompt: Readonly<string>,
-    setThinking: (isThinking: Thinking) => void,
+    setThinking: (thinking: Thinking) => void,
     appendMessage: (msg: Readonly<Message>) => void,
   ) {
-    if (!prompt) {
-      return;
-    }
-    const { task } = await this.api.prompt(prompt, session);
-    if (task) {
-      appendMessage({ role: 'user', content: prompt });
-      await this.readResponse(session, task, setThinking, appendMessage);
+    const response = await this.api.prompt(prompt, session);
+    const { error } = response;
+    if (error) {
+      const { message } = response;
+      appendMessage({
+        role: 'assistant',
+        content: `\n\n**[ERROR]** ${message}`,
+      });
+      setThinking('error');
     } else {
-      appendMessage({ role: 'assistant', content: 'ERROR!' });
+      const { task } = response;
+      if (task) {
+        appendMessage({ role: 'user', content: prompt });
+        await this.readResponse(session, task, setThinking, appendMessage);
+      } else {
+        setThinking('inactive');
+      }
     }
   }
 } // ChatActions

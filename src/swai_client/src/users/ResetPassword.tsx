@@ -61,6 +61,32 @@ const ResetPasswordElement = styled.div`
   min-height: 3em;
 `;
 
+const ResetPasswordLink = styled.a`
+  text-decoration: none;
+  border-radius: calc(var(--item-padding) * 0.5);
+  padding: calc(var(--item-padding) * 0.5);
+  margin: calc(var(--item-padding) * 0.5);
+  cursor: pointer;
+  color: var(--main-text);
+  background-color: var(--button-background);
+  flex-grow: 0;
+
+  &:visited {
+    color: var(--main-text);
+    background-color: var(--button-background);
+  }
+
+  &:hover,
+  &:focus {
+    color: var(--main-text);
+    background-color: var(--button-hover);
+  }
+  &:active {
+    color: var(--main-text);
+    background-color: var(--button-active);
+  }
+`;
+
 const ResetPasswordLabel = styled.label`
   flex-grow: 0;
   padding: 5px;
@@ -76,8 +102,9 @@ const ResetPasswordInputText = styled.input`
 
 const ResetPasswordSubmit = styled.input`
   appearance: none;
-  border-radius: var(--item-padding);
-  padding: var(--item-padding);
+  border-radius: calc(var(--item-padding) * 0.5);
+  padding: calc(var(--item-padding) * 0.5);
+  margin: calc(var(--item-padding) * 0.5);
   cursor: pointer;
   color: var(--main-text);
   background-color: var(--button-background);
@@ -290,6 +317,7 @@ export default class ResetPassword extends PureComponent<
               />
             </ResetPasswordElement>
             <ResetPasswordElement>
+              <ResetPasswordLink href="/login">Login</ResetPasswordLink>
               <ResetPasswordSubmit
                 type="submit"
                 value="Send Email"
