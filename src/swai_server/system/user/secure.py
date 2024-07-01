@@ -30,10 +30,8 @@ from swai.system.user import (
     CAP_CREATE_USER,
     CAP_LIST_USERS,
     CAP_LOGOUT_OTHER_USER,
-    CAP_READ_OTHER_CHAT,
     CAP_REGISTER_OTHER_WORKER,
     CAP_REGISTER_OWN_WORKER,
-    CAP_WRITE_OTHER_CHAT,
     CapabilityName,
     WorkerToken,
 )
@@ -171,10 +169,7 @@ class SecureContext:
         if email is None:
             return "invalid"
         own_user_id = user_mng.get_user_id(email)
-        if (
-                user_id != own_user_id
-                and not self.is_allowed(
-                    who, email=None, admin_capability=CAP_READ_OTHER_CHAT)):
+        if user_id != own_user_id:
             return "denied"
         return "ok"
 
@@ -189,10 +184,7 @@ class SecureContext:
         if email is None:
             return "invalid"
         own_user_id = user_mng.get_user_id(email)
-        if (
-                user_id != own_user_id
-                and not self.is_allowed(
-                    who, email=None, admin_capability=CAP_WRITE_OTHER_CHAT)):
+        if user_id != own_user_id:
             return "denied"
         return "ok"
 

@@ -29,8 +29,6 @@ CapabilityName = Literal[
     "logout_other_user",
     "create_user",
     "list_users",
-    "write_other_chat",
-    "read_other_chat",
     "register_own_worker",
     "register_other_worker",
 ]
@@ -39,7 +37,5 @@ CAP_CHANGE_CAPABILITIES: CapabilityName = "change_capabilities"
 CAP_LOGOUT_OTHER_USER: CapabilityName = "logout_other_user"
 CAP_CREATE_USER: CapabilityName = "create_user"
 CAP_LIST_USERS: CapabilityName = "list_users"
-CAP_WRITE_OTHER_CHAT: CapabilityName = "write_other_chat"
-CAP_READ_OTHER_CHAT: CapabilityName = "read_other_chat"
 CAP_REGISTER_OWN_WORKER: CapabilityName = "register_own_worker"
 CAP_REGISTER_OTHER_WORKER: CapabilityName = "register_other_worker"

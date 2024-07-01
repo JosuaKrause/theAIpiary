@@ -120,8 +120,6 @@ type UserCapabilities = {
   logoutOtherUser: Readonly<boolean>;
   createUser: Readonly<boolean>;
   listUsers: Readonly<boolean>;
-  writeOtherChat: Readonly<boolean>;
-  readOtherChat: Readonly<boolean>;
   registerOwnWorker: Readonly<boolean>;
   registerOtherWorker: Readonly<boolean>;
 };
@@ -142,8 +140,6 @@ export type ApiUserCapability =
   | 'logout_other_user'
   | 'create_user'
   | 'list_users'
-  | 'write_other_chat'
-  | 'read_other_chat'
   | 'register_own_worker'
   | 'register_other_worker';
 export type ApiLoginResponse =
@@ -206,8 +202,6 @@ const NO_CAPABILITIES: Readonly<UserCapabilities> = {
   logoutOtherUser: false,
   createUser: false,
   listUsers: false,
-  writeOtherChat: false,
-  readOtherChat: false,
   registerOwnWorker: false,
   registerOtherWorker: false,
 };
@@ -221,8 +215,6 @@ const CAPABILITY_MAP: CapabilityMapping = {
   logoutOtherUser: 'logout_other_user',
   createUser: 'create_user',
   listUsers: 'list_users',
-  writeOtherChat: 'write_other_chat',
-  readOtherChat: 'read_other_chat',
   registerOwnWorker: 'register_own_worker',
   registerOtherWorker: 'register_other_worker',
 };
@@ -262,12 +254,6 @@ export function toUserCapabilities(
         break;
       case 'list_users':
         capabilities.listUsers = true;
-        break;
-      case 'write_other_chat':
-        capabilities.writeOtherChat = true;
-        break;
-      case 'read_other_chat':
-        capabilities.readOtherChat = true;
         break;
       case 'register_own_worker':
         capabilities.registerOwnWorker = true;

@@ -29,6 +29,8 @@ from sqlalchemy.orm.decl_api import DeclarativeMeta
 
 SESSION_ID_LENGTH = SessionId.length()
 FILE_HASH_SIZE = file_hash_size()
+CAPABILITY_LENGTH = 40
+MODEL_TYPE_LENGTH = 20
 
 
 def adapt_numpy_float64(numpy_float64: np.float64) -> AsIs:
@@ -57,24 +59,133 @@ class Base(
     __init__ = mapper_registry.constructor
 
 
+class User(Base):  # pylint: disable=too-few-public-methods
+    __tablename__ = "user"
+
+    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
+    name = sa.Column(sa.Text(), nullable=False)
+    email = sa.Column(sa.Text(), nullable=False)
+    password = sa.Column(sa.Text(), nullable=True)
+    user_key = sa.Column(sa.Text(), nullable=True)
+
+
+class Capabilities(Base):  # pylint: disable=too-few-public-methods
+    __tablename__ = "capabilities"
+
+    user_id = sa.Column(
+        sa.Integer,
+        sa.ForeignKey(
+            User.id,
+            onupdate="CASCADE",
+            ondelete="CASCADE"),
+        nullable=False,
+        primary_key=True)
+    capability = sa.Column(
+        sa.String(CAPABILITY_LENGTH),
+        nullable=False,
+        primary_key=True)
+
+
+class Worker(Base):  # pylint: disable=too-few-public-methods
+    __tablename__ = "worker"
+
+    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
+    name = sa.Column(sa.Text(), nullable=False)
+    owner_id = sa.Column(
+        sa.Integer,
+        sa.ForeignKey(
+            User.id,
+            onupdate="CASCADE",
+            ondelete="CASCADE"),
+        nullable=False)
+
+
+class Hive(Base):  # pylint: disable=too-few-public-methods
+    __tablename__ = "hive"
+
+    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
+    name = sa.Column(sa.Text(), nullable=False, unique=True)
+    owner_id = sa.Column(
+        sa.Integer,
+        sa.ForeignKey(
+            User.id,
+            onupdate="CASCADE",
+            ondelete="CASCADE"),
+        nullable=False)
+    hive_key = sa.Column(sa.Text(), nullable=True)
+
+
+class WorkerHive(Base):  # pylint: disable=too-few-public-methods
+    __tablename__ = "worker_hive"
+
+    worker_id = sa.Column(
+        sa.Integer,
+        sa.ForeignKey(
+            Worker.id,
+            onupdate="CASCADE",
+            ondelete="CASCADE"),
+        nullable=False,
+        primary_key=True)
+    hive_id = sa.Column(
+        sa.Integer,
+        sa.ForeignKey(
+            Hive.id,
+            onupdate="CASCADE",
+            ondelete="CASCADE"),
+        nullable=False,
+        primary_key=True)
+
+
+class Model(Base):  # pylint: disable=too-few-public-methods
+    __tablename__ = "model"
+
+    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
+    name = sa.Column(sa.Text(), nullable=False)
+    modelhash = sa.Column(sa.String(FILE_HASH_SIZE), nullable=False)
+    modeltype = sa.Column(sa.String(MODEL_TYPE_LENGTH), nullable=False)
+    hive_id = sa.Column(
+        sa.Integer,
+        sa.ForeignKey(
+            Hive.id,
+            onupdate="CASCADE",
+            ondelete="CASCADE"),
+        nullable=False)
+
+
+class ModelSession(Base):  # pylint: disable=too-few-public-methods
+    __tablename__ = "model_session"
+
+    id = sa.Column(sa.String(SESSION_ID_LENGTH), primary_key=True)
+    user_id = sa.Column(
+        sa.Integer,
+        sa.ForeignKey(
+            User.id,
+            onupdate="CASCADE",
+            ondelete="CASCADE"),
+        nullable=False)
+    model_id = sa.Column(
+        sa.Integer,
+        sa.ForeignKey(
+            Model.id,
+            onupdate="CASCADE",
+            ondelete="CASCADE"),
+        nullable=False)
+    description = sa.Column(sa.Text(), nullable=True)
+
+
 class Blob(Base):  # pylint: disable=too-few-public-methods
     __tablename__ = "blob"
 
-    id = sa.Column(
-        sa.Integer,
-        nullable=False,
-        unique=True,
-        primary_key=True)
+    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
     session = sa.Column(
         sa.String(SESSION_ID_LENGTH),
+        sa.ForeignKey(
+            ModelSession.id,
+            onupdate="CASCADE",
+            ondelete="CASCADE"),
         nullable=False)
-    path = sa.Column(
-        sa.Text(),
-        primary_key=False,
-        nullable=False)
-    filehash = sa.Column(
-        sa.String(FILE_HASH_SIZE),
-        nullable=False)
+    path = sa.Column(sa.Text(), nullable=False)
+    filehash = sa.Column(sa.String(FILE_HASH_SIZE), nullable=False)
     access_last = sa.Column(
         sa.DateTime(timezone=True),
         nullable=False,
