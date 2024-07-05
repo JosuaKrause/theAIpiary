@@ -26,7 +26,8 @@ from llama_cpp import (  # llama_supports_gpu_offload,
     Llama,
     LlamaDiskCache,
 )
-from scattermind.system.base import GraphId, NodeId, TaskId
+from scattermind.system.base import GraphId, NodeId
+from scattermind.system.client.client import ComputeTask
 from scattermind.system.graph.graph import Graph
 from scattermind.system.graph.node import Node
 from scattermind.system.info import DataFormatJSON, SESSION_INFO, STRING_INFO
@@ -93,7 +94,7 @@ class LlamaNode(Node):
         self._model = Llama(
             model_path=self.get_arg("model_path").get("str"),
             n_ctx=30000,
-            n_gpu_layers=33,
+            n_gpu_layers=self.get_arg("n_gpu_layers").get("int", 33),
             # n_threads=6,
             # n_batch=521,
             seed=123,
@@ -117,7 +118,10 @@ class LlamaNode(Node):
             *,
             cache_dir: str,
             session: Session,
-            task_id: TaskId) -> str:
+            task: ComputeTask) -> str:
+        if not task.is_valid():
+            return ""
+        task_id = task.get_task_id()
         # FIXME: use state
         # if not load_state(model, cache_dir):
         if True:  # pylint: disable=using-constant-test
@@ -135,6 +139,8 @@ class LlamaNode(Node):
         try:
             for out in model.create_chat_completion(
                     messages, max_tokens=None, stream=True):
+                if not task.is_valid():
+                    break
                 resp = cast(CreateChatCompletionStreamResponse, out)
                 delta = resp["choices"][0]["delta"]
                 content: str | None = cast(str, delta.get("content", ""))
@@ -178,7 +184,7 @@ class LlamaNode(Node):
                     prompt_str.strip(),
                     cache_dir=cache_dir,
                     session=session,
-                    task_id=task.get_task_id())
+                    task=task)
                 response = str_to_tensor(response_str)
                 state.push_results(
                     "out",

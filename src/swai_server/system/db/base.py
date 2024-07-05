@@ -22,7 +22,7 @@ import numpy as np
 import sqlalchemy as sa
 from psycopg2.extensions import AsIs, register_adapter
 from scattermind.system.base import SessionId
-from scattermind.system.util import file_hash_size
+from scattermind.system.util import file_hash_size, short_hash_size
 from sqlalchemy.orm import registry
 from sqlalchemy.orm.decl_api import DeclarativeMeta
 
@@ -31,6 +31,7 @@ SESSION_ID_LENGTH = SessionId.length()
 FILE_HASH_SIZE = file_hash_size()
 CAPABILITY_LENGTH = 40
 MODEL_TYPE_LENGTH = 20
+USER_HASH_LENGTH = short_hash_size()
 
 
 def adapt_numpy_float64(numpy_float64: np.float64) -> AsIs:
@@ -63,10 +64,12 @@ class User(Base):  # pylint: disable=too-few-public-methods
     __tablename__ = "user"
 
     id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
+    user_hash = sa.Column(sa.UUID, nullable=False, unique=True)
     name = sa.Column(sa.Text(), nullable=False)
     email = sa.Column(sa.Text(), nullable=False)
     password = sa.Column(sa.Text(), nullable=True)
     user_key = sa.Column(sa.Text(), nullable=True)
+    reset_token = sa.Column(sa.UUID, nullable=True)
 
 
 class Capabilities(Base):  # pylint: disable=too-few-public-methods
@@ -113,6 +116,7 @@ class Hive(Base):  # pylint: disable=too-few-public-methods
             ondelete="CASCADE"),
         nullable=False)
     hive_key = sa.Column(sa.Text(), nullable=True)
+    hive_access = sa.Column(sa.UUID, nullable=False)
 
 
 class WorkerHive(Base):  # pylint: disable=too-few-public-methods
