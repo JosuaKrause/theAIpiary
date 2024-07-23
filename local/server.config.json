@@ -1,16 +1,38 @@
 {
   "session_store": {
-    "cache_path": "../userdata/server/session/cache",
-    "cfg": {
-      "host": "localhost",
-      "passwd": "",
-      "path": "../userdata/server/session/redis",
-      "port": 6385,
-      "prefix": "sessions"
+    "user": {
+      "name": "redis",
+      "cfg": {
+        "host": "localhost",
+        "passwd": "",
+        "path": "../userdata/server/session/redis",
+        "port": 6385,
+        "prefix": "sessions"
+      }
     },
-    "disk_path": "../userdata/server/session/disk",
-    "is_shared": false,
-    "name": "redis"
+    "key_value": {
+      "name": "redis",
+      "cfg": {
+        "host": "localhost",
+        "passwd": "",
+        "path": "../userdata/server/session/redis",
+        "port": 6385,
+        "prefix": "sessions"
+      }
+    },
+    "blob": {
+      "name": "disk",
+      "cfg": {
+        "host": "localhost",
+        "passwd": "",
+        "path": "../userdata/server/session/redis",
+        "port": 6385,
+        "prefix": "sessions"
+      },
+      "disk_path": "../userdata/server/session/disk"
+    },
+    "cache_path": "../userdata/server/session/cache",
+    "is_shared": false
   },
   "task_queue": {
     "host": "localhost",
