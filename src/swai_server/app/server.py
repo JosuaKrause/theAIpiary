@@ -98,7 +98,7 @@ from swai_server.system.user.secure import SecureContext
 from swai_server.version import get_version
 
 
-MAX_INPUT_LENGTH = 10 * 1024  # 10KiB
+MAX_INPUT_LENGTH = 20 * 1024  # 20KiB
 
 
 VersionDict = TypedDict('VersionDict', {

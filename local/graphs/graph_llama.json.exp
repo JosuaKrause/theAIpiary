@@ -16,9 +16,9 @@
           "name": "node_0",
           "kind": "swai.smind.nodes.node_llama",
           "args": {
-            "model_path": "../models/Meta-Llama-3.1-8B-Instruct-F16.gguf",
+            "model_path": "../models/Meta-Llama-3.1-8B-Instruct-Q8_0.gguf",
             "n_ctx": 30000,
-            "n_gpu_layers": 25
+            "n_gpu_layers": -1
           },
           "outs": {
             "out": null
