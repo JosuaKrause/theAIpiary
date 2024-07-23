@@ -47,8 +47,8 @@ class DBUserManager(UserManager):
             db: DBConnector) -> None:
         super().__init__(admin_email=admin_email, admin_pw=admin_pw)
         self._db = db
-        self._admin_hash = (
-            None if admin_email is None else self._userhash(admin_email))
+        # self._admin_hash = (
+        #     None if admin_email is None else self._userhash(admin_email))
 
     def do_login(self, email: UName) -> SessionToken | None:
         raise NotImplementedError()

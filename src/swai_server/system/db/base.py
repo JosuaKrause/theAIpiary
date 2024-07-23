@@ -72,6 +72,21 @@ class User(Base):  # pylint: disable=too-few-public-methods
     reset_token = sa.Column(sa.UUID, nullable=True)
 
 
+class UserSession(Base):  # pylint: disable=too-few-public-methods
+    __tablename__ = "user"
+
+    user_id = sa.Column(
+        sa.Integer,
+        sa.ForeignKey(
+            User.id,
+            onupdate="CASCADE",
+            ondelete="CASCADE"),
+        nullable=False,
+        primary_key=True)
+    session_id = sa.Column(sa.UUID, nullable=False, primary_key=True)
+    expire = sa.Column(sa.DateTime(timezone=True), nullable=True)
+
+
 class Capabilities(Base):  # pylint: disable=too-few-public-methods
     __tablename__ = "capabilities"
 

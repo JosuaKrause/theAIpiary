@@ -16,7 +16,8 @@
           "name": "node_0",
           "kind": "swai.smind.nodes.node_llama",
           "args": {
-            "model_path": "/models/Meta-Llama-3-8B-Instruct-IQ3_XS.gguf"
+            "model_path": "/models/Meta-Llama-3.1-8B-Instruct-F16.gguf",
+            "n_ctx": 128000
           },
           "outs": {
             "out": null
