@@ -73,6 +73,10 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
+        # CPU-only torch wheels: the default Linux wheel pulls in several GB of
+        # CUDA libraries, which fill the runner's disk and are unused by lints
+        env:
+          PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
         run: |
           make install PYTHON=python
 
