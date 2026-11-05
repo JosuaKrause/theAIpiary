@@ -24,7 +24,7 @@ import sys
 import threading
 import urllib
 from collections.abc import Iterator
-from typing import Any, TYPE_CHECKING, TypedDict
+from typing import Any, cast, TYPE_CHECKING, TypedDict
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -120,12 +120,12 @@ class DBConnector:
         # pylint: disable=import-outside-toplevel
         from swai_server.system.db.base import Base
 
-        return [
-            clz
-            for _, clz in
-            inspect.getmembers(sys.modules["system.db.base"], inspect.isclass)
-            if clz is not Base and issubclass(clz, Base)
-        ]
+        res: list[type[Base]] = []
+        for _, clz in inspect.getmembers(
+                sys.modules["system.db.base"], inspect.isclass):
+            if clz is not Base and issubclass(clz, Base):
+                res.append(cast(type[Base], clz))
+        return res
 
     def is_init(self) -> bool:
         return all((self.table_exists(clz) for clz in self.all_tables()))
