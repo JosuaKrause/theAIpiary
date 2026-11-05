@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime
+FROM pytorch/pytorch:2.14.1-cuda12.6-cudnn9-runtime
 # FROM continuumio/miniconda3:24.1.2-0
 RUN apt-get update \
   && apt-get -y upgrade \
@@ -11,14 +11,14 @@ RUN apt-get update \
   build-essential \
   make
 WORKDIR /usr/src/app
-ENV CUDA_VERSION_SHORT=cu121
+ENV CUDA_VERSION_SHORT=cu125
 # FIXME remove with 311 image *****
 ENV PATH="/usr/local/nvidia/bin:${PATH}"
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=all
 RUN conda update -y pip setuptools wheel conda filelock \
   && conda clean --all \
-  && conda install -y python=3.11 pytorch=2.3.0 \
+  && conda install -y python=3.11 \
   && conda clean --all
 # *****
 # RUN pip install --progress-bar off --no-cache-dir 'torch==2.3.0' torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu

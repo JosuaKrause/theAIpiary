@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.3.0-cuda12.1-cudnn8-devel
+FROM pytorch/pytorch:2.14.1-cuda12.6-cudnn9-devel
 # FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 RUN apt-get update \
   && apt-get -y upgrade \
@@ -14,7 +14,7 @@ RUN apt-get update \
   gcc-11 \
   g++-11
 WORKDIR /usr/src/app
-ENV CUDA_VERSION_SHORT=cu121
+ENV CUDA_VERSION_SHORT=cu125
 # ENV PATH="/root/miniconda3/bin:${PATH}"
 # ARG PATH="/root/miniconda3/bin:${PATH}"
 # RUN wget -nv \
@@ -34,7 +34,7 @@ ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=all
 RUN conda update -y pip setuptools wheel conda \
   && conda clean --all \
-  && conda install -y python=3.11 pytorch=2.3.0 \
+  && conda install -y python=3.11 \
   && conda clean --all
 # *****
 COPY Makefile .

@@ -777,7 +777,7 @@ def setup(
             return os.path.join(scratch, f"{upload_id}.{pos}.chunk")
 
         with open_writeb(get_fragment_fname(fragment)) as fout:
-            shutil.copyfileobj(files["blob"], fout)  # type: ignore
+            shutil.copyfileobj(files["blob"], fout)
 
         if complete:
             fnames: list[str] = [
@@ -796,7 +796,7 @@ def setup(
             with session_store.open_blob_write(session_id, blob) as fout:
                 for cur in fnames:
                     with open_readb(cur) as fin:
-                        shutil.copyfileobj(fin, fout)  # type: ignore
+                        shutil.copyfileobj(fin, fout)
             for cur in fnames:
                 remove_file(cur)
 
@@ -1037,7 +1037,7 @@ def fallback_server(
 
 
 def start(server: QuickServer, prefix: str) -> None:
-    addr, port = server.server_address
+    addr, port = server.server_address[:2]
     if not isinstance(addr, str):
         addr = addr.decode("utf-8")
     print(

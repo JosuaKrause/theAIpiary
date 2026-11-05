@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [16]
+        node: [22]
     env:
       ENV: CI
 
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Install node ${{ matrix.node }}
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
 
@@ -73,6 +73,10 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
+        # CPU-only torch wheels: the default Linux wheel pulls in several GB of
+        # CUDA libraries, which fill the runner's disk and are unused by lints
+        env:
+          PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
         run: |
           make install PYTHON=python
 
