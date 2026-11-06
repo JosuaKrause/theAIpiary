@@ -5,7 +5,7 @@
   "type": "module",
   "dependencies": {
     "@reduxjs/toolkit": "^1.8.6",
-    "@types/node": "^22",
+    "@types/node": "^22.20.5",
     "@types/qs": "^6.9.7",
     "@types/react": "^18.0.24",
     "@types/react-dom": "^18.0.0",
@@ -24,12 +24,9 @@
     "web-vitals": "^2.1.4"
   },
   "resolutions": {
-    "compression": "^1.8.2",
+    "**/@typescript-eslint/typescript-estree/minimatch": "^11.0.1",
     "cross-spawn": "^7.0.5",
-    "on-headers": "^1.1.0",
-    "proxy-addr": "^2.0.8",
-    "source-map-js": "^1.2.2",
-    "underscore": "^1.13.8"
+    "source-map-js": "^1.2.2"
   },
   "scripts": {
     "start": "vite",
