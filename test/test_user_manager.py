@@ -26,6 +26,7 @@ import sqlalchemy as sa
 from redipy import Redis
 from scattermind.system.base import UserId
 from scattermind.system.names import UName
+from scattermind.system.session.session import SessionStore
 from scattermind.system.util import get_short_hash
 
 from swai.system.user import CAP_CREATE_USER, CAP_LIST_USERS, CAPABILITIES
@@ -38,6 +39,8 @@ from swai_server.system.user.loader import load_user_manager, UserManagerModule
 from swai_server.system.user.manager import (
     as_capability,
     check_password,
+    derive_account_key,
+    derive_user_id,
     hash_password,
     INVALID_WORKER_TOKEN,
     UserManager,
@@ -47,6 +50,7 @@ from swai_server.system.user.redis import RedisUserManager
 
 ALICE = UName("alice@example.com")
 BOB = UName("bob@example.com")
+NOBODY = UName("nobody@example.com")
 SOME_TIME = 5.0
 
 
@@ -64,6 +68,22 @@ def invite(user_mng: UserManager, email: UName, password: str) -> None:
     reset_token = user_mng.generate_reset_token(email)
     assert reset_token is not None
     assert user_mng.set_password(password, reset_token) == email
+
+
+def worker_token_for(user_mng: UserManager, email: UName) -> str:
+    """
+    Creates a worker token for an existing account.
+
+    Args:
+        user_mng (UserManager): The user manager.
+        email (UName): The account.
+
+    Returns:
+        str: The worker token.
+    """
+    worker_token = user_mng.create_worker_token(email)
+    assert worker_token is not None
+    return worker_token
 
 
 # *** passwords ***
@@ -227,9 +247,25 @@ def test_list_users(user_mng: UserManager) -> None:
 
 
 def test_user_id(user_mng: UserManager) -> None:
+    """An account gets the ids derived from its email when it is created
+    (the ids its chats and workers always had); an email without an account
+    has none."""
+    assert user_mng.get_user_id(ALICE) is None
+    assert user_mng.get_ids(ALICE) is None
+    assert user_mng.create_user(ALICE, "Alice")
+    assert user_mng.create_user(BOB, "Bob")
+    assert user_mng.get_ids(ALICE) == {
+        "user_id": UserId.create(ALICE),
+        "account_key": get_short_hash(ALICE.get()),
+    }
     assert user_mng.get_user_id(ALICE) == UserId.create(ALICE)
-    assert user_mng.get_user_id(ALICE) == user_mng.get_user_id(ALICE)
+    assert user_mng.get_account_key(ALICE) == get_short_hash(ALICE.get())
     assert user_mng.get_user_id(ALICE) != user_mng.get_user_id(BOB)
+    # the admin has the ids derived from the configured email
+    assert user_mng.get_ids(ADMIN_EMAIL) == {
+        "user_id": UserId.create(ADMIN_EMAIL),
+        "account_key": get_short_hash(ADMIN_EMAIL.get()),
+    }
 
 
 # *** invitations and password resets ***
@@ -540,7 +576,7 @@ def test_capabilities(user_mng: UserManager) -> None:
 def test_worker_token(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     assert user_mng.create_user(BOB, "Bob")
-    token = user_mng.create_worker_token(ALICE)
+    token = worker_token_for(user_mng, ALICE)
     assert token != INVALID_WORKER_TOKEN
     assert user_mng.is_correct_worker_token(ALICE, token)
     assert not user_mng.is_correct_worker_token(ALICE, uuid.uuid4().hex)
@@ -549,11 +585,16 @@ def test_worker_token(user_mng: UserManager) -> None:
 
 def test_new_worker_token_replaces_old(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
-    old = user_mng.create_worker_token(ALICE)
-    new = user_mng.create_worker_token(ALICE)
+    old = worker_token_for(user_mng, ALICE)
+    new = worker_token_for(user_mng, ALICE)
     assert old != new
     assert not user_mng.is_correct_worker_token(ALICE, old)
     assert user_mng.is_correct_worker_token(ALICE, new)
+
+
+def test_no_worker_token_for_unknown_user(user_mng: UserManager) -> None:
+    assert user_mng.create_worker_token(BOB) is None
+    assert not user_mng.is_correct_worker_token(BOB, uuid.uuid4().hex)
 
 
 def test_no_worker_token(user_mng: UserManager) -> None:
@@ -584,8 +625,8 @@ def test_delete_user(user_mng: UserManager) -> None:
     bob_session = user_mng.login(BOB, "bob pw")
     assert alice_session is not None
     assert bob_session is not None
-    alice_worker = user_mng.create_worker_token(ALICE)
-    bob_worker = user_mng.create_worker_token(BOB)
+    alice_worker = worker_token_for(user_mng, ALICE)
+    bob_worker = worker_token_for(user_mng, BOB)
     alice_reset = user_mng.generate_reset_token(ALICE)
     assert alice_reset is not None
 
@@ -616,7 +657,7 @@ def test_recreate_deleted_user(user_mng: UserManager) -> None:
     user_mng.set_capability(ALICE, CAP_CREATE_USER, has=True)
     session = user_mng.login(ALICE, "alice pw")
     assert session is not None
-    worker_token = user_mng.create_worker_token(ALICE)
+    worker_token = worker_token_for(user_mng, ALICE)
     assert user_mng.generate_reset_token(ALICE) is not None
     assert user_mng.delete_user(ALICE)
 
@@ -643,6 +684,453 @@ def test_admin_cannot_be_deleted(user_mng: UserManager) -> None:
 def test_delete_unknown_user(user_mng: UserManager) -> None:
     assert not user_mng.delete_user(BOB)
     assert list(user_mng.list_users()) == [ADMIN_EMAIL]
+
+
+# *** changing the email ***
+
+
+CAROL = UName("carol@example.com")
+
+
+def test_change_email(user_mng: UserManager) -> None:
+    """The account keeps everything but its email; it is logged out, and
+    only the new email logs in."""
+    invite(user_mng, ALICE, "alice pw")
+    user_mng.set_capability(ALICE, CAP_LIST_USERS, has=True)
+    session = user_mng.login(ALICE, "alice pw")
+    assert session is not None
+    worker_token = worker_token_for(user_mng, ALICE)
+    ids = user_mng.get_ids(ALICE)
+
+    assert user_mng.change_email(ALICE, CAROL)
+
+    assert user_mng.get_ids(CAROL) == ids
+    assert user_mng.get_ids(ALICE) is None
+    assert list(user_mng.list_users()) == [ADMIN_EMAIL, CAROL]
+    assert user_mng.get_user_info(CAROL) == {
+        "email": CAROL,
+        "display_name": f"display {ALICE.get()}",
+        "capabilities": {CAP_LIST_USERS},
+    }
+    # logged out everywhere
+    assert user_mng.get_email(session) is None
+    assert not list(user_mng.get_sessions_for_user(CAROL))
+    # the password stays; only the new email logs in
+    assert user_mng.login(ALICE, "alice pw") is None
+    new_session = user_mng.login(CAROL, "alice pw")
+    assert new_session is not None
+    assert user_mng.get_email(new_session) == CAROL
+    # the worker token stays and goes with the new email
+    assert user_mng.is_correct_worker_token(CAROL, worker_token)
+    assert not user_mng.is_correct_worker_token(ALICE, worker_token)
+    # the old email is free again
+    assert user_mng.create_user(ALICE, "New Alice")
+    assert user_mng.login(ALICE, "alice pw") is None
+
+
+def test_change_email_drops_reset_tokens(user_mng: UserManager) -> None:
+    """A reset link sent to the old address does not work after the change,
+    and the new address can get one right away."""
+    assert user_mng.create_user(ALICE, "Alice")
+    reset_token = user_mng.generate_reset_token(ALICE)
+    assert reset_token is not None
+    assert user_mng.change_email(ALICE, CAROL)
+    assert user_mng.get_email_for_reset_token(reset_token) is None
+    assert user_mng.set_password("pw", reset_token) is None
+    assert user_mng.login(CAROL, "pw") is None
+    new_token = user_mng.generate_reset_token(CAROL)
+    assert new_token is not None
+    assert user_mng.set_password("pw", new_token) == CAROL
+    assert user_mng.login(CAROL, "pw") is not None
+
+
+def test_change_email_refused(user_mng: UserManager) -> None:
+    invite(user_mng, ALICE, "alice pw")
+    assert user_mng.create_user(BOB, "Bob")
+    ids = user_mng.get_ids(ALICE)
+    session = user_mng.login(ALICE, "alice pw")
+    # the new email is taken, by an account or by the admin
+    assert not user_mng.change_email(ALICE, BOB)
+    assert not user_mng.change_email(ALICE, ADMIN_EMAIL)
+    # the admin's email cannot change; unknown accounts have no email
+    assert not user_mng.change_email(ADMIN_EMAIL, CAROL)
+    assert not user_mng.change_email(NOBODY, CAROL)
+    # no change at all
+    assert not user_mng.change_email(ALICE, ALICE)
+    # nothing happened
+    assert user_mng.get_ids(ALICE) == ids
+    assert user_mng.get_user_info(BOB)["display_name"] == "Bob"
+    assert session is not None
+    assert user_mng.get_email(session) == ALICE
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE, BOB}
+
+
+def test_change_email_back_and_forth(user_mng: UserManager) -> None:
+    invite(user_mng, ALICE, "alice pw")
+    ids = user_mng.get_ids(ALICE)
+    assert user_mng.change_email(ALICE, CAROL)
+    assert user_mng.change_email(CAROL, ALICE)
+    assert user_mng.get_ids(ALICE) == ids
+    assert user_mng.get_ids(CAROL) is None
+    assert user_mng.login(ALICE, "alice pw") is not None
+    assert user_mng.login(CAROL, "alice pw") is None
+
+
+def test_reused_email_gets_new_ids(user_mng: UserManager) -> None:
+    """A new account with the former email of another account cannot have
+    the ids derived from that email: they belong to the other account (with
+    its chats and workers)."""
+    assert user_mng.create_user(ALICE, "Alice")
+    alice_ids = user_mng.get_ids(ALICE)
+    assert user_mng.change_email(ALICE, CAROL)
+    assert user_mng.create_user(ALICE, "New Alice")
+    new_ids = user_mng.get_ids(ALICE)
+    assert new_ids is not None
+    assert alice_ids is not None
+    assert new_ids["user_id"] != alice_ids["user_id"]
+    assert new_ids["account_key"] != alice_ids["account_key"]
+    assert user_mng.get_ids(CAROL) == alice_ids
+    # the two accounts do not mix
+    user_mng.set_capability(ALICE, CAP_CREATE_USER, has=True)
+    assert not user_mng.has_capability(CAROL, CAP_CREATE_USER)
+    alice = user_mng.do_login(ALICE)
+    carol = user_mng.do_login(CAROL)
+    assert alice is not None
+    assert carol is not None
+    assert user_mng.get_email(alice) == ALICE
+    assert user_mng.get_email(carol) == CAROL
+    token = worker_token_for(user_mng, ALICE)
+    assert not user_mng.is_correct_worker_token(CAROL, token)
+    # deleting one leaves the other
+    assert user_mng.delete_user(CAROL)
+    assert user_mng.get_ids(ALICE) == new_ids
+    assert user_mng.get_email(alice) == ALICE
+
+
+def test_concurrent_change_email_redis(
+        monkeypatch: pytest.MonkeyPatch, admin_pw_hash: str) -> None:
+    """Two accounts changing to the same email at the same time: one change
+    is stopped after its first redis call, the other completes, and then the
+    first must fail."""
+    redis = PausingRedis(memory_redis())
+    monkeypatch.setattr(user_redis_module, "Redis", lambda *_a, **_kw: redis)
+    user_mng = RedisUserManager(
+        admin_email=ADMIN_EMAIL, admin_pw=admin_pw_hash, cfg=UNUSED_REDIS)
+    assert user_mng.create_user(ALICE, "Alice")
+    assert user_mng.create_user(BOB, "Bob")
+    bob_ids = user_mng.get_ids(BOB)
+    results: dict[str, bool] = {}
+
+    def change_first() -> None:
+        redis.pause_current_thread()
+        results["first"] = user_mng.change_email(ALICE, CAROL)
+
+    first = threading.Thread(target=change_first, daemon=True)
+    first.start()
+    assert redis.wait_for_pause()
+    results["second"] = user_mng.change_email(BOB, CAROL)
+    redis.resume()
+    first.join(SOME_TIME)
+    assert not first.is_alive()
+    assert results == {"first": False, "second": True}
+    assert user_mng.get_ids(CAROL) == bob_ids
+    assert user_mng.get_user_info(ALICE)["display_name"] == "Alice"
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE, CAROL}
+
+
+@pytest.mark.parametrize("first_commits", [True, False])
+def test_concurrent_change_email_postgres(
+        postgres_user_mng: DBUserManager,
+        postgres_url: str,
+        pg_schema: str,
+        first_commits: bool) -> None:
+    """A change to an email that is not committed yet makes a second change
+    to the same email wait: it fails if the first commits and succeeds if
+    the first rolls back."""
+    user_mng = postgres_user_mng
+    assert user_mng.create_user(ALICE, "Alice")
+    assert user_mng.create_user(BOB, "Bob")
+    bob_ids = user_mng.get_ids(BOB)
+    engine = create_db_engine(postgres_url, schema=pg_schema)
+    results: dict[str, bool] = {}
+
+    def change_second() -> None:
+        results["second"] = user_mng.change_email(BOB, CAROL)
+
+    try:
+        with engine.connect() as conn:
+            # NOTE: what the first change does before its transaction ends
+            conn.execute(
+                sa.update(USERS)
+                .where(USERS.c.email == ALICE.get())
+                .values(email=CAROL.get()))
+            second = threading.Thread(target=change_second, daemon=True)
+            second.start()
+            wait_for_lock_waiter(engine)
+            assert "second" not in results
+            if first_commits:
+                conn.commit()
+            else:
+                conn.rollback()
+        second.join(SOME_TIME)
+        assert not second.is_alive()
+    finally:
+        engine.dispose()
+    assert results == {"second": not first_commits}
+    if first_commits:
+        assert user_mng.get_ids(BOB) == bob_ids
+        assert set(user_mng.list_users()) == {ADMIN_EMAIL, BOB, CAROL}
+    else:
+        assert user_mng.get_ids(CAROL) == bob_ids
+        assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE, CAROL}
+
+
+def test_chats_follow_the_account(
+        user_mng: UserManager, session_store: SessionStore) -> None:
+    """Chats belong to the account's user id, which the email change does
+    not touch."""
+    assert user_mng.create_user(ALICE, "Alice")
+    user_id = user_mng.get_user_id(ALICE)
+    assert user_id is not None
+    chat = session_store.create_new_session(
+        user_id, copy_from=None).get_session_id()
+    assert user_mng.change_email(ALICE, CAROL)
+    new_user_id = user_mng.get_user_id(CAROL)
+    assert new_user_id == user_id
+    assert [
+        session.get_session_id()
+        for session in session_store.get_sessions(new_user_id)
+    ] == [chat]
+    assert session_store.get_user(chat) == new_user_id
+
+
+# *** stores from before the stored ids ***
+
+
+def legacy_redis_account(
+        redis: Redis, email: UName, hashpw: str) -> tuple[str, str]:
+    """
+    Writes an account the way the redis store kept it before the ids were
+    stored: keyed by the hash of the email, without a user id.
+
+    Args:
+        redis (Redis): The redis of the user store.
+        email (UName): The email.
+        hashpw (str): The password hash.
+
+    Returns:
+        tuple[str, str]: A session token and the worker token of the
+            account.
+    """
+    userhash = get_short_hash(email.get())
+    redis.hset(f"info:{userhash}", {
+        "email": email.get(),
+        "display_name": f"display {email.get()}",
+        "hashpw": hashpw,
+    })
+    redis.sadd(f"perm:{userhash}", CAP_LIST_USERS)
+    session = f"{userhash}{uuid.uuid4().hex}"
+    redis.sadd(f"sess:{userhash}", session)
+    worker_token = uuid.uuid4().hex
+    redis.set_value(
+        f"worker:{UserId.create(email).to_parseable()}", worker_token)
+    return session, worker_token
+
+
+def test_migrate_redis(
+        monkeypatch: pytest.MonkeyPatch,
+        admin_pw_hash: str,
+        session_store: SessionStore) -> None:
+    """Accounts from before the stored ids get, once on startup, the ids
+    derived from their email: the ids their chats, worker token and workers
+    already have. Then they work like any other account."""
+    redis = memory_redis()
+    monkeypatch.setattr(user_redis_module, "Redis", lambda *_a, **_kw: redis)
+    hashpw = hash_password("alice pw")
+    session, worker_token = legacy_redis_account(redis, ALICE, hashpw)
+    legacy_redis_account(redis, BOB, hash_password("bob pw"))
+    chat = session_store.create_new_session(
+        UserId.create(ALICE), copy_from=None).get_session_id()
+
+    user_mng = RedisUserManager(
+        admin_email=ADMIN_EMAIL, admin_pw=admin_pw_hash, cfg=UNUSED_REDIS)
+
+    assert redis.get_value("meta:version") == "2"
+    assert user_mng.get_ids(ALICE) == {
+        "user_id": UserId.create(ALICE),
+        "account_key": get_short_hash(ALICE.get()),
+    }
+    assert list(user_mng.list_users()) == [ADMIN_EMAIL, ALICE, BOB]
+    assert user_mng.get_email(session) == ALICE
+    assert user_mng.login(ALICE, "alice pw") is not None
+    assert user_mng.list_capabilities(ALICE) == {CAP_LIST_USERS}
+    assert user_mng.is_correct_worker_token(ALICE, worker_token)
+    user_id = user_mng.get_user_id(ALICE)
+    assert user_id is not None
+    assert [
+        sess.get_session_id() for sess in session_store.get_sessions(user_id)
+    ] == [chat]
+    # and its email can change now
+    assert user_mng.change_email(ALICE, CAROL)
+    assert user_mng.is_correct_worker_token(CAROL, worker_token)
+    assert user_mng.get_user_id(CAROL) == UserId.create(ALICE)
+    # starting again does not migrate again
+    again = RedisUserManager(
+        admin_email=ADMIN_EMAIL, admin_pw=admin_pw_hash, cfg=UNUSED_REDIS)
+    assert list(again.list_users()) == [ADMIN_EMAIL, BOB, CAROL]
+    assert again.get_ids(CAROL) == user_mng.get_ids(CAROL)
+
+
+LEGACY_METADATA = sa.MetaData()
+"""The Postgres tables before the ids were stored."""
+sa.Table(
+    "users",
+    LEGACY_METADATA,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("email", sa.Text, nullable=False),
+    sa.Column("display_name", sa.Text, nullable=False),
+    sa.Column("hashpw", sa.Text, nullable=True),
+    sa.Column("reset_cooldown", sa.DateTime(timezone=True), nullable=True),
+    sa.Column(
+        "created",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now()),  # pylint: disable=not-callable
+    sa.UniqueConstraint("email", name="users_email_key"),
+)
+sa.Table(
+    "user_capabilities",
+    LEGACY_METADATA,
+    sa.Column(
+        "user_id",
+        sa.BigInteger,
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True),
+    sa.Column("capability", sa.String(40), primary_key=True),
+)
+sa.Table(
+    "user_reset_tokens",
+    LEGACY_METADATA,
+    sa.Column("token", sa.Text, primary_key=True),
+    sa.Column(
+        "user_id",
+        sa.BigInteger,
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False),
+    sa.Column("expires", sa.DateTime(timezone=True), nullable=False),
+    sa.Index("user_reset_tokens_user_id_idx", "user_id"),
+    sa.Index("user_reset_tokens_expires_idx", "expires"),
+)
+sa.Table(
+    "user_sessions",
+    LEGACY_METADATA,
+    sa.Column("token", sa.Text, primary_key=True),
+    sa.Column("email", sa.Text, nullable=False),
+    sa.Column(
+        "created",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now()),  # pylint: disable=not-callable
+    sa.Index("user_sessions_email_idx", "email"),
+)
+sa.Table(
+    "user_worker_tokens",
+    LEGACY_METADATA,
+    sa.Column("email", sa.Text, primary_key=True),
+    sa.Column("token", sa.Text, nullable=False),
+    sa.Column(
+        "created",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now()),  # pylint: disable=not-callable
+)
+
+
+def test_migrate_postgres(
+        postgres_url: str,
+        pg_schema: str,
+        admin_pw_hash: str,
+        session_store: SessionStore) -> None:
+    """Tables from before the stored ids are brought up to date once on
+    startup; the accounts keep their chats, sessions and worker tokens, and
+    so does the admin."""
+    engine = create_db_engine(postgres_url, schema=pg_schema)
+    tables = LEGACY_METADATA.tables
+    sessions = {
+        ALICE: uuid.uuid4().hex,
+        ADMIN_EMAIL: uuid.uuid4().hex,
+    }
+    worker_tokens = {
+        ALICE: uuid.uuid4().hex,
+        ADMIN_EMAIL: uuid.uuid4().hex,
+    }
+    try:
+        with engine.begin() as conn:
+            conn.execute(sa.schema.CreateSchema(pg_schema))
+            LEGACY_METADATA.create_all(conn)
+            for email, name, hashpw in [
+                    (ALICE, "Alice", hash_password("alice pw")),
+                    (BOB, "Bob", None),
+                    ]:
+                row_id = conn.execute(
+                    sa.insert(tables["users"])
+                    .values(
+                        email=email.get(), display_name=name, hashpw=hashpw)
+                    .returning(tables["users"].c.id)).scalar_one()
+                conn.execute(sa.insert(tables["user_capabilities"]).values(
+                    user_id=row_id, capability=CAP_LIST_USERS))
+            for email, token in sessions.items():
+                conn.execute(sa.insert(tables["user_sessions"]).values(
+                    token=token, email=email.get()))
+            for email, token in worker_tokens.items():
+                conn.execute(sa.insert(tables["user_worker_tokens"]).values(
+                    email=email.get(), token=token))
+    finally:
+        engine.dispose()
+    chat = session_store.create_new_session(
+        UserId.create(ALICE), copy_from=None).get_session_id()
+
+    user_mng = DBUserManager(
+        admin_email=ADMIN_EMAIL,
+        admin_pw=admin_pw_hash,
+        engine=create_db_engine(postgres_url, schema=pg_schema),
+        schema=pg_schema)
+    try:
+        assert user_mng.get_ids(ALICE) == {
+            "user_id": UserId.create(ALICE),
+            "account_key": get_short_hash(ALICE.get()),
+        }
+        assert list(user_mng.list_users()) == [ADMIN_EMAIL, ALICE, BOB]
+        assert user_mng.login(ALICE, "alice pw") is not None
+        assert user_mng.list_capabilities(BOB) == {CAP_LIST_USERS}
+        for email, token in sessions.items():
+            assert user_mng.get_email(token) == email
+        for email, token in worker_tokens.items():
+            assert user_mng.is_correct_worker_token(email, token)
+        user_id = user_mng.get_user_id(ALICE)
+        assert user_id is not None
+        assert [
+            sess.get_session_id()
+            for sess in session_store.get_sessions(user_id)
+        ] == [chat]
+        assert user_mng.change_email(ALICE, CAROL)
+        assert user_mng.is_correct_worker_token(
+            CAROL, worker_tokens[ALICE])
+        assert user_mng.create_user(UName("dave@example.com"), "Dave")
+    finally:
+        user_mng.close()
+    # starting again does not migrate again
+    again = DBUserManager(
+        admin_email=ADMIN_EMAIL,
+        admin_pw=admin_pw_hash,
+        engine=create_db_engine(postgres_url, schema=pg_schema),
+        schema=pg_schema)
+    try:
+        assert set(again.list_users()) == {
+            ADMIN_EMAIL, BOB, CAROL, UName("dave@example.com")}
+        assert again.get_user_id(CAROL) == UserId.create(ALICE)
+    finally:
+        again.close()
 
 
 # *** Postgres ***
@@ -687,7 +1175,10 @@ def test_concurrent_create_user_postgres(
     try:
         with engine.connect() as conn:
             conn.execute(sa.insert(USERS).values(
-                email=ALICE.get(), display_name="First"))
+                email=ALICE.get(),
+                display_name="First",
+                user_id=derive_user_id(ALICE).to_parseable(),
+                account_key=derive_account_key(ALICE)))
             second = threading.Thread(target=create_second, daemon=True)
             second.start()
             wait_for_lock_waiter(engine)
@@ -845,6 +1336,7 @@ def test_load_postgres_user_manager(
             "user_capabilities",
             "user_reset_tokens",
             "user_sessions",
+            "user_store_meta",
             "user_worker_tokens",
         }
     finally:

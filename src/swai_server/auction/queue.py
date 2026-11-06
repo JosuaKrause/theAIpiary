@@ -151,9 +151,10 @@ class TaskQueue:
             self,
             *,
             user_email: UName,
+            account_key: str,
             worker_name: str,
             worker_status: WorkerStatus) -> float:
-        worker_id = get_worker_id(user_email, worker_name)
+        worker_id = get_worker_id(account_key, worker_name)
         heartbeat = HEARTBEAT
         with self._redis.pipeline() as pipe:
             pipe.set_value(
@@ -219,10 +220,11 @@ class TaskQueue:
             nss: list[GNamespace],
             *,
             user_email: UName,
+            account_key: str,
             worker_name: str,
             timeout: float) -> tuple[GNamespace, TaskId, InputStr] | None:
         # FIXME: make big redis function
-        worker_id = get_worker_id(user_email, worker_name)
+        worker_id = get_worker_id(account_key, worker_name)
         redis = self._redis
         queue_channel = self.queue_channel()
 
@@ -243,6 +245,7 @@ class TaskQueue:
                     self.set_status(task_id, TASK_STATUS_BUSY)
                     self.heartbeat(
                         user_email=user_email,
+                        account_key=account_key,
                         worker_name=worker_name,
                         worker_status="busy")
                     return (ns, task_id, input_str)
@@ -304,14 +307,14 @@ class TaskQueue:
             self,
             task_id: TaskId,
             *,
-            user_email: UName,
+            account_key: str,
             worker_name: str,
             response: ResponseObject) -> None:
         redis = self._redis
         task_worker_key = self.task_worker_key(task_id)
         task_worker = redis_to_task_worker(
             redis.get_value(task_worker_key))
-        worker_id = get_worker_id(user_email, worker_name)
+        worker_id = get_worker_id(account_key, worker_name)
         if task_worker is None or task_worker["worker_id"] != worker_id:
             # NOTE: we are too late; someone else computed it; ignore results
             return

@@ -51,7 +51,8 @@ one model, a Llama 3.1 chat assistant that calls itself Beatrix Buzz.
   Vite, with the chat, login, password reset, FAQ and profile pages. The
   profile page lists workers and creates worker tokens. For users allowed to
   it also creates accounts and manages them: it can send a password reset,
-  log a user out everywhere, change their capabilities, or delete them.
+  log a user out everywhere, change their email or capabilities, or delete
+  them.
 - **Shared code** (`src/swai`): the API response types, the authorization header
   format, and the Llama prompt and session handling used by both sides.
 - **Postgres** (optional). `src/swai_server/system/user/db.py` is a user
@@ -393,6 +394,23 @@ Back it up with the rest of the data directory (stop the stack first, as in
 step 8). On Kubernetes, put the same `PG*` lines and `USER_STORE=postgres`
 into `deploy/k8s/server.env` and point `PGHOST` at a Postgres you run in or
 next to the cluster.
+
+### Accounts, ids and email changes
+
+Every account has two ids that are stored with it: the user id its chats
+and worker token belong to, and the account key its workers' ids start
+with. Both are derived from the email when the account is created and stay
+when the email changes, so an admin with the `change_email` capability can
+change a user's email on the profile page without losing anything. The
+user is logged out everywhere, outstanding password reset links stop
+working, and their worker bees keep their worker token but have to log in
+with the new email (`AIPIARY_USER` in `provider.env`) from then on.
+An account created later with the old email gets new ids of its own.
+
+Stores from before the ids were stored are migrated once when the server
+starts (both Redis and Postgres): every account gets the ids derived from
+its current email, which are the ids its chats, worker token and workers
+already have, so nothing else has to change.
 
 A fork should also change `src/swai_client/public/docs/contact.md`, which points
 to this repository's issues, and the footer of the welcome page

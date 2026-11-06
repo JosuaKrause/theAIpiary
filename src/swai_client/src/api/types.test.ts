@@ -23,6 +23,7 @@ import {
 
 const ALL_CAPABILITIES: ApiUserCapability[] = [
   'change_capabilities',
+  'change_email',
   'create_user',
   'delete_user',
   'list_users',

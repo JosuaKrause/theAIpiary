@@ -106,6 +106,7 @@ export type ApiChatSessionsResponse = {
 
 export type UserCapabilities = {
   changeCapabilities: Readonly<boolean>;
+  changeEmail: Readonly<boolean>;
   logoutOtherUser: Readonly<boolean>;
   createUser: Readonly<boolean>;
   deleteUser: Readonly<boolean>;
@@ -127,6 +128,7 @@ export type LoginInfo = {
 
 export type ApiUserCapability =
   | 'change_capabilities'
+  | 'change_email'
   | 'logout_other_user'
   | 'create_user'
   | 'delete_user'
@@ -158,6 +160,12 @@ export type ApiChangeCapability = {
 export type ApiSendResetResponse = {
   email: Readonly<UserEmail>;
   sent: boolean;
+};
+
+export type ApiChangeEmailResponse = {
+  email: Readonly<UserEmail>;
+  new_email: Readonly<UserEmail>;
+  changed: boolean;
 };
 
 export type ApiDeleteUserResponse = {
@@ -208,6 +216,7 @@ export type ApiWorkerTokenResponse = {
 
 const NO_CAPABILITIES: Readonly<UserCapabilities> = {
   changeCapabilities: false,
+  changeEmail: false,
   logoutOtherUser: false,
   createUser: false,
   deleteUser: false,
@@ -222,6 +231,7 @@ type CapabilityMapping = {
 
 const CAPABILITY_MAP: CapabilityMapping = {
   changeCapabilities: 'change_capabilities',
+  changeEmail: 'change_email',
   logoutOtherUser: 'logout_other_user',
   createUser: 'create_user',
   deleteUser: 'delete_user',
@@ -256,6 +266,9 @@ export function toUserCapabilities(
     switch (cap) {
       case 'change_capabilities':
         capabilities.changeCapabilities = true;
+        break;
+      case 'change_email':
+        capabilities.changeEmail = true;
         break;
       case 'logout_other_user':
         capabilities.logoutOtherUser = true;
