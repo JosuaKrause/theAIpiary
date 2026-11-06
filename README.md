@@ -5,7 +5,7 @@ The only part that runs in the cloud is a small server that hosts the website,
 keeps track of users and chats, and hands out tasks. The models themselves run
 on volunteers' own GPUs: anyone with an account can start a *worker bee* on their
 machine, which then picks up tasks from everyone in the swarm. The swarm serves
-one model, a Llama 3 chat assistant that calls itself Beatrix Buzz.
+one model, a Llama 3.1 chat assistant that calls itself Beatrix Buzz.
 
 ## Architecture
 
@@ -83,9 +83,15 @@ one model, a Llama 3 chat assistant that calls itself Beatrix Buzz.
    if you have those checkouts next to this one).
 
 2. **Get a model.** Llama weights are not part of this repository (see
-   [Models](#models)). Download a GGUF build of Meta-Llama-3-8B-Instruct, for
-   example from Hugging Face after accepting Meta's license, and save it as
-   `models/Meta-Llama-3-8B-Instruct-IQ3_XS.gguf` at the root of the repository.
+   [Models](#models)). Download the Q4_K_M GGUF build of Llama 3.1 8B Instruct
+   (4.9 GB) into `models/` at the root of the repository:
+
+   ```
+   mkdir -p models
+   curl -fL -o models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf \
+     https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf
+   ```
+
    That is the path `local/graphs/graph_llama.json` loads (`model_path`, relative
    to `src/`); point it at a different file to use another quantization.
    `models/` is git-ignored.
@@ -174,12 +180,15 @@ example for people who already run a cluster.
    environment take precedence over the file.
 
 2. **Choose the model.** The worker image runs `deploy/graphs/graph_llama.json`,
-   which loads `/models/` plus the file name in its `model_path`. Volunteers'
-   `userdata/models/` folder is mounted there, and `run-worker.sh` downloads the
-   model into it from `MODEL_URL` (step 5), so the file name at the end of
-   `MODEL_URL` has to match `model_path`. Host the GGUF file somewhere
-   volunteers can download it from, or leave `MODEL_URL` empty and tell them
-   which file to place there.
+   which loads `/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf` with a context
+   of 16384 tokens (`model_path` and `n_ctx`). Volunteers' `userdata/models/`
+   folder is mounted at `/models/`, and `run-worker.sh` downloads the model into
+   it from `MODEL_URL` (step 5), so the file name at the end of `MODEL_URL` has
+   to match `model_path`. The default model can be downloaded from
+   `https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf`;
+   use that URL, host the file yourself, or leave `MODEL_URL` empty and tell
+   volunteers which file to place there. To serve a different model, change
+   `model_path` (and `n_ctx`) before building the image.
 
 3. **Build and push.**
 
@@ -343,17 +352,19 @@ the code before relying on it.
 
 ## Models
 
-No model weights are included. The graphs reference Meta's Llama models:
-`deploy/graphs/graph_llama.json` (the worker image) loads
-`Meta-Llama-3.1-8B-Instruct-F16.gguf`, which is under the
+No model weights are included. Both graphs, `deploy/graphs/graph_llama.json`
+(the worker image) and `local/graphs/graph_llama.json`, load
+`Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf`, a 4-bit GGUF quantization of Meta's
+Llama 3.1 8B Instruct, with a context of 16384 tokens. The file is 4.9 GB and
+the context needs about 2 GB of GPU memory on top. The download URL above is
+[bartowski/Meta-Llama-3.1-8B-Instruct-GGUF](https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF)
+on Hugging Face, a community conversion that needs no Hugging Face login. The
+model is under the
 [Llama 3.1 Community License](https://www.llama.com/llama3_1/license/) and its
-[Acceptable Use Policy](https://www.llama.com/llama3_1/use-policy/), and
-`local/graphs/graph_llama.json` loads `Meta-Llama-3-8B-Instruct-IQ3_XS.gguf`,
-which is under the [Meta Llama 3 Community License](https://www.llama.com/llama3/license/)
-and its [Acceptable Use Policy](https://www.llama.com/llama3/use-policy/).
-Anyone who downloads, hosts or runs these models, including operators who set
-`MODEL_URL` and volunteers who run a worker, has to accept the license and the
-policy of the model they use.
+[Acceptable Use Policy](https://www.llama.com/llama3_1/use-policy/), no matter
+where it is downloaded from. Anyone who downloads, hosts or runs it, including
+operators who set `MODEL_URL` and volunteers who run a worker, has to accept
+the license and the policy.
 
 ## Assets
 

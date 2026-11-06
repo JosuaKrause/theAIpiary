@@ -48,6 +48,8 @@ from swai.smind.llama_session import (
 
 LLAMA_SEED = 123
 """The sampling seed for every answer."""
+DEFAULT_N_CTX = 16384
+"""The context size if the graph does not set `n_ctx`."""
 
 
 def execute_prompt(
@@ -176,7 +178,7 @@ class LlamaNode(Node):
         # print(f"{llama_supports_gpu_offload()=}")
         self._model = Llama(
             model_path=self.get_arg("model_path").get("str"),
-            n_ctx=self.get_arg("n_ctx").get("int", 30000),
+            n_ctx=self.get_arg("n_ctx").get("int", DEFAULT_N_CTX),
             n_gpu_layers=self.get_arg("n_gpu_layers").get("int", -1),  # 33
             # n_threads=6,
             # n_batch=521,
