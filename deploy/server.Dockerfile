@@ -1,4 +1,6 @@
-FROM continuumio/miniconda3:24.1.2-0
+# Debian trixie with Python 3.11, the version the server runs on (the pinned
+# numpy 1.26 has no wheels past 3.12)
+FROM python:3.11-slim-trixie
 RUN apt-get update \
   && apt-get -y upgrade \
   && apt-get install -y --no-install-recommends \
@@ -8,7 +10,8 @@ RUN apt-get update \
   linux-libc-dev \
   libc6-dev \
   build-essential \
-  make
+  make \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /usr/src/app
 RUN pip install --progress-bar off --no-cache-dir 'torch==2.3.0' torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 COPY Makefile .
@@ -18,7 +21,6 @@ RUN mkdir sh
 COPY sh/install.sh sh
 ENV FORCE_CPU=1
 RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-server \
-  && conda clean --all \
   && pip cache purge
 COPY LICENSE .
 COPY sh/ sh/
