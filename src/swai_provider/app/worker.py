@@ -16,11 +16,13 @@ import threading
 import traceback
 import uuid
 from collections.abc import Callable
-from typing import TypedDict
+from typing import TypeAlias, TypedDict
 
+import requests
 from quick_server import add_shutdown_hook
 from scattermind.api.api import InputTypes
 from scattermind.system.base import TaskId
+from scattermind.system.response import ResponseObject
 from scattermind.system.torch_util import get_arch
 from scattermind.system.util import get_short_hash, get_time_str
 
@@ -42,6 +44,20 @@ DEFAULT_TIMEOUT = 60.0  # 1min
 """How long the server holds a bid open while waiting for a task."""
 HEARTBEAT_RETRY_WAIT = DEFAULT_WAIT
 """Wait before the next heartbeat if a heartbeat failed."""
+BACKOFF_START = 1.0  # 1s
+"""Initial wait before bidding again (or reporting a result again) after a
+failure. It doubles with each consecutive failure."""
+BACKOFF_MAX = 30.0  # 30s
+"""Maximum wait before bidding again (or reporting a result again)."""
+FINISH_ATTEMPTS = 5
+"""Attempts to report the result of a task before giving up on it."""
+FATAL_STATUS: set[int] = {401, 403}
+"""Status codes that mean the provider is misconfigured. Retrying does not
+help with those."""
+
+
+Task: TypeAlias = tuple[GraphProfile, TaskId, dict[str, InputTypes]]
+"""A task assigned to this worker."""
 
 
 VersionDict = TypedDict('VersionDict', {
@@ -160,6 +176,173 @@ def heartbeat_loop(
         wait_before_retry=0.1)
 
 
+class Backoff:
+    """Exponentially growing waits between attempts."""
+
+    def __init__(
+            self,
+            wait: Callable[[float], None],
+            *,
+            start: float = BACKOFF_START,
+            maximum: float = BACKOFF_MAX) -> None:
+        """
+        Creates a backoff.
+
+        Args:
+            wait (Callable[[float], None]): Waits for the given seconds.
+            start (float, optional): The first wait. Defaults to
+                BACKOFF_START.
+            maximum (float, optional): The maximum wait. Defaults to
+                BACKOFF_MAX.
+        """
+        self._wait = wait
+        self._start = start
+        self._max = maximum
+        self._cur = start
+
+    def next_wait(self) -> float:
+        """
+        The duration of the next wait.
+
+        Returns:
+            float: The seconds.
+        """
+        return self._cur
+
+    def wait(self) -> None:
+        """Waits and increases the next wait."""
+        self._wait(self._cur)
+        self._cur = min(self._cur * 2.0, self._max)
+
+    def reset(self) -> None:
+        """Resets the wait after a success."""
+        self._cur = self._start
+
+
+def is_fatal(exc: BaseException) -> bool:
+    """
+    Whether the error means the provider is misconfigured, i.e., trying
+    again does not help.
+
+    Args:
+        exc (BaseException): The error.
+
+    Returns:
+        bool: True, if the server rejected the provider's credentials.
+    """
+    if not isinstance(exc, requests.HTTPError):
+        return False
+    resp = exc.response
+    return resp is not None and resp.status_code in FATAL_STATUS
+
+
+def log_fatal(action: str, exc: BaseException) -> None:
+    """
+    Logs an error that ends the provider.
+
+    Args:
+        action (str): What the provider tried to do.
+        exc (BaseException): The error.
+    """
+    print(
+        f"{get_time_str()} the server rejected the {action}: {exc}\n"
+        "check AIPIARY_USER, AIPIARY_WORKER_TOKEN, and AIPIARY_API_URL. "
+        "stopping the provider")
+
+
+def finish_task(
+        task_hnd: TaskHandler,
+        task_id: TaskId,
+        response: ResponseObject,
+        *,
+        wait: Callable[[float], None],
+        attempts: int = FINISH_ATTEMPTS) -> bool:
+    """
+    Reports the result of a task to the server. Failures that retrying might
+    fix are retried with backoff, up to `attempts` times. Unreachable servers
+    are retried inside `task_finish` already.
+
+    Args:
+        task_hnd (TaskHandler): The task handler.
+        task_id (TaskId): The task.
+        response (ResponseObject): The result.
+        wait (Callable[[float], None]): Waits for the given seconds.
+        attempts (int, optional): The number of attempts. Defaults to
+            FINISH_ATTEMPTS.
+
+    Raises:
+        requests.RequestException: An HTTP error if the server rejected the
+            provider's credentials.
+
+    Returns:
+        bool: Whether the result was reported.
+    """
+    backoff = Backoff(wait)
+    for attempt in range(1, attempts + 1):
+        try:
+            task_hnd.task_finish(task_id, response)
+            return True
+        except requests.RequestException as exc:
+            if is_fatal(exc):
+                log_fatal("result", exc)
+                raise
+            print(
+                f"{get_time_str()} could not report the result of {task_id} "
+                f"(attempt {attempt}/{attempts}): {exc!r}")
+        if attempt < attempts:
+            backoff.wait()
+    # NOTE: the task stays assigned to this worker on the server
+    print(f"{get_time_str()} giving up on the result of {task_id}")
+    return False
+
+
+def run_tasks(
+        task_hnd: TaskHandler,
+        graphs: list[GraphProfile],
+        *,
+        is_done: Callable[[], bool],
+        compute_task: Callable[[Task], None],
+        wait: Callable[[float], None],
+        bid_timeout: float = DEFAULT_TIMEOUT) -> None:
+    """
+    Bids for tasks and computes them until `is_done` returns True. A failed
+    bid is logged and repeated after a backoff.
+
+    Args:
+        task_hnd (TaskHandler): The task handler.
+        graphs (list[GraphProfile]): The graphs to bid for.
+        is_done (Callable[[], bool]): Whether the provider is shutting down.
+        compute_task (Callable[[Task], None]): Computes a task and reports its
+            result.
+        wait (Callable[[float], None]): Waits for the given seconds.
+        bid_timeout (float, optional): How long the server holds a bid open.
+            Defaults to DEFAULT_TIMEOUT.
+
+    Raises:
+        requests.RequestException: An HTTP error if the server rejected the
+            provider's credentials.
+    """
+    backoff = Backoff(wait)
+    while not is_done():
+        try:
+            maybe_task = task_hnd.task_bid(graphs, timeout=bid_timeout)
+        except requests.RequestException as exc:
+            # NOTE: unsent bids are retried inside task_bid already; this is
+            # a bid that might have reached the server (see task_bid)
+            if is_fatal(exc):
+                log_fatal("bid", exc)
+                raise
+            print(
+                f"{get_time_str()} bid failed: {exc!r}. "
+                f"bidding again in {backoff.next_wait()}s")
+            backoff.wait()
+            continue
+        backoff.reset()
+        if maybe_task is None:
+            continue  # NOTE: no sleep!
+        compute_task(maybe_task)
+
+
 def task_loop(env_file: str) -> None:
     config = get_config()
 
@@ -185,16 +368,20 @@ def task_loop(env_file: str) -> None:
             return "backedup"
         return "idle"
 
-    def compute_task(
-            task: tuple[GraphProfile, TaskId, dict[str, InputTypes]]) -> None:
+    def wait(secs: float) -> None:
+        with cond:
+            if not done:
+                cond.wait(secs)
+
+    def compute_task(task: Task) -> None:
         nonlocal is_busy
 
         is_busy = True
         graph, task_id, input_data = task
         print(f"{get_time_str()} picked up {graph.get_ns()=} {task_id=}")
         response = execute_task(task_id, input_data, graph_profile=graph)
-        task_hnd.task_finish(task_id, response)
-        print(f"{get_time_str()} done")
+        if finish_task(task_hnd, task_id, response, wait=wait):
+            print(f"{get_time_str()} done")
         is_busy = False
         send_heartbeat(
             task_hnd,
@@ -222,11 +409,12 @@ def task_loop(env_file: str) -> None:
     th.start()
 
     try:
-        while not done:
-            maybe_task = task_hnd.task_bid(graphs, timeout=DEFAULT_TIMEOUT)
-            if maybe_task is None:
-                continue  # NOTE: no sleep!
-            compute_task(maybe_task)
+        run_tasks(
+            task_hnd,
+            graphs,
+            is_done=is_done,
+            compute_task=compute_task,
+            wait=wait)
     finally:
         if sys.exc_info()[1] is not None:
             print(traceback.format_exc())

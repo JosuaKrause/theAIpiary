@@ -19,22 +19,32 @@ import time
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
-from typing import NamedTuple
+from typing import cast, NamedTuple
 
 import pytest
 import requests
-from scattermind.system.base import SessionId, UserId
-from scattermind.system.names import UName
+import torch
+from scattermind.api.api import ScattermindAPI, task_input_to_redis
+from scattermind.system.base import SessionId, TaskId, UserId
+from scattermind.system.info import DataFormat, DataInfo
+from scattermind.system.names import GNamespace, UName
+from scattermind.system.response import ResponseObject
 
 from swai.system import base as base_module
 from swai.system.base import WorkerStatus
 from swai_provider.app import task_hnd as task_hnd_module
 from swai_provider.app.task_hnd import TaskHandler
-from swai_provider.app.worker import heartbeat_loop
+from swai_provider.app.worker import (
+    finish_task,
+    heartbeat_loop,
+    run_tasks,
+    Task,
+)
 from swai_provider.smind import remote_session_blob as blob_module
 from swai_provider.smind import remote_session_kv as kv_module
 from swai_provider.smind.remote_session_blob import RemoteSessionBlob
 from swai_provider.smind.remote_session_kv import RemoteSessionKeyValue
+from swai_provider.smind.worker_api import GraphProfile
 
 
 SHORT_READ = 0.3
@@ -494,3 +504,223 @@ def test_heartbeat_loop_survives_failures(server: FakeServer) -> None:
     last = json.loads(server.received[-1].body)
     assert last["status"] == "offline"
     assert last["worker_name"] == "worker"
+
+
+class StubAPI:
+    """The parts of the scattermind API a graph profile reads."""
+
+    def main_input_format(self, _ns: GNamespace) -> DataFormat:
+        """
+        The input format of the graph.
+
+        Returns:
+            DataFormat: A single string input.
+        """
+        return DataFormat({"prompt": DataInfo("uint8", [None])})
+
+    def main_inputs(self, _ns: GNamespace) -> set[str]:
+        """
+        The inputs of the graph.
+
+        Returns:
+            set[str]: The inputs.
+        """
+        return {"prompt"}
+
+    def main_outputs(self, _ns: GNamespace) -> set[str]:
+        """
+        The outputs of the graph.
+
+        Returns:
+            set[str]: The outputs.
+        """
+        return {"text"}
+
+
+GRAPH_NS = GNamespace("test")
+"""The namespace of the test graph."""
+
+
+def graph_profile() -> GraphProfile:
+    """
+    A graph profile of a graph with a single string input.
+
+    Returns:
+        GraphProfile: The profile.
+    """
+    return GraphProfile(cast(ScattermindAPI, StubAPI()), GRAPH_NS)
+
+
+def task_reply(task_id: TaskId) -> Reply:
+    """
+    A bid reply that assigns a task.
+
+    Args:
+        task_id (TaskId): The task.
+
+    Returns:
+        Reply: The reply.
+    """
+    return ok({
+        "ns": GRAPH_NS.get(),
+        "task_id": task_id.to_parseable(),
+        "input_data": task_input_to_redis({"prompt": "hello"}),
+    })
+
+
+def response_object() -> ResponseObject:
+    """
+    The response of a computed task.
+
+    Returns:
+        ResponseObject: The response.
+    """
+    return {
+        "ns": GRAPH_NS,
+        "status": "ready",
+        "result": None,
+        "duration": 0.0,
+        "retries": 0,
+        "error": None,
+        "fmt": None,
+    }
+
+
+def test_task_loop_survives_failed_bids(server: FakeServer) -> None:
+    """Bids that fail after reaching the server (read timeout, 500, 504) are
+    repeated after a growing backoff that resets after a successful bid; the
+    loop gets the next tasks."""
+    first = TaskId.create()
+    second = TaskId.create()
+    server.replies["/api/task/bid"] = [
+        ok({"ns": None, "task_id": None, "input_data": None}, delay=SLOW),
+        Reply(500, b""),
+        Reply(504, b""),
+        task_reply(first),
+        Reply(500, b""),
+        task_reply(second),
+    ]
+    task_hnd = TaskHandler("worker")
+    waits: list[float] = []
+    computed: list[TaskId] = []
+
+    def compute_task(task: Task) -> None:
+        graph, task_id, input_data = task
+        assert graph.get_ns() == GRAPH_NS
+        prompt = input_data["prompt"]
+        assert isinstance(prompt, torch.Tensor)
+        assert prompt.tolist() == list(b"hello")
+        computed.append(task_id)
+
+    start = time.monotonic()
+    run_tasks(
+        task_hnd,
+        [graph_profile()],
+        is_done=lambda: len(computed) >= 2,
+        compute_task=compute_task,
+        wait=waits.append,
+        bid_timeout=SHORT_READ)
+    assert time.monotonic() - start < SLOW
+    assert computed == [first, second]
+    assert waits == [1.0, 2.0, 4.0, 1.0]
+    assert server.paths() == ["/api/task/bid"] * 6
+
+
+def test_backoff_is_capped(server: FakeServer) -> None:
+    """The wait between failed bids stops growing at its maximum."""
+    task_id = TaskId.create()
+    server.replies["/api/task/bid"] = [Reply(500, b"")] * 8 + [
+        task_reply(task_id),
+    ]
+    computed: list[TaskId] = []
+    waits: list[float] = []
+    run_tasks(
+        TaskHandler("worker"),
+        [graph_profile()],
+        is_done=lambda: bool(computed),
+        compute_task=lambda task: computed.append(task[1]),
+        wait=waits.append,
+        bid_timeout=SHORT_READ)
+    assert computed == [task_id]
+    assert waits == [1.0, 2.0, 4.0, 8.0, 16.0, 30.0, 30.0, 30.0]
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_task_loop_ends_on_rejected_bid(
+        server: FakeServer,
+        capsys: pytest.CaptureFixture[str],
+        status: int) -> None:
+    """A rejected bid means the provider is misconfigured: the loop ends."""
+    server.replies["/api/task/bid"] = [Reply(status, b"")]
+    waits: list[float] = []
+    with pytest.raises(requests.HTTPError):
+        run_tasks(
+            TaskHandler("worker"),
+            [graph_profile()],
+            is_done=lambda: False,
+            compute_task=lambda _: None,
+            wait=waits.append,
+            bid_timeout=SHORT_READ)
+    assert server.paths() == ["/api/task/bid"]
+    assert not waits
+    out = capsys.readouterr().out
+    assert "the server rejected the bid" in out
+    assert "AIPIARY_WORKER_TOKEN" in out
+
+
+def test_finish_retries_server_errors(server: FakeServer) -> None:
+    """A result that the server fails to take is reported again."""
+    server.replies["/api/task/finish"] = [
+        Reply(500, b""),
+        Reply(500, b""),
+        ok({"well_done": True}),
+    ]
+    waits: list[float] = []
+    assert finish_task(
+        TaskHandler("worker"),
+        TaskId.create(),
+        response_object(),
+        wait=waits.append)
+    assert waits == [1.0, 2.0]
+    assert server.paths() == ["/api/task/finish"] * 3
+
+
+def test_finish_gives_up(server: FakeServer) -> None:
+    """A result that keeps failing is given up after a few attempts so the
+    provider can take other tasks."""
+    server.replies["/api/task/finish"] = [Reply(500, b"")]
+    waits: list[float] = []
+    assert not finish_task(
+        TaskHandler("worker"),
+        TaskId.create(),
+        response_object(),
+        wait=waits.append,
+        attempts=3)
+    assert waits == [1.0, 2.0]
+    assert server.paths() == ["/api/task/finish"] * 3
+
+
+def test_task_loop_ends_on_rejected_finish(
+        server: FakeServer, capsys: pytest.CaptureFixture[str]) -> None:
+    """A rejected result means the provider is misconfigured: the loop
+    ends."""
+    task_id = TaskId.create()
+    server.replies["/api/task/bid"] = [task_reply(task_id)]
+    server.replies["/api/task/finish"] = [Reply(401, b"")]
+    task_hnd = TaskHandler("worker")
+    waits: list[float] = []
+
+    def compute_task(task: Task) -> None:
+        finish_task(task_hnd, task[1], response_object(), wait=waits.append)
+
+    with pytest.raises(requests.HTTPError):
+        run_tasks(
+            task_hnd,
+            [graph_profile()],
+            is_done=lambda: False,
+            compute_task=compute_task,
+            wait=waits.append,
+            bid_timeout=SHORT_READ)
+    assert server.paths() == ["/api/task/bid", "/api/task/finish"]
+    assert not waits
+    assert "the server rejected the result" in capsys.readouterr().out
