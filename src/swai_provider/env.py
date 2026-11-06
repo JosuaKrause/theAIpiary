@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-from typing import Literal
+from typing import Literal, Never, TypeAlias
 
 from scattermind.system.util import to_bool
 
@@ -36,7 +36,9 @@ EnvInt = Literal[
     "PORT",
     "REDIS_PORT",
 ]
-EnvBool = Literal["!"]  # FIXME: placeholder for actual env names
+# NOTE: the provider has no boolean settings yet; add their names here
+# (as a Literal like the ones above) to be able to call envload_bool
+EnvBool: TypeAlias = Never
 
 
 def _envload(key: str, default: str | None) -> str:
@@ -67,4 +69,4 @@ def envload_int(key: EnvInt, *, default: int | None = None) -> int:
 
 
 def envload_bool(key: EnvBool, *, default: bool | None = None) -> bool:
-    return to_bool(_envload(key, f"{default}"))
+    return to_bool(_envload(key, None if default is None else f"{default}"))

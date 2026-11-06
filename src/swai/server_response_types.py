@@ -34,11 +34,22 @@ UserNotLogged = TypedDict('UserNotLogged', {
 LoginResponse = UserLogged | UserNotLogged
 ChangeCapabilityResponse = TypedDict('ChangeCapabilityResponse', {
     "okay": bool,
+    "capabilities": list[CapabilityName],
 })
 UserInfoResponse = TypedDict('UserInfoResponse', {
     "email": str,
     "display_name": str,
     "capabilities": list[CapabilityName],
+    "admin": bool,
+})
+SendResetResponse = TypedDict('SendResetResponse', {
+    "email": str,
+    "sent": bool,
+})
+DeleteUserResponse = TypedDict('DeleteUserResponse', {
+    "email": str,
+    "deleted": bool,
+    "chats": int,
 })
 UserListResponse = TypedDict('UserListResponse', {
     "users": list[UserInfoResponse],

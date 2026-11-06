@@ -104,10 +104,11 @@ export type ApiChatSessionsResponse = {
   model_sessions: ApiSessionInfo[];
 };
 
-type UserCapabilities = {
+export type UserCapabilities = {
   changeCapabilities: Readonly<boolean>;
   logoutOtherUser: Readonly<boolean>;
   createUser: Readonly<boolean>;
+  deleteUser: Readonly<boolean>;
   listUsers: Readonly<boolean>;
   registerOwnWorker: Readonly<boolean>;
   registerOtherWorker: Readonly<boolean>;
@@ -128,6 +129,7 @@ export type ApiUserCapability =
   | 'change_capabilities'
   | 'logout_other_user'
   | 'create_user'
+  | 'delete_user'
   | 'list_users'
   | 'register_own_worker'
   | 'register_other_worker';
@@ -150,12 +152,29 @@ export type ApiPasswordResetTokenResponse = {
 
 export type ApiChangeCapability = {
   okay: boolean;
+  capabilities: Readonly<ApiUserCapability[]>;
+};
+
+export type ApiSendResetResponse = {
+  email: Readonly<UserEmail>;
+  sent: boolean;
+};
+
+export type ApiDeleteUserResponse = {
+  email: Readonly<UserEmail>;
+  deleted: boolean;
+  chats: number;
+};
+export type DeleteUserResult = {
+  deleted: boolean;
+  chats: number;
 };
 
 type ApiUserInfoResponse = {
   email: Readonly<UserEmail>;
   display_name: Readonly<DisplayName>;
   capabilities: Readonly<ApiUserCapability[]>;
+  admin: boolean;
 };
 export type ApiUserListResponse = {
   users: ApiUserInfoResponse[];
@@ -164,6 +183,7 @@ export type UserInfo = {
   email: Readonly<UserEmail>;
   displayName: Readonly<DisplayName>;
   capabilities: Readonly<UserCapabilities>;
+  isAdmin: boolean;
 };
 
 export type WorkerInfo = {
@@ -190,6 +210,7 @@ const NO_CAPABILITIES: Readonly<UserCapabilities> = {
   changeCapabilities: false,
   logoutOtherUser: false,
   createUser: false,
+  deleteUser: false,
   listUsers: false,
   registerOwnWorker: false,
   registerOtherWorker: false,
@@ -203,6 +224,7 @@ const CAPABILITY_MAP: CapabilityMapping = {
   changeCapabilities: 'change_capabilities',
   logoutOtherUser: 'logout_other_user',
   createUser: 'create_user',
+  deleteUser: 'delete_user',
   listUsers: 'list_users',
   registerOwnWorker: 'register_own_worker',
   registerOtherWorker: 'register_other_worker',
@@ -240,6 +262,9 @@ export function toUserCapabilities(
         break;
       case 'create_user':
         capabilities.createUser = true;
+        break;
+      case 'delete_user':
+        capabilities.deleteUser = true;
         break;
       case 'list_users':
         capabilities.listUsers = true;

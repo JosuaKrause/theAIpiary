@@ -11,19 +11,33 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Shared fixtures. Every store is backed by redipy's in-memory runtime so the
-tests need no Redis server."""
+"""Shared fixtures. Redis stores are backed by redipy's in-memory runtime so
+the tests need no Redis server. The user manager fixture runs every test
+against the Redis store and against the Postgres store; the latter needs a
+Postgres server (see `TEST_POSTGRES_URL` in test/util.py)."""
+import os
+import uuid
 from collections.abc import Iterator
-from test.util import ADMIN_EMAIL, ADMIN_PW, memory_redis, UNUSED_REDIS
+from test.util import (
+    ADMIN_EMAIL,
+    ADMIN_PW,
+    is_github_action,
+    memory_redis,
+    TEST_POSTGRES_URL,
+    UNUSED_REDIS,
+)
 from typing import cast
 
 import pytest
+import sqlalchemy as sa
 from scattermind.system.session.session import SessionStore
 
 from swai_server.auction import queue as queue_module
 from swai_server.auction.queue import TaskQueue
+from swai_server.system.db.db import create_db_engine
 from swai_server.system.user import redis as user_redis_module
-from swai_server.system.user.manager import hash_password
+from swai_server.system.user.db import DBUserManager
+from swai_server.system.user.manager import hash_password, UserManager
 from swai_server.system.user.redis import RedisUserManager
 from swai_server.system.user.secure import SecureContext
 
@@ -53,12 +67,13 @@ def fixture_admin_pw_hash() -> str:
     return hash_password(ADMIN_PW)
 
 
-@pytest.fixture(name="user_mng")
-def fixture_user_mng(
+@pytest.fixture(name="redis_user_mng")
+def fixture_redis_user_mng(
         monkeypatch: pytest.MonkeyPatch,
         admin_pw_hash: str) -> Iterator[RedisUserManager]:
     """
-    A user manager on an empty in-memory redis with an admin configured.
+    A redis user manager on an empty in-memory redis with an admin
+    configured.
 
     Yields:
         RedisUserManager: The user manager.
@@ -68,8 +83,87 @@ def fixture_user_mng(
         admin_email=ADMIN_EMAIL, admin_pw=admin_pw_hash, cfg=UNUSED_REDIS)
 
 
+@pytest.fixture(scope="session", name="postgres_url")
+def fixture_postgres_url() -> str:
+    """
+    The Postgres server for the tests. Without one the Postgres tests are
+    skipped locally and fail on github actions (where the workflow provides
+    a server), so that they cannot silently stop running.
+
+    Returns:
+        str: The connection URL.
+    """
+    url = os.environ.get(TEST_POSTGRES_URL, "").strip()
+    if not url:
+        reason = (
+            f"the Postgres tests need {TEST_POSTGRES_URL}, e.g., "
+            "postgresql+psycopg2://postgres:pw@localhost:5432/postgres "
+            "(see the README)")
+        if is_github_action():
+            pytest.fail(reason)
+        pytest.skip(reason)
+    return url
+
+
+@pytest.fixture(name="pg_schema")
+def fixture_pg_schema(postgres_url: str) -> Iterator[str]:
+    """
+    A fresh schema for one test. It is dropped afterwards with everything in
+    it.
+
+    Yields:
+        str: The name of the schema.
+    """
+    schema = f"test_{uuid.uuid4().hex}"
+    yield schema
+    engine = sa.create_engine(postgres_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(sa.schema.DropSchema(
+                schema, cascade=True, if_exists=True))
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture(name="postgres_user_mng")
+def fixture_postgres_user_mng(
+        postgres_url: str,
+        pg_schema: str,
+        admin_pw_hash: str) -> Iterator[DBUserManager]:
+    """
+    A Postgres user manager on an empty schema with an admin configured.
+
+    Yields:
+        DBUserManager: The user manager.
+    """
+    user_mng = DBUserManager(
+        admin_email=ADMIN_EMAIL,
+        admin_pw=admin_pw_hash,
+        engine=create_db_engine(postgres_url, schema=pg_schema),
+        schema=pg_schema)
+    try:
+        yield user_mng
+    finally:
+        user_mng.close()
+
+
+USER_STORES = ["redis", "postgres"]
+"""The user manager backends every user manager test runs against."""
+
+
+@pytest.fixture(name="user_mng", params=USER_STORES)
+def fixture_user_mng(request: pytest.FixtureRequest) -> UserManager:
+    """
+    An empty user manager with an admin configured, once for each backend.
+
+    Returns:
+        UserManager: The user manager.
+    """
+    return request.getfixturevalue(f"{request.param}_user_mng")
+
+
 @pytest.fixture(name="sec_ctx")
-def fixture_sec_ctx(user_mng: RedisUserManager) -> SecureContext:
+def fixture_sec_ctx(user_mng: UserManager) -> SecureContext:
     """
     The permission layer the server uses, on top of `user_mng`.
 

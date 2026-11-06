@@ -17,18 +17,22 @@ import { URL_PREFIX } from '../misc/constants';
 import {
   ApiChangeCapability,
   ApiChatSessionsResponse,
+  ApiDeleteUserResponse,
   ApiLoginResponse,
   ApiPasswordResetTokenResponse,
+  ApiSendResetResponse,
   ApiUserCapability,
   ApiUserListResponse,
   ApiWorkerInfoResponse,
   ApiWorkerTokenResponse,
+  DeleteUserResult,
   DisplayName,
   LoginInfo,
   Password,
   ResetToken,
   SessionInfo,
   User,
+  UserCapabilities,
   UserEmail,
   UserInfo,
   WorkerInfo,
@@ -59,7 +63,10 @@ export type LoginApiProvider = {
     name: Readonly<UserEmail>,
     capability: ApiUserCapability,
     setActive: boolean,
-  ) => Promise<void>;
+  ) => Promise<UserCapabilities>;
+  sendReset: (name: Readonly<UserEmail>) => Promise<boolean>;
+  logoutUser: (name: Readonly<UserEmail>) => Promise<void>;
+  deleteUser: (name: Readonly<UserEmail>) => Promise<DeleteUserResult>;
   logout: () => Promise<Readonly<User> | Readonly<LoginInfo>>;
   getWorkerToken: () => Promise<Readonly<WorkerToken>>;
   listUsers: () => Promise<UserInfo[]>;
@@ -166,7 +173,52 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
       }),
     });
     checkResponse(res);
-    (await res.json()) as ApiChangeCapability; // TODO: maybe do something
+    const { capabilities } = (await res.json()) as ApiChangeCapability;
+    return toUserCapabilities(capabilities);
+  },
+  sendReset: async (name) => {
+    const res = await fetch(`${URL_PREFIX}/user/send_reset`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name,
+      }),
+    });
+    checkResponse(res);
+    const { sent } = (await res.json()) as ApiSendResetResponse;
+    return sent;
+  },
+  logoutUser: async (name) => {
+    const res = await fetch(`${URL_PREFIX}/user/logout`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name,
+      }),
+    });
+    checkResponse(res);
+    await res.json();
+  },
+  deleteUser: async (name) => {
+    const res = await fetch(`${URL_PREFIX}/user/delete`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name,
+      }),
+    });
+    checkResponse(res);
+    const { deleted, chats } = (await res.json()) as ApiDeleteUserResponse;
+    return { deleted, chats };
   },
   logout: async () => {
     const res = await fetch(`${URL_PREFIX}/user/logout`, {
@@ -206,10 +258,11 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     });
     checkResponse(res);
     const { users } = (await res.json()) as ApiUserListResponse;
-    return users.map(({ email, display_name, capabilities }) => ({
+    return users.map(({ email, display_name, capabilities, admin }) => ({
       email,
       displayName: display_name,
       capabilities: toUserCapabilities(capabilities),
+      isAdmin: admin,
     }));
   },
   listChats: async () => {

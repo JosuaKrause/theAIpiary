@@ -27,7 +27,7 @@ from scattermind.system.base import SessionId, TaskId, UserId
 from scattermind.system.io import open_readb, open_writeb, remove_file
 from scattermind.system.names import GNamespace, UName
 from scattermind.system.response import redis_to_response
-from scattermind.system.session.session import Session
+from scattermind.system.session.session import Session, SessionStore
 from scattermind.system.util import get_time_str, parse_time_str, to_bool
 
 from swai.auth import parse_authorization
@@ -39,9 +39,11 @@ from swai.server_response_types import (
     ChatPromptResponse,
     ChatRecoverResponse,
     ChatTextResponse,
+    DeleteUserResponse,
     HeartbeatResponse,
     LoginResponse,
     ResetTokenResponse,
+    SendResetResponse,
     TaskBidResponse,
     TaskFinishResponse,
     UserInfoResponse,
@@ -110,6 +112,24 @@ VersionDict = TypedDict('VersionDict', {
     "deploy_time": str,
     "start_time": str,
 })
+
+
+def remove_chat(session_store: SessionStore, session_id: SessionId) -> None:
+    """
+    Removes a chat session with its values and blobs.
+
+    Args:
+        session_store (SessionStore): The session store.
+        session_id (SessionId): The chat session.
+    """
+    # NOTE: scattermind's redis stores remove the values and the blobs of a
+    # session with one DEL each, which fails on a real redis if there is
+    # nothing to delete (e.g., a chat without values yet). a value and a
+    # blob make sure there is something
+    session_store.push_value(session_id, "deleted", "1")
+    with session_store.open_blob_write(session_id, "deleted") as fout:
+        fout.write(b"")
+    session_store.remove(session_id)
 
 
 def get_version_strs() -> VersionDict:
@@ -438,6 +458,7 @@ def setup(
                 "email": info["email"].get(),
                 "display_name": info["display_name"],
                 "capabilities": sorted(capabilities),
+                "admin": sec_ctx.is_admin(user),
             }
 
         return {
@@ -519,6 +540,8 @@ def setup(
             user_session, user_email, capability, has=set_has)
         return {
             "okay": True,
+            "capabilities": sorted(
+                sec_ctx.list_capabilities(user_session, user_email)),
         }
 
     @server.json_post(f"{prefix}/user/logout")
@@ -538,9 +561,47 @@ def setup(
             "message": "successfully logged out",
         }
 
-    # TODO:
-    # - add user mod (+reset +logout +email +delete)
-    # - edit capabilities
+    # NOTE: logging out another user is POST user/logout with a name and
+    # changing capabilities is PUT user/capability
+
+    @server.json_post(f"{prefix}/user/send_reset")
+    @server.middleware(verify_user_session)
+    def _post_user_send_reset(
+            _req: QSRH, rargs: ReqArgs) -> SendResetResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
+        args = rargs["post"]
+        user_email = UName(args["name"])
+        reset_token = sec_ctx.send_reset_token(user_session, user_email)
+        if reset_token is not None:
+            send_password_reset_email(user_email, reset_token)
+        return {
+            "email": user_email.get(),
+            "sent": reset_token is not None,
+        }
+
+    @server.json_post(f"{prefix}/user/delete")
+    @server.middleware(verify_user_session)
+    def _post_user_delete(
+            _req: QSRH, rargs: ReqArgs) -> DeleteUserResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
+        args = rargs["post"]
+        user_email = UName(args["name"])
+        deleted = sec_ctx.delete_user(user_session, user_email)
+        # NOTE: chats belong to the user id that is derived from the email.
+        # they are deleted with the account: nobody else can read them, and a
+        # new account with the same email would get them otherwise. the
+        # chats are removed even if the account is gone already so that a
+        # deletion that failed halfway can be repeated
+        user_id = sec_ctx.force_user_id(user_email)
+        chats = 0
+        for session in list(session_store.get_sessions(user_id)):
+            remove_chat(session_store, session.get_session_id())
+            chats += 1
+        return {
+            "email": user_email.get(),
+            "deleted": deleted,
+            "chats": chats,
+        }
 
     # *** worker API ***
 

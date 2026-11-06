@@ -24,6 +24,7 @@ import {
   ApiUserCapability,
   DisplayName,
   SessionInfo,
+  UserCapabilities,
   UserEmail,
   UserInfo,
   WorkerInfo,
@@ -39,6 +40,7 @@ import AutoHide from './AutoHide';
 import Discord from './Discord';
 import Logo from './Logo';
 import UserActions from './UserActions';
+import { setUser } from './UserStateSlice';
 
 const VMain = styled.div`
   min-width: 40vw;
@@ -359,6 +361,20 @@ const Row = styled.div`
   justify-content: space-between;
 `;
 
+const UserAdminRow = styled.div`
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 5px;
+  margin: 5px 0;
+`;
+
+const UserAdminMessage = styled.div`
+  text-align: right;
+  margin-bottom: 5px;
+`;
+
 const RowSpan = styled.span`
   vertical-align: middle;
 `;
@@ -395,6 +411,8 @@ type ProfileState = {
   workerToken: Readonly<WorkerToken> | null;
   inFlightUserCreation: boolean;
   selectedUser: Readonly<UserEmail> | null;
+  userMessage: string | null;
+  inFlightUserAction: boolean;
 };
 
 class Profile extends PureComponent<ProfileProps, ProfileState> {
@@ -414,6 +432,8 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
       workerToken: null,
       inFlightUserCreation: false,
       selectedUser: null,
+      userMessage: null,
+      inFlightUserAction: false,
     };
     this.createNameRef = React.createRef();
     this.createEmailRef = React.createRef();
@@ -433,6 +453,8 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
         workerToken: null,
         inFlightUserCreation: false,
         selectedUser: null,
+        userMessage: null,
+        inFlightUserAction: false,
       },
     );
   }
@@ -550,7 +572,24 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
   setSelectedUser = (email: Readonly<UserEmail> | null) => {
     this.setState({
       selectedUser: email,
+      userMessage: null,
     });
+  };
+
+  updateCapabilities = (
+    email: Readonly<UserEmail>,
+    capabilities: Readonly<UserCapabilities>,
+  ) => {
+    this.setState(({ users }) => ({
+      users: users.map((userEntry) =>
+        userEntry.email === email ? { ...userEntry, capabilities } : userEntry,
+      ),
+    }));
+    const { user, dispatch } = this.props;
+    if (user && user.email === email) {
+      // the own capabilities decide what the page shows
+      dispatch(setUser({ user: { ...user, capabilities } }));
+    }
   };
 
   setCapability = async (
@@ -560,12 +599,164 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
     onDone: () => void,
   ) => {
     const { userActions } = this.props;
-    await userActions.changeCapability(email, capability, setActive, () => {
-      this.setState({ initUsers: false }, () => {
-        onDone();
-      });
-    });
+    try {
+      await userActions.changeCapability(
+        email,
+        capability,
+        setActive,
+        (capabilities) => {
+          this.updateCapabilities(email, capabilities);
+        },
+      );
+    } catch (err) {
+      this.setState({ userMessage: `Could not change ${capability}: ${err}` });
+    }
+    onDone();
   };
+
+  runUserAction(
+    action: (email: Readonly<UserEmail>) => Promise<string>,
+    failure: string,
+  ) {
+    const { selectedUser: email, inFlightUserAction } = this.state;
+    if (!email || inFlightUserAction) {
+      return;
+    }
+    this.setState({ inFlightUserAction: true, userMessage: null }, () => {
+      action(email)
+        .then((userMessage) => {
+          this.setState({ userMessage });
+        })
+        .catch((err) => {
+          this.setState({ userMessage: `${failure}: ${err}` });
+        })
+        .finally(() => {
+          this.setState({ inFlightUserAction: false });
+        });
+    });
+  }
+
+  handleSendResetClick: MouseEventHandler<HTMLInputElement> = (e) => {
+    e.preventDefault();
+    const { userActions } = this.props;
+    this.runUserAction(
+      (email) =>
+        new Promise((resolve, reject) => {
+          userActions
+            .sendReset(email, (sent) => {
+              resolve(
+                sent
+                  ? `Sent a password reset email to ${email}.`
+                  : 'No email was sent: there was one less than a minute ' +
+                      'ago.',
+              );
+            })
+            .catch(reject);
+        }),
+      'Could not send a password reset',
+    );
+  };
+
+  handleLogoutUserClick: MouseEventHandler<HTMLInputElement> = (e) => {
+    e.preventDefault();
+    const { userActions } = this.props;
+    this.runUserAction(
+      (email) =>
+        new Promise((resolve, reject) => {
+          userActions
+            .logoutUser(email, () => {
+              resolve(`Logged out ${email} everywhere.`);
+            })
+            .catch(reject);
+        }),
+      'Could not log out the user',
+    );
+  };
+
+  handleDeleteUserClick: MouseEventHandler<HTMLInputElement> = (e) => {
+    e.preventDefault();
+    const { userActions } = this.props;
+    const { selectedUser } = this.state;
+    if (
+      !selectedUser ||
+      !window.confirm(
+        `Delete ${selectedUser}? This also deletes their chats and ` +
+          'disconnects their worker bees.',
+      )
+    ) {
+      return;
+    }
+    this.runUserAction(
+      (email) =>
+        new Promise((resolve, reject) => {
+          userActions
+            .deleteUser(email, ({ deleted, chats }) => {
+              this.setState(({ users }) => ({
+                users: users.filter((userEntry) => userEntry.email !== email),
+              }));
+              resolve(
+                deleted
+                  ? `Deleted ${email} and ${chats} chat(s).`
+                  : `${email} did not exist anymore.`,
+              );
+            })
+            .catch(reject);
+        }),
+      'Could not delete the user',
+    );
+  };
+
+  renderUserAdmin(userEntry: Readonly<UserInfo>) {
+    const { user } = this.props;
+    const { userMessage, inFlightUserAction } = this.state;
+    if (!user) {
+      return null;
+    }
+    const { email, isAdmin } = userEntry;
+    const isSelf = email === user.email;
+    const { createUser, logoutOtherUser, deleteUser } = user.capabilities;
+    const canReset = createUser && !isAdmin;
+    const canLogout = logoutOtherUser && !isSelf;
+    const canDelete = deleteUser && !isAdmin && !isSelf;
+    return (
+      <React.Fragment>
+        {canReset || canLogout || canDelete ? (
+          <UserAdminRow>
+            {canReset ? (
+              <Button
+                name="sendreset"
+                type="button"
+                value="Send Password Reset"
+                disabled={inFlightUserAction}
+                onClick={this.handleSendResetClick}
+              />
+            ) : null}
+            {canLogout ? (
+              <Button
+                name="logoutuser"
+                type="button"
+                value="Log Out Everywhere"
+                disabled={inFlightUserAction}
+                onClick={this.handleLogoutUserClick}
+              />
+            ) : null}
+            {canDelete ? (
+              <Button
+                name="deleteuser"
+                type="button"
+                value="Delete User"
+                disabled={inFlightUserAction}
+                onClick={this.handleDeleteUserClick}
+              />
+            ) : null}
+          </UserAdminRow>
+        ) : null}
+        {userMessage ? (
+          <UserAdminMessage>{userMessage}</UserAdminMessage>
+        ) : null}
+      </React.Fragment>
+    );
+  }
 
   render() {
     const { user, appName } = this.props;
@@ -628,9 +819,11 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
                         setSelectedUser={this.setSelectedUser}>
                         {displayName} (<AutoHide title="@">{email}</AutoHide>)
                       </ClickableUserRow>
+                      {isSelected ? this.renderUserAdmin(userEntry) : null}
                       {isSelected &&
                       user &&
-                      user.capabilities.changeCapabilities
+                      user.capabilities.changeCapabilities &&
+                      !userEntry.isAdmin
                         ? toCapabilityList(userEntry).map(
                             ({ name: capName, has: capHas }) => {
                               const capKey = `${rowKey}_${capName}`;

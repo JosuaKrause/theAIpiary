@@ -110,16 +110,49 @@ def create_config_and_err(config_path: str) -> None:
         "please correct values in file and run again")
 
 
+def select_user_store(config: Config) -> Config:
+    """
+    Applies the `USER_STORE` setting. It selects the user store without
+    changing the config file (which is part of the docker image): "postgres"
+    keeps the accounts in Postgres (connection from the PG* settings) and
+    "redis" or no value keeps the user store of the config file.
+
+    Args:
+        config (Config): The configuration.
+
+    Returns:
+        Config: The configuration with the selected user store.
+    """
+    user_store = envload_str("USER_STORE", default="").strip().lower()
+    if not user_store or user_store == config["user_mng"]["name"]:
+        return config
+    if user_store == "postgres":
+        return {
+            **config,
+            "user_mng": {
+                "name": "postgres",
+            },
+        }
+    raise ValueError(
+        f"USER_STORE={user_store} is not supported: use 'postgres' or set "
+        "the user store in the config file")
+
+
 def get_config() -> Config:
     global CONFIG  # pylint: disable=global-statement
 
     if CONFIG is not None:
         return CONFIG
+    CONFIG = select_user_store(load_config())
+    return CONFIG
+
+
+def load_config() -> Config:
     config_path = get_config_path()
     if config_path == "-":
         print("loading config from env")
         session_root = envload_path("SESSION_PATH")
-        CONFIG = {
+        return {
             "task_queue": {
                 "host": envload_str("REDIS_HOST"),
                 "passwd": envload_str("REDIS_PW"),
@@ -173,13 +206,11 @@ def get_config() -> Config:
                 },
             },
         }
-    else:
-        print(f"loading config file: {config_path}")
-        if not os.path.exists(config_path):
-            create_config_and_err(config_path)
-        with open_reads(config_path) as fin:
-            config = cast(Config, json.load(fin))
-            if not config:
-                create_config_and_err(config_path)
-            CONFIG = config
-    return CONFIG
+    print(f"loading config file: {config_path}")
+    if not os.path.exists(config_path):
+        create_config_and_err(config_path)
+    with open_reads(config_path) as fin:
+        config = cast(Config, json.load(fin))
+    if not config:
+        create_config_and_err(config_path)
+    return config

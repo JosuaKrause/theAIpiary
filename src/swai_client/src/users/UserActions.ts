@@ -16,12 +16,14 @@
 import { DEFAULT_LOGIN_API, LoginApiProvider } from '../api/login';
 import {
   ApiUserCapability,
+  DeleteUserResult,
   DisplayName,
   LoginInfo,
   Password,
   ResetToken,
   SessionInfo,
   User,
+  UserCapabilities,
   UserEmail,
   UserInfo,
   WorkerInfo,
@@ -82,10 +84,35 @@ export default class UserActions {
     email: Readonly<UserEmail>,
     capability: ApiUserCapability,
     setActive: boolean,
-    onDone: () => void,
+    onDone: (capabilities: UserCapabilities) => void,
   ) {
-    await this.api.changeCapability(email, capability, setActive);
+    const capabilities = await this.api.changeCapability(
+      email,
+      capability,
+      setActive,
+    );
+    onDone(capabilities);
+  }
+
+  async sendReset(
+    email: Readonly<UserEmail>,
+    onDone: (sent: boolean) => void,
+  ) {
+    const sent = await this.api.sendReset(email);
+    onDone(sent);
+  }
+
+  async logoutUser(email: Readonly<UserEmail>, onDone: () => void) {
+    await this.api.logoutUser(email);
     onDone();
+  }
+
+  async deleteUser(
+    email: Readonly<UserEmail>,
+    onDone: (result: DeleteUserResult) => void,
+  ) {
+    const result = await this.api.deleteUser(email);
+    onDone(result);
   }
 
   async logout(updateUser: UserCallback) {

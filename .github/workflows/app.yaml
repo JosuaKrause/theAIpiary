@@ -62,6 +62,19 @@ jobs:
         python: ['3.12', '3.15']
     env:
       ENV: CI
+    services:
+      # the tests of the Postgres user store; they fail on CI without it
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: swaitest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v7
@@ -143,7 +156,10 @@ jobs:
           make lint-pylint
 
       - name: Test Code (pytest)
-        # stores run on redipy's in-memory backend; no services are needed
+        # redis stores run on redipy's in-memory backend; the user manager
+        # tests also run against the postgres service
+        env:
+          TEST_POSTGRES_URL: postgresql+psycopg2://postgres:swaitest@localhost:5432/postgres
         run: |
           make pytest PYTHON=python
 

@@ -23,14 +23,15 @@ from scattermind.system.names import UName
 from swai.system.user import (
     CAP_CHANGE_CAPABILITIES,
     CAP_CREATE_USER,
+    CAP_DELETE_USER,
     CAP_LIST_USERS,
     CAP_LOGOUT_OTHER_USER,
     CAP_REGISTER_OTHER_WORKER,
     CAP_REGISTER_OWN_WORKER,
+    CAPABILITIES,
     CapabilityName,
 )
-from swai_server.system.user.manager import SessionToken
-from swai_server.system.user.redis import RedisUserManager
+from swai_server.system.user.manager import SessionToken, UserManager
 from swai_server.system.user.secure import SecureContext
 
 
@@ -40,7 +41,7 @@ NOT_A_SESSION = "not a session"
 
 
 def session_for(
-        user_mng: RedisUserManager,
+        user_mng: UserManager,
         email: UName,
         *capabilities: CapabilityName) -> SessionToken:
     """
@@ -49,7 +50,7 @@ def session_for(
     precedes a session is covered by the user manager tests.
 
     Args:
-        user_mng (RedisUserManager): The user manager.
+        user_mng (UserManager): The user manager.
         email (UName): The account.
         *capabilities (CapabilityName): The capabilities to grant.
 
@@ -82,7 +83,7 @@ def test_can_act_without_session(sec_ctx: SecureContext) -> None:
 
 
 def test_can_act_on_self(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     alice = session_for(user_mng, ALICE)
     assert sec_ctx.can_act(alice, email=ALICE) == "ok"
     sec_ctx.ensure_can_act(alice, email=ALICE)
@@ -99,7 +100,7 @@ def test_can_act_on_self(
 
 
 def test_can_act_on_others(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     alice = session_for(user_mng, ALICE)
     session_for(user_mng, BOB)
     # acting on someone else always needs an explicit admin capability
@@ -120,7 +121,7 @@ def test_can_act_on_others(
 
 
 def test_admin_can_act_on_anyone(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     admin = session_for(user_mng, ADMIN_EMAIL)
     session_for(user_mng, ALICE)
     assert sec_ctx.can_act(
@@ -138,7 +139,7 @@ def test_admin_can_act_on_anyone(
 
 
 def test_create_user_needs_capability(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     alice = session_for(user_mng, ALICE)
     assert_refused(403, lambda: sec_ctx.create_user(alice, BOB, "Bob"))
     assert_refused(
@@ -152,7 +153,7 @@ def test_create_user_needs_capability(
 
 
 def test_list_users_needs_capability(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     alice = session_for(user_mng, ALICE)
     session_for(user_mng, BOB)
     assert_refused(403, lambda: sec_ctx.list_users(alice))
@@ -162,7 +163,7 @@ def test_list_users_needs_capability(
 
 
 def test_active_users(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     admin = session_for(user_mng, ADMIN_EMAIL)
     bob = session_for(user_mng, BOB)
     session_for(user_mng, ALICE)
@@ -175,7 +176,7 @@ def test_active_users(
 
 
 def test_user_info_access(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     alice = session_for(user_mng, ALICE)
     session_for(user_mng, BOB)
     assert sec_ctx.get_user_info(alice, ALICE)["display_name"] == (
@@ -186,7 +187,7 @@ def test_user_info_access(
 
 
 def test_secure_email(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     alice = session_for(user_mng, ALICE)
     assert sec_ctx.secure_email(alice, ALICE) == ALICE
     assert sec_ctx.secure_email(alice, BOB) is None
@@ -196,7 +197,7 @@ def test_secure_email(
 
 
 def test_user_id_only_for_self(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     alice = session_for(user_mng, ALICE)
     admin = session_for(user_mng, ADMIN_EMAIL)
     assert sec_ctx.get_user_id(alice, ALICE) == user_mng.get_user_id(ALICE)
@@ -208,7 +209,7 @@ def test_user_id_only_for_self(
 
 
 def test_logout_self(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     first = session_for(user_mng, ALICE)
     second = user_mng.do_login(ALICE)
     assert second is not None
@@ -222,7 +223,7 @@ def test_logout_self(
 
 
 def test_logout_other_needs_capability(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     alice = session_for(user_mng, ALICE)
     bob = session_for(user_mng, BOB)
     assert_refused(403, lambda: sec_ctx.logout_user(alice, BOB))
@@ -234,7 +235,7 @@ def test_logout_other_needs_capability(
 
 
 def test_force_logout_user(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     """The server ends every session of an account once its password has
     been reset."""
     tokens = [session_for(user_mng, ALICE)]
@@ -253,7 +254,7 @@ def test_force_logout_user(
 
 
 def test_change_capabilities(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     alice = session_for(user_mng, ALICE)
     session_for(user_mng, BOB)
     assert_refused(403, lambda: sec_ctx.set_capability(
@@ -273,10 +274,25 @@ def test_change_capabilities(
     assert not sec_ctx.list_capabilities(alice, BOB)
 
 
+def test_admin_capabilities_cannot_change(
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
+    """The admin cannot be demoted, not even by the admin."""
+    admin = session_for(user_mng, ADMIN_EMAIL)
+    alice = session_for(user_mng, ALICE, CAP_CHANGE_CAPABILITIES)
+    for who in (admin, alice):
+
+        def demote(who: SessionToken = who) -> None:
+            sec_ctx.set_capability(
+                who, ADMIN_EMAIL, CAP_CHANGE_CAPABILITIES, has=False)
+
+        assert_refused(403, demote)
+    assert sec_ctx.list_capabilities(admin, ADMIN_EMAIL) == set(CAPABILITIES)
+
+
 @pytest.mark.parametrize("mode", ["read", "write"])
 def test_chat_access(
         sec_ctx: SecureContext,
-        user_mng: RedisUserManager,
+        user_mng: UserManager,
         mode: str) -> None:
     if mode == "read":
         can = sec_ctx.can_read_chat
@@ -304,7 +320,7 @@ def test_chat_access(
 
 
 def test_create_worker_token(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     alice = session_for(user_mng, ALICE)
     session_for(user_mng, BOB)
     assert_refused(403, lambda: sec_ctx.create_worker_token(alice, ALICE))
@@ -321,11 +337,78 @@ def test_create_worker_token(
     sec_ctx.ensure_worker_token(BOB, bob_token)
 
 
+# *** password reset on behalf of a user ***
+
+
+def test_send_reset_token_needs_capability(
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
+    alice = session_for(user_mng, ALICE)
+    session_for(user_mng, BOB)
+    assert_refused(403, lambda: sec_ctx.send_reset_token(alice, BOB))
+    assert_refused(401, lambda: sec_ctx.send_reset_token(NOT_A_SESSION, BOB))
+    user_mng.set_capability(ALICE, CAP_CREATE_USER, has=True)
+    reset_token = sec_ctx.send_reset_token(alice, BOB)
+    assert reset_token is not None
+    assert user_mng.get_email_for_reset_token(reset_token) == BOB
+    # the cooldown applies here as well, the admin gets no token, and there
+    # is no token for accounts that do not exist
+    assert sec_ctx.send_reset_token(alice, BOB) is None
+    assert sec_ctx.send_reset_token(alice, ADMIN_EMAIL) is None
+    assert sec_ctx.send_reset_token(
+        alice, UName("nobody@example.com")) is None
+
+
+def test_send_reset_token_for_self(
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
+    alice = session_for(user_mng, ALICE)
+    reset_token = sec_ctx.send_reset_token(alice, ALICE)
+    assert reset_token is not None
+    assert user_mng.get_email_for_reset_token(reset_token) == ALICE
+
+
+# *** deleting accounts ***
+
+
+def test_delete_user_needs_capability(
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
+    alice = session_for(user_mng, ALICE)
+    bob = session_for(user_mng, BOB)
+    assert_refused(403, lambda: sec_ctx.delete_user(alice, BOB))
+    assert_refused(401, lambda: sec_ctx.delete_user(NOT_A_SESSION, BOB))
+    # other capabilities to manage accounts are not enough
+    for cap in CAPABILITIES:
+        if cap != CAP_DELETE_USER:
+            user_mng.set_capability(ALICE, cap, has=True)
+    assert_refused(403, lambda: sec_ctx.delete_user(alice, BOB))
+    assert sec_ctx.get_email(bob) == BOB
+    user_mng.set_capability(ALICE, CAP_DELETE_USER, has=True)
+    assert sec_ctx.delete_user(alice, BOB)
+    assert sec_ctx.get_email(bob) is None
+    assert BOB not in set(user_mng.list_users())
+    assert not sec_ctx.delete_user(alice, BOB)
+
+
+def test_delete_user_spares_self_and_admin(
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
+    admin = session_for(user_mng, ADMIN_EMAIL)
+    alice = session_for(user_mng, ALICE, CAP_DELETE_USER)
+    # neither oneself (even with the capability) nor the admin
+    assert_refused(403, lambda: sec_ctx.delete_user(alice, ALICE))
+    assert_refused(403, lambda: sec_ctx.delete_user(alice, ADMIN_EMAIL))
+    assert_refused(403, lambda: sec_ctx.delete_user(admin, ADMIN_EMAIL))
+    assert sec_ctx.get_email(alice) == ALICE
+    assert sec_ctx.get_email(admin) == ADMIN_EMAIL
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE}
+    # the admin can delete anyone else
+    assert sec_ctx.delete_user(admin, ALICE)
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL}
+
+
 # *** invitations through the context ***
 
 
 def test_invite_through_context(
-        sec_ctx: SecureContext, user_mng: RedisUserManager) -> None:
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
     admin = session_for(user_mng, ADMIN_EMAIL)
     assert sec_ctx.create_user(admin, ALICE, "Alice")
     reset_token = sec_ctx.generate_reset_token(ALICE)

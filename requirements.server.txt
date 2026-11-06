@@ -1,6 +1,7 @@
 bcrypt~=5.0.0
 mypy>=2.4.1
 numpy==2.5.4
+psycopg2==2.9.13
 python-dotenv==1.2.4
 quick-server>=0.10.0
 redipy>=0.7.1

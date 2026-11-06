@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Utility functions for unit tests."""
+import contextlib
 import os
-from collections.abc import Iterable
-from typing import Any, TYPE_CHECKING, TypeVar
+from collections.abc import Iterable, Iterator
+from typing import Any, cast, TYPE_CHECKING, TypeVar
 
 import pytest
 from redipy import Redis, RedisConfig
@@ -100,6 +101,10 @@ ADMIN_EMAIL = UName("admin")
 """The admin account name (the name `make create-admin-pw` suggests)."""
 ADMIN_PW = "admin password"
 """The admin's raw password."""
+TEST_POSTGRES_URL = "TEST_POSTGRES_URL"
+"""The environment variable with the connection URL of the Postgres server
+for the tests of the Postgres user store. Every test uses a fresh schema
+that is dropped afterwards."""
 UNUSED_REDIS: RedisConfig = {
     "host": "localhost",
     "port": 1,
@@ -118,3 +123,52 @@ def memory_redis(*_args: Any, **_kwargs: Any) -> Redis:
         Redis: A new, empty in-memory redis.
     """
     return Redis("memory")
+
+
+class StrictDelete:
+    """
+    Wraps a redis or a redis pipeline so that `delete` without keys fails,
+    as it does on a real redis (`DEL` needs at least one key) but not on
+    redipy's memory runtime.
+    """
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def delete(self, *keys: str) -> Any:
+        """
+        Deletes the keys.
+
+        Args:
+            *keys (str): The keys.
+
+        Returns:
+            Any: The result of the inner delete.
+        """
+        if not keys:
+            raise ValueError("wrong number of arguments for 'del' command")
+        return self._inner.delete(*keys)
+
+    @contextlib.contextmanager
+    def pipeline(self) -> Iterator['StrictDelete']:
+        """
+        Starts a pipeline whose `delete` is strict as well.
+
+        Yields:
+            StrictDelete: The pipeline.
+        """
+        with self._inner.pipeline() as pipe:
+            yield StrictDelete(pipe)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+def strict_memory_redis(*_args: Any, **_kwargs: Any) -> Redis:
+    """
+    Like `memory_redis` but `delete` without keys fails like on a real
+    redis.
+
+    Returns:
+        Redis: A new, empty in-memory redis.
+    """
+    return cast(Redis, StrictDelete(Redis("memory")))

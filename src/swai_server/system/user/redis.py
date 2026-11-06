@@ -17,7 +17,6 @@ from typing import cast, TypeAlias, TypedDict
 
 from redipy import Redis, RedisConfig
 from redipy.script import ExecFunction, FnContext, RedisHash, RedisVar
-from scattermind.system.base import UserId
 from scattermind.system.names import UName
 from scattermind.system.util import get_short_hash, short_hash_size
 
@@ -42,10 +41,6 @@ UserInfoRedis = TypedDict('UserInfoRedis', {
 })
 
 
-PW_RESET_EXPIRE = 24.0 * 60.0 * 60.0  # 24h
-PW_RESET_COOLDOWN = 1.0 * 60.0  # 1min
-
-
 class RedisUserManager(UserManager):
     def __init__(
             self,
@@ -59,6 +54,7 @@ class RedisUserManager(UserManager):
             None if admin_email is None else self._userhash(admin_email))
         self._create_user = self._create_user_script()
         self._generate_reset_token = self._generate_reset_token_script()
+        self._delete_user = self._delete_user_script()
 
     def _create_user_script(self) -> ExecFunction:
         ctx = FnContext()
@@ -96,6 +92,22 @@ class RedisUserManager(UserManager):
         ctx.set_return_value(res)
         return self._redis.register_script(ctx)
 
+    def _delete_user_script(self) -> ExecFunction:
+        ctx = FnContext()
+        info = RedisHash(ctx.add_key("info"))
+        perm = RedisVar(ctx.add_key("perm"))
+        sess = RedisVar(ctx.add_key("sess"))
+        cooldown = RedisVar(ctx.add_key("cooldown"))
+        worker = RedisVar(ctx.add_key("worker"))
+        res = ctx.add_local(info.exists())
+        ctx.add(info.delete())
+        ctx.add(perm.delete())
+        ctx.add(sess.delete())
+        ctx.add(cooldown.delete())
+        ctx.add(worker.delete())
+        ctx.set_return_value(res)
+        return self._redis.register_script(ctx)
+
     @staticmethod
     def _userhash(email: UName) -> UserHash:
         return get_short_hash(email.get())
@@ -125,15 +137,15 @@ class RedisUserManager(UserManager):
         return f"sess:{userhash}"
 
     @classmethod
-    def _key_pw_reset(cls, reset_token: ResetToken) -> str:
-        return f"reset:{reset_token}"
+    def _key_pw_reset(cls, reset_token: ResetToken | None) -> str:
+        return f"reset:{'' if reset_token is None else reset_token}"
 
     @classmethod
     def _key_pw_cooldown(cls, email: UName) -> str:
         return f"cooldown:{cls._userhash(email)}"
 
-    @staticmethod
-    def _key_worker(user_id: UserId) -> str:
+    def _key_worker(self, email: UName) -> str:
+        user_id = self.get_user_id(email)
         return f"worker:{user_id.to_parseable()}"
 
     @classmethod
@@ -187,6 +199,29 @@ class RedisUserManager(UserManager):
             })
         return bool(res)
 
+    def do_delete_user(self, email: UName) -> bool:
+        # NOTE: removing the account first means that no new reset token can
+        # be issued for it (issuing one checks for the account in the same
+        # script) while the remaining tokens are looked for below
+        res = self._delete_user(
+            keys={
+                "info": self._key_user_info(email),
+                "perm": self._key_user_perm(email),
+                "sess": self._key_user_session(email),
+                "cooldown": self._key_pw_cooldown(email),
+                "worker": self._key_worker(email),
+            },
+            args={})
+        # NOTE: reset tokens are only found by token. there are few of them
+        # (they expire after a day) so going through all of them is cheap.
+        # a token must not outlive its account: it would be good for a new
+        # account with the same email
+        pat = f"{self._key_pw_reset(None)}*"
+        for key in list(self._redis.keys(match=pat, block=False)):
+            if self._redis.get_value(key) == email.get():
+                self._redis.delete(key)
+        return bool(res)
+
     def do_generate_reset_token(self, email: UName) -> ResetToken | None:
         reset_token: ResetToken = uuid.uuid4().hex
         # NOTE: one script call whether or not the account exists: no token
@@ -200,8 +235,8 @@ class RedisUserManager(UserManager):
             args={
                 "email": email.get(),
                 "reset_token": reset_token,
-                "expire_ms": int(PW_RESET_EXPIRE * 1000.0),
-                "cooldown_ms": int(PW_RESET_COOLDOWN * 1000.0),
+                "expire_ms": int(self.reset_expire() * 1000.0),
+                "cooldown_ms": int(self.reset_cooldown() * 1000.0),
             })
         if not res:
             return None
@@ -295,8 +330,8 @@ class RedisUserManager(UserManager):
             yield UName(name)
 
     def store_worker_token(
-            self, user_id: UserId, worker_token: WorkerToken) -> None:
-        self._redis.set_value(self._key_worker(user_id), worker_token)
+            self, email: UName, worker_token: WorkerToken) -> None:
+        self._redis.set_value(self._key_worker(email), worker_token)
 
-    def get_worker_token(self, user_id: UserId) -> WorkerToken | None:
-        return self._redis.get_value(self._key_worker(user_id))
+    def get_worker_token(self, email: UName) -> WorkerToken | None:
+        return self._redis.get_value(self._key_worker(email))

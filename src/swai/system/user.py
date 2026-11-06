@@ -21,6 +21,7 @@ CapabilityName = Literal[
     "change_capabilities",
     "logout_other_user",
     "create_user",
+    "delete_user",
     "list_users",
     "register_own_worker",
     "register_other_worker",
@@ -29,6 +30,7 @@ CAPABILITIES: tuple[CapabilityName] = get_args(CapabilityName)
 CAP_CHANGE_CAPABILITIES: CapabilityName = "change_capabilities"
 CAP_LOGOUT_OTHER_USER: CapabilityName = "logout_other_user"
 CAP_CREATE_USER: CapabilityName = "create_user"
+CAP_DELETE_USER: CapabilityName = "delete_user"
 CAP_LIST_USERS: CapabilityName = "list_users"
 CAP_REGISTER_OWN_WORKER: CapabilityName = "register_own_worker"
 CAP_REGISTER_OTHER_WORKER: CapabilityName = "register_other_worker"
