@@ -1,9 +1,9 @@
-bcrypt~=4.1.0
-mypy>=1.10.0
-numpy==1.26.4
+bcrypt~=5.0.0
+mypy>=2.4.1
+numpy==2.5.4
 python-dotenv==1.2.4
 quick-server>=0.10.0
 redipy>=0.7.1
 requests==2.34.2
-scattermind>=0.5.0
+scattermind>=0.5.1
 torch==2.14.1

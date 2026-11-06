@@ -12,13 +12,16 @@
         "machine learning",
     ]
     license = {file = "LICENSE"}
-    requires-python = ">=3.11"
+    requires-python = ">=3.12"
     classifiers = [
         "Development Status :: 4 - Beta",
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
+        "Programming Language :: Python :: 3.15",
     ]
     dynamic = ["dependencies", "optional-dependencies"]
 
@@ -187,9 +190,6 @@
     disallow_untyped_defs = true
     mypy_path = [
         "src/",
-    ]
-    plugins = [
-        "numpy.typing.mypy_plugin",
     ]
     warn_no_return = true
     warn_unused_ignores = true

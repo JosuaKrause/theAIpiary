@@ -87,9 +87,10 @@ lint-pycodestyle-debug:
 	./sh/findpy.sh \
 	| sort | xargs pycodestyle -v --show-source
 
+# NOTE: single process; dill (used by pylint's -j N) fails on python 3.15
 lint-pylint:
 	./sh/findpy.sh | sort
-	./sh/findpy.sh | sort | xargs pylint -j 6 -v
+	./sh/findpy.sh | sort | xargs pylint -j 1 -v
 
 lint-type-check:
 	$(PYTHON) -m mypy .
