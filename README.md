@@ -141,7 +141,7 @@ The Python checks are the Makefile targets that CI runs:
 
 ```
 make lint-all lint-x-imports PYTHON=python
-python -m pytest test
+make pytest PYTHON=python
 ```
 
 `make lint-type-check` (part of `lint-all`) reports the `llama_cpp` module as
@@ -226,10 +226,12 @@ to this repository's issues, and the footer of the welcome page
 
 ## Project status
 
-Experimental. The deployment this was written for is offline, the community it
-served was invite-only, and the test suite is a placeholder: the checks are
-linters, type checks and a client build, not tests of the server or the queue.
-Expect rough edges, and read the code before relying on it.
+Experimental. The deployment this was written for is offline and the community
+it served was invite-only. The pytest suite covers the auction queue, user
+management and permission checks without needing Redis or Postgres; the HTTP
+endpoints, the provider and the scattermind graphs are not tested. Known bugs
+are recorded as `xfail` tests and as GitHub issues. Expect rough edges, and read
+the code before relying on it.
 
 ## Models
 
