@@ -132,6 +132,11 @@ jobs:
         run: |
           make lint-pylint
 
+      - name: Test Code (pytest)
+        # stores run on redipy's in-memory backend; no services are needed
+        run: |
+          make pytest PYTHON=python
+
   build_pipeline:
     name: Build
     needs: [lints_pipeline, ts_pipeline]
