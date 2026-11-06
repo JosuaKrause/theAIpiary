@@ -106,7 +106,8 @@ class Api:
             with urllib.request.urlopen(req, timeout=SOME_TIME) as res:
                 return res.status, json.loads(res.read())
         except urllib.error.HTTPError as err:
-            return err.code, err.read().decode("utf-8")
+            with err:  # NOTE: closing it avoids a ResourceWarning on 3.15
+                return err.code, err.read().decode("utf-8")
 
 
 @pytest.fixture(name="api")
