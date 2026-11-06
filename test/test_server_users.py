@@ -11,30 +11,51 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for the unauthenticated password reset endpoints of the API server,
-run against the real request handlers on in-memory stores."""
+"""Tests for the user endpoints of the API server, run against the real
+request handlers on in-memory stores, once with each user manager."""
 import json
+import os
 import threading
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from test.util import ADMIN_EMAIL, memory_redis
+from test.util import ADMIN_EMAIL, memory_redis, UNUSED_REDIS
 from typing import Any, cast
 
 import pytest
 from quick_server import create_server
 from scattermind.system.names import UName
+from scattermind.system.session import blob_disk as blob_disk_module
+from scattermind.system.session import kv_redis as kv_redis_module
+from scattermind.system.session import user_redis as session_user_module
+from scattermind.system.session.loader import load_session_store
+from scattermind.system.session.session import SessionStore
 
+from swai.auth import get_authorization
+from swai.system.user import (
+    CAP_CHANGE_CAPABILITIES,
+    CAP_CREATE_USER,
+    CAP_DELETE_USER,
+    CAP_LIST_USERS,
+    CAP_LOGOUT_OTHER_USER,
+    CAP_REGISTER_OWN_WORKER,
+    CAPABILITIES,
+    CapabilityName,
+)
 from swai_server import config as config_module
 from swai_server.app import server as server_module
 from swai_server.auction import queue as queue_module
-from swai_server.system.user import redis as user_redis_module
-from swai_server.system.user.loader import load_user_manager
-from swai_server.system.user.manager import ResetToken, UserInfo, UserManager
+from swai_server.system.user.manager import (
+    ResetToken,
+    SessionToken,
+    UserInfo,
+    UserManager,
+)
 
 
 ALICE = UName("alice@example.com")
+BOB = UName("bob@example.com")
 NOBODY = UName("nobody@example.com")
 SOME_TIME = 5.0
 
@@ -44,26 +65,44 @@ class Api:
     """A running API server and what it did behind the scenes."""
     url: str
     user_mng: UserManager
+    session_store: SessionStore
     sent: list[tuple[UName, ResetToken]] = field(default_factory=list)
     email_sent: threading.Event = field(default_factory=threading.Event)
     smtp_release: threading.Event = field(default_factory=threading.Event)
 
-    def post(self, path: str, body: dict[str, Any]) -> tuple[int, Any]:
+    def post(
+            self,
+            path: str,
+            body: dict[str, Any],
+            *,
+            session: SessionToken | None = None,
+            method: str = "POST",
+            headers: dict[str, str] | None = None) -> tuple[int, Any]:
         """
-        Sends a JSON POST request to the API.
+        Sends a JSON request to the API.
 
         Args:
             path (str): The path below the API prefix.
             body (dict[str, Any]): The JSON body.
+            session (SessionToken | None, optional): The session cookie to
+                send. Defaults to None.
+            method (str, optional): The HTTP method. Defaults to "POST".
+            headers (dict[str, str] | None, optional): Additional headers.
+                Defaults to None.
 
         Returns:
             tuple[int, Any]: The status code and the parsed JSON response.
         """
+        all_headers = {"Content-Type": "application/json"}
+        if session is not None:
+            all_headers["Cookie"] = f"user_session={session}"
+        if headers is not None:
+            all_headers.update(headers)
         req = urllib.request.Request(
             f"{self.url}{path}",
             data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST")
+            headers=all_headers,
+            method=method)
         try:
             with urllib.request.urlopen(req, timeout=SOME_TIME) as res:
                 return res.status, json.loads(res.read())
@@ -71,25 +110,52 @@ class Api:
             return err.code, err.read().decode("utf-8")
 
 
+@pytest.fixture(name="session_store")
+def fixture_session_store(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Any) -> SessionStore:
+    """
+    A session store (where chats are kept) on in-memory redis and a
+    temporary folder.
+
+    Returns:
+        SessionStore: The session store.
+    """
+    for module in (blob_disk_module, kv_redis_module, session_user_module):
+        monkeypatch.setattr(module, "Redis", memory_redis)
+    return load_session_store({
+        "user": {"name": "redis", "cfg": UNUSED_REDIS},
+        "key_value": {"name": "redis", "cfg": UNUSED_REDIS},
+        "blob": {
+            "name": "disk",
+            "cfg": UNUSED_REDIS,
+            "disk_path": os.path.join(tmp_path, "disk"),
+        },
+        "cache_path": os.path.join(tmp_path, "cache"),
+        "is_shared": False,
+    })
+
+
 @pytest.fixture(name="api")
 def fixture_api(
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Any,
-        admin_pw_hash: str) -> Iterator[Api]:
+        admin_pw_hash: str,
+        user_mng: UserManager,
+        session_store: SessionStore) -> Iterator[Api]:
     """
-    The API server on in-memory redis stores, with email sending replaced by
-    a recorder. The recorder only returns once `smtp_release` is set, the
-    way a slow SMTP server would.
+    The API server on in-memory stores (and the user manager under test),
+    with email sending replaced by a recorder. The recorder only returns
+    once `smtp_release` is set, the way a slow SMTP server would.
 
     Yields:
         Api: The running server.
     """
-    monkeypatch.setattr(user_redis_module, "Redis", memory_redis)
     monkeypatch.setattr(queue_module, "Redis", memory_redis)
     monkeypatch.setattr(
         server_module, "get_config", config_module.config_template)
-    # NOTE: the session store is only used by the chat and worker endpoints
-    monkeypatch.setattr(server_module, "create_session_store", lambda _: None)
+    monkeypatch.setattr(
+        server_module, "create_session_store", lambda _: session_store)
     monkeypatch.setattr(
         server_module, "setup_public_files", lambda *_a, **_kw: None)
     monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL.get())
@@ -98,14 +164,9 @@ def fixture_api(
     for env in ("SMTP_HOST", "SMTP_USER", "SMTP_PW", "OWN_EMAIL"):
         monkeypatch.delenv(env, raising=False)
 
-    managers: list[UserManager] = []
-
-    def load_and_keep(*args: Any, **kwargs: Any) -> UserManager:
-        user_mng = load_user_manager(*args, **kwargs)
-        managers.append(user_mng)
-        return user_mng
-
-    monkeypatch.setattr(server_module, "load_user_manager", load_and_keep)
+    # NOTE: the user manager fixture has the same admin as the environment
+    monkeypatch.setattr(
+        server_module, "load_user_manager", lambda *_a, **_kw: user_mng)
 
     server = create_server(
         ("127.0.0.1", 0),
@@ -129,7 +190,10 @@ def fixture_api(
             }))
         server.timeout = 0.05
         port = server.server_address[1]
-        api = Api(url=f"http://127.0.0.1:{port}{prefix}", user_mng=managers[0])
+        api = Api(
+            url=f"http://127.0.0.1:{port}{prefix}",
+            user_mng=user_mng,
+            session_store=session_store)
 
         def send_password_reset(
                 _config: Any,
@@ -217,3 +281,277 @@ def test_reset_password_with_unknown_token(api: Api) -> None:
         {"reset_token": "0" * 32, "password": "pw"})
     assert status == 200
     assert not res["logged"]
+
+
+# *** admin endpoints ***
+
+
+def session_for(
+        api: Api, email: UName, *capabilities: CapabilityName) -> SessionToken:
+    """
+    Creates the account (unless it is the admin), grants it the given
+    capabilities, and starts a session for it.
+
+    Args:
+        api (Api): The server.
+        email (UName): The account.
+        *capabilities (CapabilityName): The capabilities to grant.
+
+    Returns:
+        SessionToken: A session of the account.
+    """
+    user_mng = api.user_mng
+    if email != ADMIN_EMAIL:
+        assert user_mng.create_user(email, f"display {email.get()}")
+    for cap in capabilities:
+        user_mng.set_capability(email, cap, has=True)
+    token = user_mng.do_login(email)
+    assert token is not None
+    return token
+
+
+def is_logged_in(api: Api, session: SessionToken) -> bool:
+    """
+    Asks the server whether a session is logged in.
+
+    Args:
+        api (Api): The server.
+        session (SessionToken): The session.
+
+    Returns:
+        bool: Whether the session is logged in.
+    """
+    status, res = api.post("/user/current", {}, session=session)
+    assert status == 200
+    return res["logged"]
+
+
+def test_admin_endpoints_need_login(api: Api) -> None:
+    session_for(api, BOB)
+    requests: list[tuple[str, str, dict[str, Any]]] = [
+        ("/user/send_reset", "POST", {"name": BOB.get()}),
+        ("/user/delete", "POST", {"name": BOB.get()}),
+        ("/user/logout", "POST", {"name": BOB.get()}),
+        ("/user/list", "POST", {}),
+        (
+            "/user/capability",
+            "PUT",
+            {
+                "name": BOB.get(),
+                "capability": CAP_CREATE_USER,
+                "set_has": True,
+            },
+        ),
+    ]
+    for path, method, body in requests:
+        status, _ = api.post(path, body, method=method)
+        assert status == 401, path
+        status, _ = api.post(
+            path, body, method=method, session="not a session")
+        assert status == 401, path
+    assert BOB in set(api.user_mng.list_users())
+
+
+def test_send_reset_endpoint(api: Api) -> None:
+    alice = session_for(api, ALICE)
+    session_for(api, BOB)
+    api.smtp_release.set()
+    # sending a reset to someone else needs the capability to create users
+    status, _ = api.post(
+        "/user/send_reset", {"name": BOB.get()}, session=alice)
+    assert status == 403
+    assert not api.sent
+    admin = session_for(api, ADMIN_EMAIL)
+    assert api.post(
+        "/user/send_reset", {"name": BOB.get()}, session=admin,
+    ) == (200, {"email": BOB.get(), "sent": True})
+    assert api.sent[-1][0] == BOB
+    reset_token = api.sent[-1][1]
+    # the admin learns about the cooldown, unknown accounts, and the admin
+    for email in (BOB, NOBODY, ADMIN_EMAIL):
+        assert api.post(
+            "/user/send_reset", {"name": email.get()}, session=admin,
+        ) == (200, {"email": email.get(), "sent": False})
+    assert [email for email, _ in api.sent] == [BOB]
+    status, res = api.post(
+        "/user/reset_password",
+        {"reset_token": reset_token, "password": "bob pw"})
+    assert status == 200
+    assert res["logged"]
+    assert api.user_mng.login(BOB, "bob pw") is not None
+    # with the capability (a user that is not the admin)
+    api.user_mng.set_capability(ALICE, CAP_CREATE_USER, has=True)
+    assert api.post(
+        "/user/send_reset", {"name": BOB.get()}, session=alice,
+    ) == (200, {"email": BOB.get(), "sent": True})
+
+
+def test_logout_other_user_endpoint(api: Api) -> None:
+    alice = session_for(api, ALICE)
+    bob = session_for(api, BOB)
+    bob_other = api.user_mng.do_login(BOB)
+    assert bob_other is not None
+    status, _ = api.post("/user/logout", {"name": BOB.get()}, session=alice)
+    assert status == 403
+    assert is_logged_in(api, bob)
+    admin = session_for(api, ADMIN_EMAIL)
+    status, res = api.post(
+        "/user/logout", {"name": BOB.get()}, session=admin)
+    assert status == 200
+    assert not res["logged"]
+    assert not is_logged_in(api, bob)
+    assert not is_logged_in(api, bob_other)
+    # the admin stays logged in, and so does everybody else
+    assert is_logged_in(api, admin)
+    assert is_logged_in(api, alice)
+    # with the capability (a user that is not the admin)
+    bob_again = api.user_mng.do_login(BOB)
+    assert bob_again is not None
+    api.user_mng.set_capability(ALICE, CAP_LOGOUT_OTHER_USER, has=True)
+    status, _ = api.post("/user/logout", {"name": BOB.get()}, session=alice)
+    assert status == 200
+    assert not is_logged_in(api, bob_again)
+
+
+def test_delete_user_endpoint(api: Api) -> None:
+    """Deleting an account ends its sessions, disconnects its workers, and
+    removes its chats; other accounts keep theirs."""
+    user_mng = api.user_mng
+    session_store = api.session_store
+    alice = session_for(api, ALICE, CAP_REGISTER_OWN_WORKER)
+    bob = session_for(api, BOB)
+    worker_token = user_mng.create_worker_token(ALICE)
+    worker_auth = {"Authorization": get_authorization(ALICE, worker_token)}
+    heartbeat = {"worker_name": "hive", "status": "idle"}
+    assert api.post(
+        "/task/heartbeat", heartbeat, headers=worker_auth)[0] == 200
+    alice_chats = [
+        session_store.create_new_session(
+            user_mng.get_user_id(ALICE), copy_from=None).get_session_id()
+        for _ in range(2)
+    ]
+    bob_chat = session_store.create_new_session(
+        user_mng.get_user_id(BOB), copy_from=None).get_session_id()
+
+    # without the capability
+    status, _ = api.post("/user/delete", {"name": ALICE.get()}, session=bob)
+    assert status == 403
+    assert is_logged_in(api, alice)
+
+    admin = session_for(api, ADMIN_EMAIL)
+    assert api.post(
+        "/user/delete", {"name": ALICE.get()}, session=admin,
+    ) == (200, {"email": ALICE.get(), "deleted": True, "chats": 2})
+    assert ALICE not in set(user_mng.list_users())
+    assert not is_logged_in(api, alice)
+    assert api.post(
+        "/task/heartbeat", heartbeat, headers=worker_auth)[0] == 401
+    assert not list(session_store.get_sessions(user_mng.get_user_id(ALICE)))
+    for chat in alice_chats:
+        assert session_store.get_user(chat) is None
+    assert session_store.get_user(bob_chat) == user_mng.get_user_id(BOB)
+    assert is_logged_in(api, bob)
+    # again: nothing left to delete
+    assert api.post(
+        "/user/delete", {"name": ALICE.get()}, session=admin,
+    ) == (200, {"email": ALICE.get(), "deleted": False, "chats": 0})
+
+
+def test_delete_user_endpoint_spares_self_and_admin(api: Api) -> None:
+    alice = session_for(api, ALICE, CAP_DELETE_USER)
+    admin = session_for(api, ADMIN_EMAIL)
+    for who, email in [
+            (alice, ALICE),
+            (alice, ADMIN_EMAIL),
+            (admin, ADMIN_EMAIL),
+            ]:
+        status, _ = api.post(
+            "/user/delete", {"name": email.get()}, session=who)
+        assert status == 403
+    assert is_logged_in(api, alice)
+    assert is_logged_in(api, admin)
+    session_for(api, BOB)
+    # with the capability (a user that is not the admin)
+    assert api.post(
+        "/user/delete", {"name": BOB.get()}, session=alice,
+    ) == (200, {"email": BOB.get(), "deleted": True, "chats": 0})
+
+
+def change_capability(
+        api: Api,
+        session: SessionToken,
+        email: UName,
+        capability: CapabilityName,
+        set_has: bool) -> tuple[int, Any]:
+    """
+    Changes a capability through the API.
+
+    Args:
+        api (Api): The server.
+        session (SessionToken): The session of the acting user.
+        email (UName): The account to change.
+        capability (CapabilityName): The capability.
+        set_has (bool): Whether to grant or to revoke it.
+
+    Returns:
+        tuple[int, Any]: The status code and the response.
+    """
+    return api.post(
+        "/user/capability",
+        {"name": email.get(), "capability": capability, "set_has": set_has},
+        session=session,
+        method="PUT")
+
+
+def test_capability_endpoint(api: Api) -> None:
+    alice = session_for(api, ALICE)
+    session_for(api, BOB)
+    assert change_capability(api, alice, BOB, CAP_CREATE_USER, True)[0] == 403
+    assert not api.user_mng.list_capabilities(BOB)
+    admin = session_for(api, ADMIN_EMAIL)
+    assert change_capability(api, admin, BOB, CAP_CREATE_USER, True) == (
+        200, {"okay": True, "capabilities": [CAP_CREATE_USER]})
+    assert change_capability(api, admin, BOB, CAP_LIST_USERS, True) == (
+        200, {"okay": True, "capabilities": [CAP_CREATE_USER, CAP_LIST_USERS]})
+    assert change_capability(api, admin, BOB, CAP_CREATE_USER, False) == (
+        200, {"okay": True, "capabilities": [CAP_LIST_USERS]})
+    assert api.user_mng.list_capabilities(BOB) == {CAP_LIST_USERS}
+    # with the capability (a user that is not the admin)
+    api.user_mng.set_capability(ALICE, CAP_CHANGE_CAPABILITIES, has=True)
+    assert change_capability(api, alice, BOB, CAP_LIST_USERS, False) == (
+        200, {"okay": True, "capabilities": []})
+
+
+def test_admin_capabilities_cannot_change_endpoint(api: Api) -> None:
+    admin = session_for(api, ADMIN_EMAIL)
+    alice = session_for(api, ALICE, CAP_CHANGE_CAPABILITIES)
+    for who in (admin, alice):
+        status, _ = change_capability(
+            api, who, ADMIN_EMAIL, CAP_CHANGE_CAPABILITIES, False)
+        assert status == 403
+    assert api.user_mng.list_capabilities(ADMIN_EMAIL) == set(CAPABILITIES)
+
+
+def test_user_list_marks_admin(api: Api) -> None:
+    alice = session_for(api, ALICE)
+    status, _ = api.post("/user/list", {}, session=alice)
+    assert status == 403
+    admin = session_for(api, ADMIN_EMAIL)
+    status, res = api.post("/user/list", {}, session=admin)
+    assert status == 200
+    assert res == {
+        "users": [
+            {
+                "email": ADMIN_EMAIL.get(),
+                "display_name": "admin",
+                "capabilities": sorted(CAPABILITIES),
+                "admin": True,
+            },
+            {
+                "email": ALICE.get(),
+                "display_name": f"display {ALICE.get()}",
+                "capabilities": [],
+                "admin": False,
+            },
+        ],
+    }

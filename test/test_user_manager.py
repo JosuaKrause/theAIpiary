@@ -27,6 +27,7 @@ from scattermind.system.names import UName
 from scattermind.system.util import get_short_hash
 
 from swai.system.user import CAP_CREATE_USER, CAP_LIST_USERS, CAPABILITIES
+from swai_server.system.user import manager as user_manager_module
 from swai_server.system.user import redis as user_redis_module
 from swai_server.system.user.loader import load_user_manager, UserManagerModule
 from swai_server.system.user.manager import (
@@ -34,6 +35,7 @@ from swai_server.system.user.manager import (
     check_password,
     hash_password,
     INVALID_WORKER_TOKEN,
+    UserManager,
 )
 from swai_server.system.user.redis import RedisUserManager
 
@@ -43,13 +45,13 @@ BOB = UName("bob@example.com")
 SOME_TIME = 5.0
 
 
-def invite(user_mng: RedisUserManager, email: UName, password: str) -> None:
+def invite(user_mng: UserManager, email: UName, password: str) -> None:
     """
     Creates an account and sets its password through the reset token that
     the invitation email carries.
 
     Args:
-        user_mng (RedisUserManager): The user manager.
+        user_mng (UserManager): The user manager.
         email (UName): The new account.
         password (str): The password the new user picks.
     """
@@ -103,7 +105,7 @@ def test_as_capability() -> None:
 # *** accounts ***
 
 
-def test_create_user(user_mng: RedisUserManager) -> None:
+def test_create_user(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     assert user_mng.get_user_info(ALICE) == {
         "email": ALICE,
@@ -112,14 +114,14 @@ def test_create_user(user_mng: RedisUserManager) -> None:
     }
 
 
-def test_create_user_twice(user_mng: RedisUserManager) -> None:
+def test_create_user_twice(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     assert not user_mng.create_user(ALICE, "Mallory")
     assert user_mng.get_user_info(ALICE)["display_name"] == "Alice"
 
 
 def test_create_user_rejects_admin_and_empty_name(
-        user_mng: RedisUserManager) -> None:
+        user_mng: UserManager) -> None:
     assert not user_mng.create_user(ADMIN_EMAIL, "Mallory")
     assert not user_mng.create_user(ALICE, "")
     assert set(user_mng.list_users()) == {ADMIN_EMAIL}
@@ -179,7 +181,7 @@ class PausingRedis:
         return self._wrap(attr)
 
 
-def test_concurrent_create_user(
+def test_concurrent_create_user_redis(
         monkeypatch: pytest.MonkeyPatch, admin_pw_hash: str) -> None:
     """Two registrations for the same email at the same time: exactly one
     succeeds and its info is kept, no matter where the other one gets in."""
@@ -207,7 +209,7 @@ def test_concurrent_create_user(
     assert list(user_mng.list_users()) == [ADMIN_EMAIL, ALICE]
 
 
-def test_list_users(user_mng: RedisUserManager) -> None:
+def test_list_users(user_mng: UserManager) -> None:
     assert list(user_mng.list_users()) == [ADMIN_EMAIL]
     user_mng.create_user(ALICE, "Alice")
     user_mng.create_user(BOB, "Bob")
@@ -219,7 +221,7 @@ def test_list_users(user_mng: RedisUserManager) -> None:
     ]
 
 
-def test_user_id(user_mng: RedisUserManager) -> None:
+def test_user_id(user_mng: UserManager) -> None:
     assert user_mng.get_user_id(ALICE) == UserId.create(ALICE)
     assert user_mng.get_user_id(ALICE) == user_mng.get_user_id(ALICE)
     assert user_mng.get_user_id(ALICE) != user_mng.get_user_id(BOB)
@@ -229,13 +231,13 @@ def test_user_id(user_mng: RedisUserManager) -> None:
 
 
 def test_new_user_cannot_log_in_before_setting_password(
-        user_mng: RedisUserManager) -> None:
+        user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     assert user_mng.login(ALICE, "") is None
     assert user_mng.login(ALICE, "guess") is None
 
 
-def test_invite_then_login(user_mng: RedisUserManager) -> None:
+def test_invite_then_login(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     reset_token = user_mng.generate_reset_token(ALICE)
     assert reset_token is not None
@@ -247,7 +249,7 @@ def test_invite_then_login(user_mng: RedisUserManager) -> None:
     assert user_mng.login(ALICE, "wrong pw") is None
 
 
-def test_reset_token_is_single_use(user_mng: RedisUserManager) -> None:
+def test_reset_token_is_single_use(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     reset_token = user_mng.generate_reset_token(ALICE)
     assert reset_token is not None
@@ -256,7 +258,7 @@ def test_reset_token_is_single_use(user_mng: RedisUserManager) -> None:
     assert user_mng.set_password("second", reset_token) is None
 
 
-def test_reset_token_cooldown(user_mng: RedisUserManager) -> None:
+def test_reset_token_cooldown(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     first = user_mng.generate_reset_token(ALICE)
     assert first is not None
@@ -271,9 +273,9 @@ def test_reset_token_cooldown(user_mng: RedisUserManager) -> None:
 
 
 def test_reset_cooldown_expires(
-        user_mng: RedisUserManager,
+        user_mng: UserManager,
         monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(user_redis_module, "PW_RESET_COOLDOWN", 0.05)
+    monkeypatch.setattr(user_manager_module, "PW_RESET_COOLDOWN", 0.05)
     assert user_mng.create_user(ALICE, "Alice")
     first = user_mng.generate_reset_token(ALICE)
     assert first is not None
@@ -286,9 +288,9 @@ def test_reset_cooldown_expires(
 
 
 def test_reset_token_expires(
-        user_mng: RedisUserManager,
+        user_mng: UserManager,
         monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(user_redis_module, "PW_RESET_EXPIRE", 0.05)
+    monkeypatch.setattr(user_manager_module, "PW_RESET_EXPIRE", 0.05)
     assert user_mng.create_user(ALICE, "Alice")
     reset_token = user_mng.generate_reset_token(ALICE)
     assert reset_token is not None
@@ -297,17 +299,17 @@ def test_reset_token_expires(
     assert user_mng.set_password("pw", reset_token) is None
 
 
-def test_unknown_reset_token(user_mng: RedisUserManager) -> None:
+def test_unknown_reset_token(user_mng: UserManager) -> None:
     assert user_mng.get_email_for_reset_token(uuid.uuid4().hex) is None
     assert user_mng.set_password("pw", uuid.uuid4().hex) is None
 
 
-def test_no_reset_token_for_admin(user_mng: RedisUserManager) -> None:
+def test_no_reset_token_for_admin(user_mng: UserManager) -> None:
     # the admin password comes from the environment, not from redis
     assert user_mng.generate_reset_token(ADMIN_EMAIL) is None
 
 
-def test_no_reset_token_for_unknown_user(user_mng: RedisUserManager) -> None:
+def test_no_reset_token_for_unknown_user(user_mng: UserManager) -> None:
     assert user_mng.generate_reset_token(BOB) is None
     # asking for an unknown account leaves no cooldown behind: once the
     # account exists the first request gets a token right away
@@ -318,7 +320,8 @@ def test_no_reset_token_for_unknown_user(user_mng: RedisUserManager) -> None:
     assert user_mng.login(BOB, "bob pw") is not None
 
 
-def test_reset_token_for_vanished_account(user_mng: RedisUserManager) -> None:
+def test_reset_token_for_vanished_account(
+        user_mng: RedisUserManager) -> None:
     """A reset token whose account does not exist (e.g., one issued for an
     unknown email before such tokens were refused) is refused cleanly and
     does not create the account."""
@@ -333,7 +336,23 @@ def test_reset_token_for_vanished_account(user_mng: RedisUserManager) -> None:
     assert list(user_mng.list_users()) == [ADMIN_EMAIL]
 
 
-def test_password_change(user_mng: RedisUserManager) -> None:
+def test_reset_token_of_deleted_account(user_mng: UserManager) -> None:
+    """A reset token does not outlive its account: neither for the deleted
+    account nor for a new account with the same email."""
+    assert user_mng.create_user(BOB, "Bob")
+    reset_token = user_mng.generate_reset_token(BOB)
+    assert reset_token is not None
+    assert user_mng.delete_user(BOB)
+    assert user_mng.get_email_for_reset_token(reset_token) is None
+    assert user_mng.set_password("pw", reset_token) is None
+    assert list(user_mng.list_users()) == [ADMIN_EMAIL]
+    assert user_mng.create_user(BOB, "New Bob")
+    assert user_mng.get_email_for_reset_token(reset_token) is None
+    assert user_mng.set_password("pw", reset_token) is None
+    assert user_mng.login(BOB, "pw") is None
+
+
+def test_password_change(user_mng: UserManager) -> None:
     invite(user_mng, ALICE, "old pw")
     reset_token = user_mng.generate_reset_token(ALICE)
     assert reset_token is not None
@@ -345,12 +364,12 @@ def test_password_change(user_mng: RedisUserManager) -> None:
 # *** sessions ***
 
 
-def test_unknown_user_cannot_log_in(user_mng: RedisUserManager) -> None:
+def test_unknown_user_cannot_log_in(user_mng: UserManager) -> None:
     assert user_mng.login(BOB, "pw") is None
     assert not list(user_mng.get_sessions_for_user(BOB))
 
 
-def test_sessions(user_mng: RedisUserManager) -> None:
+def test_sessions(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     first = user_mng.do_login(ALICE)
     second = user_mng.do_login(ALICE)
@@ -367,7 +386,7 @@ def test_sessions(user_mng: RedisUserManager) -> None:
     assert list(user_mng.get_sessions_for_user(ALICE)) == [second]
 
 
-def test_sessions_are_per_user(user_mng: RedisUserManager) -> None:
+def test_sessions_are_per_user(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     assert user_mng.create_user(BOB, "Bob")
     alice = user_mng.do_login(ALICE)
@@ -380,20 +399,21 @@ def test_sessions_are_per_user(user_mng: RedisUserManager) -> None:
     assert user_mng.get_email(bob) == BOB
 
 
-def test_forged_session_token(user_mng: RedisUserManager) -> None:
+def test_forged_session_token(user_mng: UserManager) -> None:
     """A session token starts with the account's public hash; the random
     remainder is what makes it a secret."""
     assert user_mng.create_user(ALICE, "Alice")
     token = user_mng.do_login(ALICE)
     assert token is not None
-    assert token.startswith(get_short_hash(ALICE.get()))
+    if isinstance(user_mng, RedisUserManager):
+        assert token.startswith(get_short_hash(ALICE.get()))
     forged = f"{get_short_hash(ALICE.get())}{uuid.uuid4().hex}"
     assert user_mng.get_email(forged) is None
     assert user_mng.get_email("") is None
     assert user_mng.get_email("not a token") is None
 
 
-def test_logout_unknown_token(user_mng: RedisUserManager) -> None:
+def test_logout_unknown_token(user_mng: UserManager) -> None:
     user_mng.logout("not a token")
     user_mng.logout("")
 
@@ -401,7 +421,7 @@ def test_logout_unknown_token(user_mng: RedisUserManager) -> None:
 # *** admin ***
 
 
-def test_admin_login(user_mng: RedisUserManager) -> None:
+def test_admin_login(user_mng: UserManager) -> None:
     assert user_mng.get_admin() == ADMIN_EMAIL
     assert user_mng.is_admin(ADMIN_EMAIL)
     assert not user_mng.is_admin(ALICE)
@@ -411,12 +431,12 @@ def test_admin_login(user_mng: RedisUserManager) -> None:
     assert user_mng.login(ADMIN_EMAIL, "wrong") is None
 
 
-def test_forged_admin_session_token(user_mng: RedisUserManager) -> None:
+def test_forged_admin_session_token(user_mng: UserManager) -> None:
     forged = f"{get_short_hash(ADMIN_EMAIL.get())}{uuid.uuid4().hex}"
     assert user_mng.get_email(forged) is None
 
 
-def test_admin_logout(user_mng: RedisUserManager) -> None:
+def test_admin_logout(user_mng: UserManager) -> None:
     token = user_mng.do_login(ADMIN_EMAIL)
     assert token is not None
     assert user_mng.get_email(token) == ADMIN_EMAIL
@@ -424,7 +444,7 @@ def test_admin_logout(user_mng: RedisUserManager) -> None:
     assert user_mng.get_email(token) is None
 
 
-def test_admin_has_every_capability(user_mng: RedisUserManager) -> None:
+def test_admin_has_every_capability(user_mng: UserManager) -> None:
     for cap in CAPABILITIES:
         assert user_mng.has_capability(ADMIN_EMAIL, cap)
     assert user_mng.list_capabilities(ADMIN_EMAIL) == set(CAPABILITIES)
@@ -455,7 +475,7 @@ def test_no_admin_without_password(monkeypatch: pytest.MonkeyPatch) -> None:
 # *** capabilities ***
 
 
-def test_capabilities(user_mng: RedisUserManager) -> None:
+def test_capabilities(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     assert user_mng.create_user(BOB, "Bob")
     assert not user_mng.has_capability(ALICE, CAP_CREATE_USER)
@@ -484,7 +504,7 @@ def test_capabilities(user_mng: RedisUserManager) -> None:
 # *** worker tokens ***
 
 
-def test_worker_token(user_mng: RedisUserManager) -> None:
+def test_worker_token(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     assert user_mng.create_user(BOB, "Bob")
     token = user_mng.create_worker_token(ALICE)
@@ -494,7 +514,7 @@ def test_worker_token(user_mng: RedisUserManager) -> None:
     assert not user_mng.is_correct_worker_token(BOB, token)
 
 
-def test_new_worker_token_replaces_old(user_mng: RedisUserManager) -> None:
+def test_new_worker_token_replaces_old(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     old = user_mng.create_worker_token(ALICE)
     new = user_mng.create_worker_token(ALICE)
@@ -503,18 +523,93 @@ def test_new_worker_token_replaces_old(user_mng: RedisUserManager) -> None:
     assert user_mng.is_correct_worker_token(ALICE, new)
 
 
-def test_no_worker_token(user_mng: RedisUserManager) -> None:
+def test_no_worker_token(user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     assert not user_mng.is_correct_worker_token(ALICE, uuid.uuid4().hex)
     assert not user_mng.is_correct_worker_token(ALICE, "")
 
 
 def test_invalid_worker_token_constant_is_rejected(
-        user_mng: RedisUserManager) -> None:
+        user_mng: UserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")
     assert not user_mng.is_correct_worker_token(ALICE, INVALID_WORKER_TOKEN)
     assert not user_mng.is_correct_worker_token(
         UName("nobody@example.com"), INVALID_WORKER_TOKEN)
+
+
+# *** deleting accounts ***
+
+
+def test_delete_user(user_mng: UserManager) -> None:
+    """Deleting an account removes everything that belongs to it and nothing
+    of other accounts."""
+    invite(user_mng, ALICE, "alice pw")
+    invite(user_mng, BOB, "bob pw")
+    for email in (ALICE, BOB):
+        user_mng.set_capability(email, CAP_LIST_USERS, has=True)
+    alice_session = user_mng.login(ALICE, "alice pw")
+    bob_session = user_mng.login(BOB, "bob pw")
+    assert alice_session is not None
+    assert bob_session is not None
+    alice_worker = user_mng.create_worker_token(ALICE)
+    bob_worker = user_mng.create_worker_token(BOB)
+    alice_reset = user_mng.generate_reset_token(ALICE)
+    assert alice_reset is not None
+
+    assert user_mng.delete_user(ALICE)
+
+    assert list(user_mng.list_users()) == [ADMIN_EMAIL, BOB]
+    assert user_mng.login(ALICE, "alice pw") is None
+    assert user_mng.get_password_hash(ALICE) is None
+    assert user_mng.get_email(alice_session) is None
+    assert not list(user_mng.get_sessions_for_user(ALICE))
+    assert not user_mng.list_capabilities(ALICE)
+    assert not user_mng.has_capability(ALICE, CAP_LIST_USERS)
+    assert not user_mng.is_correct_worker_token(ALICE, alice_worker)
+    assert user_mng.get_email_for_reset_token(alice_reset) is None
+    # the other account is untouched
+    assert user_mng.get_email(bob_session) == BOB
+    assert user_mng.login(BOB, "bob pw") is not None
+    assert user_mng.list_capabilities(BOB) == {CAP_LIST_USERS}
+    assert user_mng.is_correct_worker_token(BOB, bob_worker)
+    # deleting again does nothing
+    assert not user_mng.delete_user(ALICE)
+
+
+def test_recreate_deleted_user(user_mng: UserManager) -> None:
+    """A new account with the email of a deleted one starts from scratch:
+    nothing of the old account carries over, not even the reset cooldown."""
+    invite(user_mng, ALICE, "alice pw")
+    user_mng.set_capability(ALICE, CAP_CREATE_USER, has=True)
+    session = user_mng.login(ALICE, "alice pw")
+    assert session is not None
+    worker_token = user_mng.create_worker_token(ALICE)
+    assert user_mng.generate_reset_token(ALICE) is not None
+    assert user_mng.delete_user(ALICE)
+
+    assert user_mng.create_user(ALICE, "New Alice")
+    assert user_mng.get_user_info(ALICE) == {
+        "email": ALICE,
+        "display_name": "New Alice",
+        "capabilities": set(),
+    }
+    assert user_mng.login(ALICE, "alice pw") is None
+    assert user_mng.get_email(session) is None
+    assert not user_mng.is_correct_worker_token(ALICE, worker_token)
+    assert user_mng.generate_reset_token(ALICE) is not None
+
+
+def test_admin_cannot_be_deleted(user_mng: UserManager) -> None:
+    token = user_mng.do_login(ADMIN_EMAIL)
+    assert token is not None
+    assert not user_mng.delete_user(ADMIN_EMAIL)
+    assert user_mng.get_email(token) == ADMIN_EMAIL
+    assert user_mng.login(ADMIN_EMAIL, ADMIN_PW) is not None
+
+
+def test_delete_unknown_user(user_mng: UserManager) -> None:
+    assert not user_mng.delete_user(BOB)
+    assert list(user_mng.list_users()) == [ADMIN_EMAIL]
 
 
 # *** loader ***

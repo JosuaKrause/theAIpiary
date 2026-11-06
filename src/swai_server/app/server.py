@@ -39,9 +39,11 @@ from swai.server_response_types import (
     ChatPromptResponse,
     ChatRecoverResponse,
     ChatTextResponse,
+    DeleteUserResponse,
     HeartbeatResponse,
     LoginResponse,
     ResetTokenResponse,
+    SendResetResponse,
     TaskBidResponse,
     TaskFinishResponse,
     UserInfoResponse,
@@ -438,6 +440,7 @@ def setup(
                 "email": info["email"].get(),
                 "display_name": info["display_name"],
                 "capabilities": sorted(capabilities),
+                "admin": sec_ctx.is_admin(user),
             }
 
         return {
@@ -519,6 +522,8 @@ def setup(
             user_session, user_email, capability, has=set_has)
         return {
             "okay": True,
+            "capabilities": sorted(
+                sec_ctx.list_capabilities(user_session, user_email)),
         }
 
     @server.json_post(f"{prefix}/user/logout")
@@ -538,9 +543,47 @@ def setup(
             "message": "successfully logged out",
         }
 
-    # TODO:
-    # - add user mod (+reset +logout +email +delete)
-    # - edit capabilities
+    # NOTE: logging out another user is POST user/logout with a name and
+    # changing capabilities is PUT user/capability
+
+    @server.json_post(f"{prefix}/user/send_reset")
+    @server.middleware(verify_user_session)
+    def _post_user_send_reset(
+            _req: QSRH, rargs: ReqArgs) -> SendResetResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
+        args = rargs["post"]
+        user_email = UName(args["name"])
+        reset_token = sec_ctx.send_reset_token(user_session, user_email)
+        if reset_token is not None:
+            send_password_reset_email(user_email, reset_token)
+        return {
+            "email": user_email.get(),
+            "sent": reset_token is not None,
+        }
+
+    @server.json_post(f"{prefix}/user/delete")
+    @server.middleware(verify_user_session)
+    def _post_user_delete(
+            _req: QSRH, rargs: ReqArgs) -> DeleteUserResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
+        args = rargs["post"]
+        user_email = UName(args["name"])
+        deleted = sec_ctx.delete_user(user_session, user_email)
+        # NOTE: chats belong to the user id that is derived from the email.
+        # they are deleted with the account: nobody else can read them, and a
+        # new account with the same email would get them otherwise. the
+        # chats are removed even if the account is gone already so that a
+        # deletion that failed halfway can be repeated
+        user_id = sec_ctx.force_user_id(user_email)
+        chats = 0
+        for session in list(session_store.get_sessions(user_id)):
+            session_store.remove(session.get_session_id())
+            chats += 1
+        return {
+            "email": user_email.get(),
+            "deleted": deleted,
+            "chats": chats,
+        }
 
     # *** worker API ***
 

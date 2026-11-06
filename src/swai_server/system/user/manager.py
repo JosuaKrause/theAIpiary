@@ -44,6 +44,10 @@ DEFAULT_CAPABILITIES: set[CapabilityName] = {
 }
 
 
+PW_RESET_EXPIRE = 24.0 * 60.0 * 60.0  # 24h
+PW_RESET_COOLDOWN = 1.0 * 60.0  # 1min
+
+
 def as_capability(capability: str) -> CapabilityName:
     if capability not in CAPABILITIES:
         raise ValueError(f"{capability=} is invalid: {CAPABILITIES}")
@@ -88,6 +92,27 @@ class UserManager:
     def is_admin(self, email: UName) -> bool:
         return bool(self._admin_pw) and self._admin_email == email
 
+    @staticmethod
+    def reset_expire() -> float:
+        """
+        How long a password reset token stays valid.
+
+        Returns:
+            float: The time in seconds.
+        """
+        return PW_RESET_EXPIRE
+
+    @staticmethod
+    def reset_cooldown() -> float:
+        """
+        How long after a password reset token was issued no further token is
+        issued for the same account (unless the token gets used).
+
+        Returns:
+            float: The time in seconds.
+        """
+        return PW_RESET_COOLDOWN
+
     def is_admin_login(self, email: UName, password: RawPassword) -> bool:
         if not self.is_admin(email):
             return False
@@ -119,6 +144,26 @@ class UserManager:
         return self.do_create_user(email, display_name)
 
     def do_create_user(self, email: UName, display_name: str) -> bool:
+        raise NotImplementedError()
+
+    def delete_user(self, email: UName) -> bool:
+        """
+        Deletes an account with everything the user manager keeps for it:
+        the account itself (password and display name), capabilities,
+        sessions, reset tokens and the cooldown, and the worker token. The
+        admin account cannot be deleted.
+
+        Args:
+            email (UName): The account.
+
+        Returns:
+            bool: Whether the account existed.
+        """
+        if self.is_admin(email):
+            return False
+        return self.do_delete_user(email)
+
+    def do_delete_user(self, email: UName) -> bool:
         raise NotImplementedError()
 
     def generate_reset_token(self, email: UName) -> ResetToken | None:
@@ -220,19 +265,17 @@ class UserManager:
         raise NotImplementedError()
 
     def create_worker_token(self, email: UName) -> WorkerToken:
-        user_id = self.get_user_id(email)
         worker_token: WorkerToken | None = None
         while worker_token is None:
             worker_token = uuid.uuid4().hex
             if hmac.compare_digest(INVALID_WORKER_TOKEN, worker_token):
                 worker_token = None
-        self.store_worker_token(user_id, worker_token)
+        self.store_worker_token(email, worker_token)
         return worker_token
 
     def is_correct_worker_token(
             self, email: UName, worker_token: WorkerToken) -> bool:
-        user_id = self.get_user_id(email)
-        expected_token = self.get_worker_token(user_id)
+        expected_token = self.get_worker_token(email)
         if expected_token is None:
             # NOTE: no shortcut for missing tokens (same timing as a mismatch)
             hmac.compare_digest(INVALID_WORKER_TOKEN, worker_token)
@@ -240,8 +283,8 @@ class UserManager:
         return hmac.compare_digest(expected_token, worker_token)
 
     def store_worker_token(
-            self, user_id: UserId, worker_token: WorkerToken) -> None:
+            self, email: UName, worker_token: WorkerToken) -> None:
         raise NotImplementedError()
 
-    def get_worker_token(self, user_id: UserId) -> WorkerToken | None:
+    def get_worker_token(self, email: UName) -> WorkerToken | None:
         raise NotImplementedError()

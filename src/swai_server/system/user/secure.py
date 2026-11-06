@@ -21,6 +21,7 @@ from scattermind.system.names import UName
 from swai.system.user import (
     CAP_CHANGE_CAPABILITIES,
     CAP_CREATE_USER,
+    CAP_DELETE_USER,
     CAP_LIST_USERS,
     CAP_LOGOUT_OTHER_USER,
     CAP_REGISTER_OTHER_WORKER,
@@ -135,6 +136,57 @@ class SecureContext:
     def generate_reset_token(self, email: UName) -> ResetToken | None:
         return self._user_mng.generate_reset_token(email)
 
+    def ensure_not_admin(self, email: UName) -> None:
+        """
+        Refuses operations that would delete or demote the admin account.
+
+        Args:
+            email (UName): The account to act on.
+        """
+        if self._user_mng.is_admin(email):
+            raise PreventDefaultResponse(
+                403, "the admin account cannot be changed")
+
+    def send_reset_token(
+            self, who: SessionToken, email: UName) -> ResetToken | None:
+        """
+        Issues a password reset token for an account on behalf of a user
+        that may create accounts (the same token the invitation email
+        carries). Unlike the public reset request, the caller learns whether
+        a token was issued.
+
+        Args:
+            who (SessionToken): The session of the acting user.
+            email (UName): The account.
+
+        Returns:
+            ResetToken | None: The token or None if the account does not
+                exist, is the admin, or got a token within the cooldown.
+        """
+        self.ensure_can_act(who, email=email, admin_capability=CAP_CREATE_USER)
+        return self._user_mng.generate_reset_token(email)
+
+    def delete_user(self, who: SessionToken, email: UName) -> bool:
+        """
+        Deletes an account (see `UserManager.delete_user`). Requires the
+        delete capability. Neither the own account nor the admin account can
+        be deleted this way.
+
+        Args:
+            who (SessionToken): The session of the acting user.
+            email (UName): The account.
+
+        Returns:
+            bool: Whether the account existed.
+        """
+        # NOTE: no target email: the capability is needed for every account
+        self.ensure_can_act(who, email=None, admin_capability=CAP_DELETE_USER)
+        if self._user_mng.get_email(who) == email:
+            raise PreventDefaultResponse(
+                403, "cannot delete the own account")
+        self.ensure_not_admin(email)
+        return self._user_mng.delete_user(email)
+
     def set_password(
             self,
             password: RawPassword,
@@ -153,7 +205,13 @@ class SecureContext:
 
     def get_user_id(self, who: SessionToken, email: UName) -> UserId:
         self.ensure_can_act(who, email=email)
+        return self.force_user_id(email)
+
+    def force_user_id(self, email: UName) -> UserId:
         return self._user_mng.get_user_id(email)
+
+    def is_admin(self, email: UName) -> bool:
+        return self._user_mng.is_admin(email)
 
     def can_read_chat(
             self, who: SessionToken, user_id: UserId | None) -> CanAct:
@@ -209,6 +267,9 @@ class SecureContext:
             email=email,
             own_capability=CAP_CHANGE_CAPABILITIES,
             admin_capability=CAP_CHANGE_CAPABILITIES)
+        # NOTE: the admin has every capability; refusing makes it visible
+        # that the change did not happen
+        self.ensure_not_admin(email)
         self.force_capability(email, capability, has=has)
 
     def force_capability(
