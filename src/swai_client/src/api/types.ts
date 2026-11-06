@@ -37,11 +37,7 @@ type TaskStatus =
   | 'unknown';
 
 export type WorkerStatus =
-  | 'unknown'
-  | 'idle'
-  | 'busy'
-  | 'backedup'
-  | 'offline';
+  'unknown' | 'idle' | 'busy' | 'backedup' | 'offline';
 
 export type Thinking = 'inactive' | 'thinking' | 'queued' | 'error';
 export const ACTIVE_THINKING: Thinking[] = ['thinking', 'queued'];

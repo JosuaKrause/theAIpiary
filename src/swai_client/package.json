@@ -16,7 +16,6 @@
     "@types/react-redux": "^7.1.24",
     "@types/redux": "^3.6.31",
     "@types/styled-components": "^5.1.26",
-    "eslint": "^8.25.0",
     "qs": "^6.11.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -44,16 +43,23 @@
     "test": "react-scripts test",
     "testall": "react-scripts test --all --watchAll=false --coverage",
     "testwall": "react-scripts test --all --watchAll --coverage",
-    "lint": "eslint 'src/**/*.{ts,tsx}'",
+    "lint": "eslint .",
     "nice": "yarn prettier --write .",
     "unused": "./node_modules/.bin/ts-unused-exports tsconfig.json"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@vitejs/plugin-react": "^6.2.1",
-    "eslint-config-prettier": "^8.5.0",
-    "eslint-plugin-prettier": "^4.2.1",
-    "prettier": "2.7.1",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.7",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
+    "prettier": "^3.9.10",
     "ts-unused-exports": "^8.0.0",
+    "typescript-eslint": "^8.72.1",
     "vite": "^8.3.6"
   }
 }
