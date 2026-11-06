@@ -408,12 +408,6 @@ def test_no_worker_token(user_mng: RedisUserManager) -> None:
     assert not user_mng.is_correct_worker_token(ALICE, "")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "is_correct_worker_token compares against the published "
-        "INVALID_WORKER_TOKEN when an account has no worker token, so that "
-        "constant authenticates a worker for any email without a token"))
 def test_invalid_worker_token_constant_is_rejected(
         user_mng: RedisUserManager) -> None:
     assert user_mng.create_user(ALICE, "Alice")

@@ -232,8 +232,9 @@ class UserManager:
         user_id = self.get_user_id(email)
         expected_token = self.get_worker_token(user_id)
         if expected_token is None:
-            # NOTE: no shortcut for missing tokens
-            expected_token = INVALID_WORKER_TOKEN
+            # NOTE: no shortcut for missing tokens (same timing as a mismatch)
+            hmac.compare_digest(INVALID_WORKER_TOKEN, worker_token)
+            return False
         return hmac.compare_digest(expected_token, worker_token)
 
     def store_worker_token(
