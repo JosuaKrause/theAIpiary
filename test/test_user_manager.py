@@ -310,22 +310,11 @@ def test_admin_login(user_mng: RedisUserManager) -> None:
     assert user_mng.login(ADMIN_EMAIL, "wrong") is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RedisUserManager.get_email accepts any token that starts with the "
-        "admin's public email hash as an admin session, without checking "
-        "that the session exists"))
 def test_forged_admin_session_token(user_mng: RedisUserManager) -> None:
     forged = f"{get_short_hash(ADMIN_EMAIL.get())}{uuid.uuid4().hex}"
     assert user_mng.get_email(forged) is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "admin sessions are never checked against the session set, so "
-        "logging out does not end them"))
 def test_admin_logout(user_mng: RedisUserManager) -> None:
     token = user_mng.do_login(ADMIN_EMAIL)
     assert token is not None

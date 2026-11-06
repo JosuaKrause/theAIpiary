@@ -197,7 +197,7 @@ class RedisUserManager(UserManager):
         return userhash
 
     def get_email(self, token: SessionToken) -> UName | None:
-        if self._extract_userhash(token) == self._admin_hash:
+        if self._is_logged_in(token) == self._admin_hash:
             return self.get_admin()
         userhash = self._is_logged_in(token)
         if userhash is None:
