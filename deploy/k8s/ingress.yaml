@@ -1,0 +1,47 @@
+#
+# Copyright (C) 2024 Josua Krause
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Replace aipiary.example.com with your domain (and OWN_URL in server.env).
+# The annotations are for ingress-nginx; other controllers need their own
+# equivalents of a body size of at least 120m (the server's upload limit) and
+# a read timeout above 60s (workers long-poll /api/task/bid for a minute).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aipiary
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 120m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '600'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '600'
+    # optional: TLS certificates from cert-manager, if it is installed and
+    # has a ClusterIssuer of this name
+    # cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  # ingressClassName: nginx
+  tls:
+    - hosts:
+        - aipiary.example.com
+      secretName: aipiary-tls
+  rules:
+    - host: aipiary.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  name: http
