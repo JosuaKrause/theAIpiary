@@ -20,6 +20,7 @@ from redipy import Redis, RedisConfig
 from redipy.script import (
     ExecFunction,
     FnContext,
+    FromJSON,
     JSONType,
     RedisList,
     RedisVar,
@@ -119,6 +120,7 @@ class TaskQueue:
         self._cleaner_wake = threading.Event()
         self._pop_task = self._pop_task_script()
         self._clean_task = self._clean_task_script()
+        self._set_result = self._set_result_script()
         self.start_cleaner()
 
     def start_cleaner(self) -> None:
@@ -348,15 +350,12 @@ class TaskQueue:
         # drop the stale assignment. Nothing happens if the assignment changed
         # since the cleaner read it (the task got finished, cancelled, or
         # requeued in between).
-        # Dropping the assignment of a complete task is safe: the assignment
-        # is only read by `set_result` (once, to check that the result comes
-        # from the assigned worker) and by the cleaner. A bid sets the
+        # Dropping the assignment of a complete task is safe: a bid sets the
         # assignment and the "busy" status together, so a complete status
-        # means that there is no newer bid. A complete status is written by
-        # `set_result` after its check (it deletes the assignment itself
-        # afterwards, so deleting it earlier changes nothing), by `clear_task`
-        # (which deletes the assignment in the same step), or directly via
-        # `set_status`. The task's result is kept.
+        # means that there is no newer bid. `set_result` and `clear_task`
+        # end the assignment in the same step as they write the status, so
+        # only `set_status` (or data written before these steps were atomic)
+        # can leave a complete task assigned. The task's result is kept.
         ctx = FnContext()
         rworker = RedisVar(ctx.add_key("worker"))
         rstatus = RedisVar(ctx.add_key("status"))
@@ -436,6 +435,34 @@ class TaskQueue:
 
         return redis.wait_for(output_key, get_response, timeout=timeout)
 
+    def _set_result_script(self) -> ExecFunction:
+        # NOTE: accepting a result in one step: only if the task is still
+        # assigned to the delivering worker, store the status and the result
+        # and end the assignment. Otherwise the result is dropped. Without
+        # this, the cleaner could requeue the task, or the user could cancel
+        # it, between the check and the writes, which put a completed task
+        # back on the queue or revived a cancelled one.
+        ctx = FnContext()
+        rworker = RedisVar(ctx.add_key("worker"))
+        rstatus = RedisVar(ctx.add_key("status"))
+        routput = RedisVar(ctx.add_key("output"))
+        worker_id = ctx.add_arg("worker_id")
+        status = ctx.add_arg("status")
+        output = ctx.add_arg("output")
+        task_worker_str = ctx.add_local(rworker.get_value())
+        task_worker = ctx.add_local(None)
+        res = ctx.add_local(False)
+
+        assigned, _ = ctx.if_(task_worker_str.ne_(None))
+        assigned.add(task_worker.assign(FromJSON(task_worker_str)))
+        mine, _ = assigned.if_(task_worker.get_key("worker_id").eq_(worker_id))
+        mine.add(rstatus.set_value(status))
+        mine.add(routput.set_value(output))
+        mine.add(rworker.delete())
+        mine.add(res.assign(True))
+        ctx.set_return_value(res)
+        return self._redis.register_script(ctx)
+
     def set_result(
             self,
             task_id: TaskId,
@@ -443,19 +470,26 @@ class TaskQueue:
             user_email: UName,
             worker_name: str,
             response: ResponseObject) -> None:
-        redis = self._redis
-        task_worker_key = self.task_worker_key(task_id)
-        task_worker = redis_to_task_worker(
-            redis.get_value(task_worker_key))
-        worker_id = get_worker_id(user_email, worker_name)
-        if task_worker is None or task_worker["worker_id"] != worker_id:
-            # NOTE: we are too late; someone else computed it; ignore results
-            return
         output_key = self.output_key(task_id)
-        self.set_status(task_id, response["status"])
-        redis.set_value(output_key, response_to_redis(response))
-        redis.delete(task_worker_key)
-        redis.publish(output_key, "response")
+        accepted = self._set_result(
+            keys={
+                "worker": self.task_worker_key(task_id),
+                "status": self.status_key(task_id),
+                "output": output_key,
+            },
+            args={
+                "worker_id": get_worker_id(user_email, worker_name),
+                "status": response["status"],
+                "output": response_to_redis(response),
+            })
+        if not accepted:
+            # NOTE: we are too late; the task was cancelled or someone else
+            # computes it now; ignore results
+            return
+        # NOTE: redipy scripts cannot publish; waiters only use the message to
+        # look at the stored result again, so sending it after the script is
+        # enough
+        self._redis.publish(output_key, "response")
 
     def get_result(self, task_id: TaskId) -> ResponseObject | None:
         res = self._redis.get_value(self.output_key(task_id))

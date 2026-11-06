@@ -14,7 +14,7 @@
 """Tests for the auction queue that hands chat tasks to workers."""
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from test.util import memory_redis, UNUSED_REDIS
 from typing import Any, cast
 
@@ -806,3 +806,90 @@ def test_cleaner_does_not_revive_task_cancelled_meanwhile(
     assert pop(quiet_queue, [NS_A], worker="w2") is None
     assert queue_redis.llen(TaskQueue.queue_key(NS_A)) == 0
     assert not leftover_keys(queue_redis, "status")
+
+
+def finish_with_interleaved(
+        queue: TaskQueue,
+        redis: Redis,
+        monkeypatch: pytest.MonkeyPatch,
+        task_id: TaskId,
+        action: Callable[[], None]) -> None:
+    """
+    Worker w1 delivers its result for the task while `action` runs at the
+    moment `set_result` has read the task's assignment, i.e., after the check
+    that the result comes from the assigned worker. If `set_result` never
+    reads the assignment on its own (it checks and writes in one atomic step)
+    `action` runs right after `set_result` instead.
+
+    Args:
+        queue (TaskQueue): The queue.
+        redis (Redis): The redis of the queue.
+        monkeypatch (pytest.MonkeyPatch): For installing the hook.
+        task_id (TaskId): The task.
+        action (Callable[[], None]): What runs in between.
+    """
+    worker_key = TaskQueue.task_worker_key(task_id)
+    original = redis.get_value
+    fired = False
+
+    def get_value_then_act(key: str) -> str | None:
+        nonlocal fired
+        res = original(key)
+        if key == worker_key and not fired:
+            fired = True
+            action()
+        return res
+
+    monkeypatch.setattr(redis, "get_value", get_value_then_act)
+    finish(queue, task_id, worker="w1")
+    monkeypatch.setattr(redis, "get_value", original)
+    if not fired:
+        action()
+
+
+def test_result_and_requeue_do_not_interleave(
+        quiet_queue: TaskQueue,
+        queue_redis: Redis,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cleaner takes the task back from a worker it believes is gone just
+    as that worker delivers its result. Either the result counts and the task
+    is not handed out again, or the result is dropped and the task is back
+    on the queue; a completed task must not be computed a second time."""
+    task_id = enqueue(quiet_queue, NS_A, "hello")
+    assert pop(quiet_queue, [NS_A], worker="w1") == task_id
+    quiet_queue.heartbeat(
+        user_email=ALICE, worker_name="w1", worker_status="offline")
+    finish_with_interleaved(
+        quiet_queue,
+        queue_redis,
+        monkeypatch,
+        task_id,
+        quiet_queue.requeue_unavailable_worker_tasks)
+    if quiet_queue.get_result(task_id) is not None:
+        assert quiet_queue.get_status(task_id) == "ready"
+        assert pop(quiet_queue, [NS_A], worker="w2") is None
+    else:
+        assert quiet_queue.get_status(task_id) == "wait"
+        assert pop(quiet_queue, [NS_A], worker="w2") == task_id
+    assert quiet_queue.get_status(task_id) in ("ready", "busy")
+
+
+def test_result_and_cancel_do_not_interleave(
+        quiet_queue: TaskQueue,
+        queue_redis: Redis,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The user cancels a task (e.g., by sending a new prompt) just as the
+    worker delivers its result. Nothing of the cancelled task may come back:
+    no status, no result, no assignment."""
+    task_id = enqueue(quiet_queue, NS_A, "hello")
+    assert pop(quiet_queue, [NS_A], worker="w1") == task_id
+    finish_with_interleaved(
+        quiet_queue,
+        queue_redis,
+        monkeypatch,
+        task_id,
+        lambda: quiet_queue.clear_task(task_id))
+    assert quiet_queue.get_status(task_id) == "unknown"
+    assert quiet_queue.get_result(task_id) is None
+    assert not leftover_keys(queue_redis, "worker")
+    assert not leftover_keys(queue_redis, "output")
