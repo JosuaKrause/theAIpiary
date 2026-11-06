@@ -7,7 +7,6 @@ userdata*/
 models/
 local/
 test-results/
-study/
 config.json
 test*.json
 *.rdb
@@ -15,7 +14,6 @@ test*.json
 *.csv
 system.env
 requirements.docker.txt
-out.txt
 **/__pycache__
 **/.DS_Store
 src/swai_client/

@@ -19,7 +19,6 @@ venv
 /prod/
 /userdata/
 /userdata*/
-/out.txt
 /buildtmp_provider/
 /buildtmp_server/
 /deploy/default.provider.env

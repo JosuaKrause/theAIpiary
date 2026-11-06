@@ -31,7 +31,7 @@
 
 [tool.setuptools.packages.find]
     where = ["src"]
-    exclude = ["test", "study"]
+    exclude = ["test"]
 
 [tool.setuptools.dynamic]
     dependencies = {file = ["requirements.txt"]}
