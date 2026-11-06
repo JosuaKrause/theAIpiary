@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tests for the auction queue that hands chat tasks to workers."""
+import gzip
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -23,6 +24,7 @@ from redipy import Redis
 from scattermind.api.api import task_input_to_redis
 from scattermind.system.base import TaskId
 from scattermind.system.names import GNamespace, UName
+from scattermind.system.redis_util import redis_to_bytes, redis_to_robj
 from scattermind.system.response import ResponseObject, TaskStatus
 from scattermind.system.session.session import SessionStore
 
@@ -116,6 +118,16 @@ def leftover_keys(redis: Redis, kind: str) -> list[str]:
     return sorted(redis.keys(match=f"{kind}:*", block=True))
 
 
+def decoded_input(text: str) -> dict[str, bytes]:
+    """The uncompressed tensor bytes of an encoded task input. The encoded
+    form itself is not stable: scattermind's gzip header carries the current
+    second, so two encodings of the same input can differ."""
+    return {
+        key: gzip.decompress(redis_to_bytes(value))
+        for key, value in redis_to_robj(text).items()
+    }
+
+
 def enqueue(queue: TaskQueue, ns: GNamespace, prompt: str) -> TaskId:
     return queue.enqueue_task(ns, {"prompt": prompt})
 
@@ -199,7 +211,8 @@ def test_enqueue_and_pop(task_queue: TaskQueue) -> None:
     ns, popped_id, input_str = task
     assert ns == NS_A
     assert popped_id == task_id
-    assert input_str == task_input_to_redis({"prompt": "hello"})
+    assert decoded_input(input_str) == decoded_input(
+        task_input_to_redis({"prompt": "hello"}))
     assert task_queue.get_status(task_id) == "busy"
     # a task is handed out only once
     assert pop(task_queue, [NS_A], worker="w2") is None
