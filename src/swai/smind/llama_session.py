@@ -13,17 +13,11 @@
 # limitations under the License.
 import json
 import os
-import pickle
 from typing import Literal, TypeAlias, TypedDict
 
-from llama_cpp import ChatCompletionRequestMessage, Llama, LlamaState
+from llama_cpp import ChatCompletionRequestMessage
 from scattermind.system.base import TaskId
-from scattermind.system.io import (
-    open_readb,
-    open_reads,
-    open_writeb,
-    open_writes,
-)
+from scattermind.system.io import open_reads, open_writes
 from scattermind.system.session.session import Session
 
 from swai.smind.default_prompts import HELLO_PROMPT, SYSTEM_PROMPT
@@ -47,27 +41,9 @@ VisibleMessage = TypedDict('VisibleMessage', {
 })
 
 
-STATE_FILE = "state.pkl"
 MSGS_FILE = "msgs.json"
 SYS_PROMPT_FILE = "system_prompt.txt"
 HELLO_PROMPT_FILE = "hello_prompt.txt"
-
-
-def load_state(model: Llama, cache_dir: str) -> bool:
-    state_file = os.path.join(cache_dir, STATE_FILE)
-    if not os.path.exists(state_file):
-        return False
-    with open_readb(state_file) as state_in:
-        llama_state: LlamaState = pickle.load(state_in)
-        model.load_state(llama_state)
-    return True
-
-
-def save_state(model: Llama, cache_dir: str) -> None:
-    state_file = os.path.join(cache_dir, STATE_FILE)
-    with open_writeb(state_file) as state_out:
-        llama_state: LlamaState = model.save_state()
-        pickle.dump(llama_state, state_out)
 
 
 def get_visible_messages(session: Session) -> list[VisibleMessage]:
@@ -124,6 +100,29 @@ def append_new_message(
     messages.append(msg)
 
 
+CUT_OFF_MARKER = "\u2026"
+"""Ends an answer that was interrupted before the model finished it. The
+marker is part of the stored message, so the client shows it after a reload
+and the model sees in later turns that its answer did not end there."""
+
+
+def mark_cut_off(text: str) -> str:
+    """
+    Marks an answer as cut off.
+
+    Args:
+        text (str): The answer so far. Can be empty if the model had not
+            produced anything yet.
+
+    Returns:
+        str: The answer followed by `CUT_OFF_MARKER`.
+    """
+    text = text.rstrip()
+    if not text:
+        return CUT_OFF_MARKER
+    return f"{text} {CUT_OFF_MARKER}"
+
+
 def save_messages(
         cache_dir: str, messages: list[ChatCompletionRequestMessage]) -> None:
     msgs_file = os.path.join(cache_dir, MSGS_FILE)
@@ -172,8 +171,12 @@ def get_interrupt_key(task_id: TaskId) -> str:
 
 
 def set_active_task(session: Session, task_id: TaskId | None) -> None:
-    # FIXME: detect active tasks that are aborted and switch over to them
-    # needs task in response api
+    # NOTE: only the server sets the active task: when it enqueues a task and
+    # when it takes over from a task it interrupted or found complete
+    # (`swai_server.smind.server_api`). A worker only clears the active task
+    # after storing its answer and only if its task is still the active one.
+    # A task that is not active anymore (it was replaced by a new prompt) never
+    # changes the chat history; its result is ignored by the queue as well
     active_key = get_active_key()
     if task_id is None:
         session.pop_value(active_key)

@@ -29,6 +29,7 @@ from swai.smind.llama_session import (
     get_visible_messages,
     load_messages,
     load_system_prompt,
+    mark_cut_off,
     ROLE_ASSISTANT,
     ROLE_USER,
     save_messages,
@@ -42,6 +43,9 @@ from swai_server.config import Config
 
 
 DEFAULT_TIMEOUT = 60.0  # 1min
+INTERRUPT_TIMEOUT = 5.0
+"""How long a new prompt waits for the previous answer of the chat to stop.
+"""
 
 
 def create_session_store(config: Config) -> SessionStore:
@@ -71,37 +75,55 @@ def start_llama_response(
         session: Session) -> TaskId | None:
     prev_task_id = get_active_task(session)
     if prev_task_id is not None:
-        set_interrupted(session, prev_task_id)
-        result = queue.wait_for(prev_task_id, timeout=DEFAULT_TIMEOUT)
-        bad_result = False
-        if result is None:
-            # FIXME: how to handle if a worker disappears, the user cancels,
-            # and then the worker comes back
-            print(f"could not terminate previous task {prev_task_id}")
-            bad_result = True
-        else:
-            try:
-                response_ok(result, no_warn=True)
-            except ValueError:
-                print(traceback.format_exc())
-                print("error computing previous response")
-                bad_result = True
-        set_active_task(session, None)
-        queue.clear_task(prev_task_id)
-        if bad_result:
-            partial_response, _ = get_model_output(
-                session, (prev_task_id, 0), 0.1)
-            partial_response = partial_response.strip()
-            if partial_response:
-                with session.get_local_folder() as cache_dir:
-                    msgs = load_messages(cache_dir)
-                    if msgs is not None:
-                        append_new_message(
-                            msgs, text=partial_response, role=ROLE_ASSISTANT)
-                        save_messages(cache_dir, msgs)
+        interrupt_task(queue, session, prev_task_id)
     if not prompt:
         return None
     return do_enqueue(queue, ns, prompt, session)
+
+
+def interrupt_task(
+        queue: TaskQueue, session: Session, task_id: TaskId) -> None:
+    """
+    Stops the active task of the session so that a new prompt can take its
+    place. The worker is asked to stop and given `INTERRUPT_TIMEOUT` seconds
+    to store its answer so far. If it does not, the answer streamed so far
+    is stored instead. Either way the answer is marked as cut off and the task
+    is removed from the queue. A worker that comes back later can neither
+    change the history nor deliver a result (see `set_active_task`).
+
+    Args:
+        queue (TaskQueue): The task queue.
+        session (Session): The chat session.
+        task_id (TaskId): The active task of the session.
+    """
+    set_interrupted(session, task_id)
+    result = queue.wait_for(task_id, timeout=INTERRUPT_TIMEOUT)
+    if result is None:
+        print(
+            f"previous task {task_id} did not stop within "
+            f"{INTERRUPT_TIMEOUT}s; replacing it")
+    else:
+        try:
+            response_ok(result, no_warn=True)
+        except ValueError:
+            print(traceback.format_exc())
+            print(f"error computing previous response {task_id}")
+    # NOTE: a worker that stored its answer is not active anymore. if the task
+    # is still active, it failed, it did not stop in time, or no worker took it
+    store_partial = get_active_task(session) == task_id
+    set_active_task(session, None)
+    queue.clear_task(task_id)
+    if not store_partial:
+        return
+    partial_response, _ = get_model_output(session, (task_id, 0), 0.1)
+    with session.get_local_folder() as cache_dir:
+        msgs = load_messages(cache_dir)
+        if msgs is not None:
+            append_new_message(
+                msgs,
+                text=mark_cut_off(partial_response),
+                role=ROLE_ASSISTANT)
+            save_messages(cache_dir, msgs)
 
 
 SESSION_TIME_KEY = "session_time"
@@ -124,10 +146,12 @@ def do_enqueue(
             "prompt": prompt,
             "session": session,
         })
+    # NOTE: set the active task right away: a worker only stores its answer
+    # if its task is the active one
+    set_active_task(session, task_id)
     session.set_value(SESSION_TIME_KEY, 0, get_time_str())
     if not session.get_length(SESSION_SUMMARY_KEY):
         session.set_value(SESSION_SUMMARY_KEY, 0, shorten(prompt))
-    set_active_task(session, task_id)
     return task_id
 
 
