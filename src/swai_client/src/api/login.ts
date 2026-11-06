@@ -16,6 +16,7 @@
 import { URL_PREFIX } from '../misc/constants';
 import {
   ApiChangeCapability,
+  ApiChangeEmailResponse,
   ApiChatSessionsResponse,
   ApiDeleteUserResponse,
   ApiLoginResponse,
@@ -67,6 +68,10 @@ export type LoginApiProvider = {
   sendReset: (name: Readonly<UserEmail>) => Promise<boolean>;
   logoutUser: (name: Readonly<UserEmail>) => Promise<void>;
   deleteUser: (name: Readonly<UserEmail>) => Promise<DeleteUserResult>;
+  changeEmail: (
+    name: Readonly<UserEmail>,
+    newEmail: Readonly<UserEmail>,
+  ) => Promise<boolean>;
   logout: () => Promise<Readonly<User> | Readonly<LoginInfo>>;
   getWorkerToken: () => Promise<Readonly<WorkerToken>>;
   listUsers: () => Promise<UserInfo[]>;
@@ -219,6 +224,22 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
     checkResponse(res);
     const { deleted, chats } = (await res.json()) as ApiDeleteUserResponse;
     return { deleted, chats };
+  },
+  changeEmail: async (name, newEmail) => {
+    const res = await fetch(`${URL_PREFIX}/user/change_email`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name,
+        new_email: newEmail,
+      }),
+    });
+    checkResponse(res);
+    const { changed } = (await res.json()) as ApiChangeEmailResponse;
+    return changed;
   },
   logout: async () => {
     const res = await fetch(`${URL_PREFIX}/user/logout`, {

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import hashlib
 import hmac
 import uuid
 from collections.abc import Iterable
@@ -19,7 +20,7 @@ from typing import cast, TypeAlias, TypedDict
 import bcrypt
 from scattermind.system.base import UserId
 from scattermind.system.names import UName
-from scattermind.system.util import get_text_hash
+from scattermind.system.util import get_short_hash, get_text_hash
 
 from swai.system.user import (
     CAP_REGISTER_OWN_WORKER,
@@ -31,6 +32,7 @@ from swai.system.user import (
 
 SessionToken: TypeAlias = str
 ResetToken: TypeAlias = str
+AccountKey: TypeAlias = str
 RawPassword: TypeAlias = str
 HashPassword: TypeAlias = str
 
@@ -66,6 +68,82 @@ def check_password(password: RawPassword, hashpw: HashPassword | None) -> bool:
     return bcrypt.checkpw(
         get_text_hash(password).encode("utf-8"),
         hashpw.encode("utf-8"))
+
+
+def hash_token(token: str) -> str:
+    """
+    What the stores keep of a session or reset token: its SHA-256, so that
+    reading the store is not enough to log in or set a password. The tokens
+    are random (122 bits of a uuid4), so a plain fast hash is enough: salts
+    and slow key derivation protect secrets that can be guessed, like
+    passwords, and nobody can guess a token to test against its hash.
+
+    Args:
+        token (str): The token as the user presents it.
+
+    Returns:
+        str: The hex digest.
+    """
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def derive_user_id(email: UName) -> UserId:
+    """
+    The user id an account gets when it is created: derived from its email
+    the way it always was (chats and worker tokens hang off it). The id is
+    stored with the account and stays when the email changes.
+
+    Args:
+        email (UName): The email at creation.
+
+    Returns:
+        UserId: The user id.
+    """
+    return UserId.create(email)
+
+
+def derive_account_key(email: UName) -> AccountKey:
+    """
+    The account key an account gets when it is created: derived from its
+    email the way it always was. It is the prefix of the account's queue
+    worker ids (and the key of the account in the redis store). It is stored
+    with the account and stays when the email changes.
+
+    Args:
+        email (UName): The email at creation.
+
+    Returns:
+        AccountKey: The account key.
+    """
+    return get_short_hash(email.get())
+
+
+def random_user_id() -> UserId:
+    """
+    A user id for an account whose derived user id belongs to another
+    account already (whose email was changed away from this one).
+
+    Returns:
+        UserId: A new random user id.
+    """
+    return UserId(uuid.uuid4())
+
+
+def random_account_key() -> AccountKey:
+    """
+    An account key for an account whose derived account key belongs to
+    another account already (whose email was changed away from this one).
+
+    Returns:
+        AccountKey: A new random account key.
+    """
+    return get_short_hash(uuid.uuid4().hex)
+
+
+AccountIds = TypedDict('AccountIds', {
+    "user_id": UserId,
+    "account_key": AccountKey,
+})
 
 
 UserInfo = TypedDict('UserInfo', {
@@ -133,7 +211,10 @@ class UserManager:
     def logout(self, token: SessionToken) -> None:
         raise NotImplementedError()
 
-    def get_sessions_for_user(self, email: UName) -> Iterable[SessionToken]:
+    def count_sessions(self, email: UName) -> int:
+        raise NotImplementedError()
+
+    def logout_everywhere(self, email: UName) -> None:
         raise NotImplementedError()
 
     def create_user(self, email: UName, display_name: str) -> bool:
@@ -215,8 +296,58 @@ class UserManager:
     def do_get_user_info(self, email: UName) -> UserInfo:
         raise NotImplementedError()
 
-    def get_user_id(self, email: UName) -> UserId:
-        return UserId.create(email)
+    def get_ids(self, email: UName) -> AccountIds | None:
+        """
+        The stored ids of an account. The admin is configured by email and
+        has the ids derived from it.
+
+        Args:
+            email (UName): The current email of the account.
+
+        Returns:
+            AccountIds | None: The ids or None if there is no such account.
+        """
+        if self.is_admin(email):
+            return {
+                "user_id": derive_user_id(email),
+                "account_key": derive_account_key(email),
+            }
+        return self.do_get_ids(email)
+
+    def do_get_ids(self, email: UName) -> AccountIds | None:
+        raise NotImplementedError()
+
+    def get_user_id(self, email: UName) -> UserId | None:
+        ids = self.get_ids(email)
+        return None if ids is None else ids["user_id"]
+
+    def get_account_key(self, email: UName) -> AccountKey | None:
+        ids = self.get_ids(email)
+        return None if ids is None else ids["account_key"]
+
+    def change_email(self, email: UName, new_email: UName) -> bool:
+        """
+        Changes the email of an account in one step. The account keeps its
+        ids (and so its chats, worker token and workers), all its sessions
+        end, and outstanding reset tokens and the reset cooldown are
+        dropped. The admin's email cannot be changed and cannot be taken.
+
+        Args:
+            email (UName): The current email.
+            new_email (UName): The new email.
+
+        Returns:
+            bool: Whether the email was changed. It is not if the account does
+                not exist or the new email belongs to an account already.
+        """
+        if self.is_admin(email) or self.is_admin(new_email):
+            return False
+        if email == new_email:
+            return False
+        return self.do_change_email(email, new_email)
+
+    def do_change_email(self, email: UName, new_email: UName) -> bool:
+        raise NotImplementedError()
 
     def has_capability(self, email: UName, capability: CapabilityName) -> bool:
         if self.is_admin(email):
@@ -264,18 +395,25 @@ class UserManager:
     def do_list_users(self) -> Iterable[UName]:
         raise NotImplementedError()
 
-    def create_worker_token(self, email: UName) -> WorkerToken:
+    def create_worker_token(self, email: UName) -> WorkerToken | None:
+        user_id = self.get_user_id(email)
+        if user_id is None:
+            return None
         worker_token: WorkerToken | None = None
         while worker_token is None:
             worker_token = uuid.uuid4().hex
             if hmac.compare_digest(INVALID_WORKER_TOKEN, worker_token):
                 worker_token = None
-        self.store_worker_token(email, worker_token)
+        self.store_worker_token(user_id, worker_token)
         return worker_token
 
     def is_correct_worker_token(
             self, email: UName, worker_token: WorkerToken) -> bool:
-        expected_token = self.get_worker_token(email)
+        # NOTE: providers send the current email of the account; the token
+        # belongs to the account's user id
+        user_id = self.get_user_id(email)
+        expected_token = (
+            None if user_id is None else self.get_worker_token(user_id))
         if expected_token is None:
             # NOTE: no shortcut for missing tokens (same timing as a mismatch)
             hmac.compare_digest(INVALID_WORKER_TOKEN, worker_token)
@@ -283,8 +421,8 @@ class UserManager:
         return hmac.compare_digest(expected_token, worker_token)
 
     def store_worker_token(
-            self, email: UName, worker_token: WorkerToken) -> None:
+            self, user_id: UserId, worker_token: WorkerToken) -> None:
         raise NotImplementedError()
 
-    def get_worker_token(self, email: UName) -> WorkerToken | None:
+    def get_worker_token(self, user_id: UserId) -> WorkerToken | None:
         raise NotImplementedError()

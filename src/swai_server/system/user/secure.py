@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Literal
 
 from quick_server import PreventDefaultResponse
@@ -20,6 +20,7 @@ from scattermind.system.names import UName
 
 from swai.system.user import (
     CAP_CHANGE_CAPABILITIES,
+    CAP_CHANGE_EMAIL,
     CAP_CREATE_USER,
     CAP_DELETE_USER,
     CAP_LIST_USERS,
@@ -30,6 +31,7 @@ from swai.system.user import (
     WorkerToken,
 )
 from swai_server.system.user.manager import (
+    AccountKey,
     RawPassword,
     ResetToken,
     SessionToken,
@@ -122,11 +124,7 @@ class SecureContext:
         self.ensure_can_act(who, email=None, admin_capability=CAP_LIST_USERS)
         user_mng = self._user_mng
         for email in user_mng.list_users():
-            is_active = False
-            for _ in user_mng.get_sessions_for_user(email):
-                is_active = True
-                break
-            yield (email, is_active)
+            yield (email, user_mng.count_sessions(email) > 0)
 
     def create_user(
             self, who: SessionToken, email: UName, display_name: str) -> bool:
@@ -166,26 +164,68 @@ class SecureContext:
         self.ensure_can_act(who, email=email, admin_capability=CAP_CREATE_USER)
         return self._user_mng.generate_reset_token(email)
 
-    def delete_user(self, who: SessionToken, email: UName) -> bool:
+    def _ensure_can_manage(
+            self,
+            who: SessionToken,
+            email: UName,
+            capability: CapabilityName,
+            what: str) -> None:
+        # NOTE: no target email: the capability is needed for every account
+        self.ensure_can_act(who, email=None, admin_capability=capability)
+        if self._user_mng.get_email(who) == email:
+            raise PreventDefaultResponse(403, f"cannot {what} the own account")
+        self.ensure_not_admin(email)
+
+    def delete_user(
+            self,
+            who: SessionToken,
+            email: UName,
+            *,
+            remove_chats: Callable[[UserId], None] | None = None) -> bool:
         """
         Deletes an account (see `UserManager.delete_user`). Requires the
         delete capability. Neither the own account nor the admin account can
-        be deleted this way.
+        be deleted this way. The account is logged out first, then its chats
+        are removed, and then the account: if removing the chats fails the
+        account is still there and the deletion can be repeated.
 
         Args:
             who (SessionToken): The session of the acting user.
             email (UName): The account.
+            remove_chats (Callable[[UserId], None] | None, optional): Removes
+                the chats of the account's user id. Defaults to None.
 
         Returns:
             bool: Whether the account existed.
         """
-        # NOTE: no target email: the capability is needed for every account
-        self.ensure_can_act(who, email=None, admin_capability=CAP_DELETE_USER)
-        if self._user_mng.get_email(who) == email:
-            raise PreventDefaultResponse(
-                403, "cannot delete the own account")
-        self.ensure_not_admin(email)
+        self._ensure_can_manage(who, email, CAP_DELETE_USER, "delete")
+        user_id = self._user_mng.get_user_id(email)
+        if user_id is not None:
+            # NOTE: no new chats while the chats are removed
+            self.force_logout_user(email)
+            if remove_chats is not None:
+                remove_chats(user_id)
         return self._user_mng.delete_user(email)
+
+    def change_email(
+            self, who: SessionToken, email: UName, new_email: UName) -> bool:
+        """
+        Changes the email of an account (see `UserManager.change_email`).
+        Requires the change email capability. Neither the own email nor the
+        admin's can be changed this way.
+
+        Args:
+            who (SessionToken): The session of the acting user.
+            email (UName): The current email of the account.
+            new_email (UName): The new email.
+
+        Returns:
+            bool: Whether the email was changed. It is not if the account does
+                not exist or the new email is taken.
+        """
+        self._ensure_can_manage(
+            who, email, CAP_CHANGE_EMAIL, "change the email of")
+        return self._user_mng.change_email(email, new_email)
 
     def set_password(
             self,
@@ -205,10 +245,17 @@ class SecureContext:
 
     def get_user_id(self, who: SessionToken, email: UName) -> UserId:
         self.ensure_can_act(who, email=email)
-        return self.force_user_id(email)
+        user_id = self.force_user_id(email)
+        if user_id is None:
+            # NOTE: the account is gone
+            raise PreventDefaultResponse(401, "must be logged in")
+        return user_id
 
-    def force_user_id(self, email: UName) -> UserId:
+    def force_user_id(self, email: UName) -> UserId | None:
         return self._user_mng.get_user_id(email)
+
+    def force_account_key(self, email: UName) -> AccountKey | None:
+        return self._user_mng.get_account_key(email)
 
     def is_admin(self, email: UName) -> bool:
         return self._user_mng.is_admin(email)
@@ -220,6 +267,8 @@ class SecureContext:
         if email is None:
             return "invalid"
         own_user_id = user_mng.get_user_id(email)
+        if own_user_id is None:
+            return "invalid"
         if user_id != own_user_id:
             return "denied"
         return "ok"
@@ -235,6 +284,8 @@ class SecureContext:
         if email is None:
             return "invalid"
         own_user_id = user_mng.get_user_id(email)
+        if own_user_id is None:
+            return "invalid"
         if user_id != own_user_id:
             return "denied"
         return "ok"
@@ -314,7 +365,10 @@ class SecureContext:
             email=email,
             own_capability=CAP_REGISTER_OWN_WORKER,
             admin_capability=CAP_REGISTER_OTHER_WORKER)
-        return self._user_mng.create_worker_token(email)
+        worker_token = self._user_mng.create_worker_token(email)
+        if worker_token is None:
+            raise PreventDefaultResponse(404, "unknown user")
+        return worker_token
 
     def ensure_worker_token(
             self, email: UName, worker_token: WorkerToken) -> None:
@@ -322,9 +376,7 @@ class SecureContext:
             raise PreventDefaultResponse(401, "invalid worker token")
 
     def force_logout_user(self, email: UName) -> None:
-        user_mng = self._user_mng
-        for session_token in user_mng.get_sessions_for_user(email):
-            user_mng.logout(session_token)
+        self._user_mng.logout_everywhere(email)
 
     def secure_email(
             self, who: SessionToken, email: UName | None) -> UName | None:

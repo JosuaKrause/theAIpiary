@@ -50,6 +50,7 @@ from swai_server.smind.server_api import init_llama, start_llama_response
 NS = GNamespace("llama")
 USER = UName("user@example.com")
 WORKER_USER = UName("bee@example.com")
+WORKER_KEY = "beekey"
 WORKER = "w1"
 
 SHORT_WAIT = 0.2
@@ -129,7 +130,11 @@ def history(session: Session) -> list[VisibleMessage]:
 
 def pop(queue: TaskQueue, *, timeout: float = 0.05) -> TaskId | None:
     task = queue.pop_task(
-        [NS], user_email=WORKER_USER, worker_name=WORKER, timeout=timeout)
+        [NS],
+        user_email=WORKER_USER,
+        account_key=WORKER_KEY,
+        worker_name=WORKER,
+        timeout=timeout)
     if task is None:
         return None
     _, task_id, _ = task
@@ -151,7 +156,7 @@ def finish(
     }
     queue.set_result(
         task_id,
-        user_email=WORKER_USER,
+        account_key=WORKER_KEY,
         worker_name=WORKER,
         response=response)
 

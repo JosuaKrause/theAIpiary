@@ -14,32 +14,24 @@
 """Tests for the user endpoints of the API server, run against the real
 request handlers on in-memory stores, once with each user manager."""
 import json
-import os
 import threading
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from test.util import (
-    ADMIN_EMAIL,
-    memory_redis,
-    strict_memory_redis,
-    UNUSED_REDIS,
-)
+from test.util import ADMIN_EMAIL, memory_redis
 from typing import Any, cast
 
 import pytest
 from quick_server import create_server
-from scattermind.system.names import UName
-from scattermind.system.session import blob_disk as blob_disk_module
-from scattermind.system.session import kv_redis as kv_redis_module
-from scattermind.system.session import user_redis as session_user_module
-from scattermind.system.session.loader import load_session_store
+from scattermind.system.names import GNamespace, UName
+from scattermind.system.response import response_to_redis
 from scattermind.system.session.session import SessionStore
 
 from swai.auth import get_authorization
 from swai.system.user import (
     CAP_CHANGE_CAPABILITIES,
+    CAP_CHANGE_EMAIL,
     CAP_CREATE_USER,
     CAP_DELETE_USER,
     CAP_LIST_USERS,
@@ -51,6 +43,7 @@ from swai.system.user import (
 from swai_server import config as config_module
 from swai_server.app import server as server_module
 from swai_server.auction import queue as queue_module
+from swai_server.auction.queue import TaskQueue
 from swai_server.system.user.manager import (
     ResetToken,
     SessionToken,
@@ -71,6 +64,7 @@ class Api:
     url: str
     user_mng: UserManager
     session_store: SessionStore
+    task_queue: TaskQueue
     sent: list[tuple[UName, ResetToken]] = field(default_factory=list)
     email_sent: threading.Event = field(default_factory=threading.Event)
     smtp_release: threading.Event = field(default_factory=threading.Event)
@@ -116,34 +110,6 @@ class Api:
                 return err.code, err.read().decode("utf-8")
 
 
-@pytest.fixture(name="session_store")
-def fixture_session_store(
-        monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Any) -> SessionStore:
-    """
-    A session store (where chats are kept) on in-memory redis and a
-    temporary folder.
-
-    Returns:
-        SessionStore: The session store.
-    """
-    # NOTE: deleting without keys must fail as on a real redis: removing a
-    # chat without values does that
-    for module in (blob_disk_module, kv_redis_module, session_user_module):
-        monkeypatch.setattr(module, "Redis", strict_memory_redis)
-    return load_session_store({
-        "user": {"name": "redis", "cfg": UNUSED_REDIS},
-        "key_value": {"name": "redis", "cfg": UNUSED_REDIS},
-        "blob": {
-            "name": "disk",
-            "cfg": UNUSED_REDIS,
-            "disk_path": os.path.join(tmp_path, "disk"),
-        },
-        "cache_path": os.path.join(tmp_path, "cache"),
-        "is_shared": False,
-    })
-
-
 @pytest.fixture(name="api")
 def fixture_api(
         monkeypatch: pytest.MonkeyPatch,
@@ -160,6 +126,14 @@ def fixture_api(
         Api: The running server.
     """
     monkeypatch.setattr(queue_module, "Redis", memory_redis)
+    task_queues: list[TaskQueue] = []
+
+    def create_task_queue(*args: Any, **kwargs: Any) -> TaskQueue:
+        task_queue = TaskQueue(*args, **kwargs)
+        task_queues.append(task_queue)
+        return task_queue
+
+    monkeypatch.setattr(server_module, "TaskQueue", create_task_queue)
     monkeypatch.setattr(
         server_module, "get_config", config_module.config_template)
     monkeypatch.setattr(
@@ -201,7 +175,8 @@ def fixture_api(
         api = Api(
             url=f"http://127.0.0.1:{port}{prefix}",
             user_mng=user_mng,
-            session_store=session_store)
+            session_store=session_store,
+            task_queue=task_queues[0])
 
         def send_password_reset(
                 _config: Any,
@@ -429,17 +404,22 @@ def test_delete_user_endpoint(api: Api) -> None:
     alice = session_for(api, ALICE, CAP_REGISTER_OWN_WORKER)
     bob = session_for(api, BOB)
     worker_token = user_mng.create_worker_token(ALICE)
+    assert worker_token is not None
     worker_auth = {"Authorization": get_authorization(ALICE, worker_token)}
     heartbeat = {"worker_name": "hive", "status": "idle"}
     assert api.post(
         "/task/heartbeat", heartbeat, headers=worker_auth)[0] == 200
+    alice_id = user_mng.get_user_id(ALICE)
+    bob_id = user_mng.get_user_id(BOB)
+    assert alice_id is not None
+    assert bob_id is not None
     alice_chats = [
         session_store.create_new_session(
-            user_mng.get_user_id(ALICE), copy_from=None).get_session_id()
+            alice_id, copy_from=None).get_session_id()
         for _ in range(2)
     ]
     bob_chat = session_store.create_new_session(
-        user_mng.get_user_id(BOB), copy_from=None).get_session_id()
+        bob_id, copy_from=None).get_session_id()
 
     # without the capability
     status, _ = api.post("/user/delete", {"name": ALICE.get()}, session=bob)
@@ -454,10 +434,11 @@ def test_delete_user_endpoint(api: Api) -> None:
     assert not is_logged_in(api, alice)
     assert api.post(
         "/task/heartbeat", heartbeat, headers=worker_auth)[0] == 401
-    assert not list(session_store.get_sessions(user_mng.get_user_id(ALICE)))
+    assert user_mng.get_user_id(ALICE) is None
+    assert not list(session_store.get_sessions(alice_id))
     for chat in alice_chats:
         assert session_store.get_user(chat) is None
-    assert session_store.get_user(bob_chat) == user_mng.get_user_id(BOB)
+    assert session_store.get_user(bob_chat) == bob_id
     assert is_logged_in(api, bob)
     # again: nothing left to delete
     assert api.post(
@@ -563,3 +544,178 @@ def test_user_list_marks_admin(api: Api) -> None:
             },
         ],
     }
+
+
+# *** changing the email ***
+
+
+CAROL = UName("carol@example.com")
+
+
+def change_email(
+        api: Api,
+        session: SessionToken,
+        email: UName,
+        new_email: UName) -> tuple[int, Any]:
+    """
+    Changes the email of an account through the API.
+
+    Args:
+        api (Api): The server.
+        session (SessionToken): The session of the acting user.
+        email (UName): The current email.
+        new_email (UName): The new email.
+
+    Returns:
+        tuple[int, Any]: The status code and the response.
+    """
+    return api.post(
+        "/user/change_email",
+        {"name": email.get(), "new_email": new_email.get()},
+        session=session)
+
+
+def login(api: Api, email: UName, password: str) -> SessionToken | None:
+    """
+    Logs in through the API.
+
+    Args:
+        api (Api): The server.
+        email (UName): The email.
+        password (str): The password.
+
+    Returns:
+        SessionToken | None: The session from the cookie or None if the login
+            failed.
+    """
+    req = urllib.request.Request(
+        f"{api.url}/user/login",
+        data=json.dumps({"name": email.get(), "password": password}).encode(
+            "utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=SOME_TIME) as res:
+        if not json.loads(res.read())["logged"]:
+            return None
+        cookie = res.headers["Set-Cookie"]
+    return cookie.split("user_session=", 1)[1].split(";", 1)[0]
+
+
+def test_change_email_endpoint_permissions(api: Api) -> None:
+    alice = session_for(api, ALICE)
+    bob = session_for(api, BOB)
+    assert api.post(
+        "/user/change_email",
+        {"name": BOB.get(), "new_email": CAROL.get()})[0] == 401
+    assert change_email(api, alice, BOB, CAROL)[0] == 403
+    api.user_mng.set_capability(ALICE, CAP_CHANGE_EMAIL, has=True)
+    admin = session_for(api, ADMIN_EMAIL)
+    # not the own email, not the admin's
+    for who, email in [
+            (alice, ALICE),
+            (alice, ADMIN_EMAIL),
+            (admin, ADMIN_EMAIL),
+            ]:
+        assert change_email(api, who, email, CAROL)[0] == 403
+    assert is_logged_in(api, bob)
+    # taken emails, including the admin's, and an empty one
+    for taken in (ALICE, ADMIN_EMAIL):
+        assert change_email(api, admin, BOB, taken) == (200, {
+            "email": BOB.get(),
+            "new_email": taken.get(),
+            "changed": False,
+        })
+    assert api.post(
+        "/user/change_email",
+        {"name": BOB.get(), "new_email": " "},
+        session=admin)[0] == 400
+    assert is_logged_in(api, bob)
+    assert set(api.user_mng.list_users()) == {ADMIN_EMAIL, ALICE, BOB}
+    # with the capability (a user that is not the admin)
+    assert change_email(api, alice, BOB, CAROL) == (200, {
+        "email": BOB.get(),
+        "new_email": CAROL.get(),
+        "changed": True,
+    })
+
+
+def test_change_email_endpoint(api: Api) -> None:
+    """After an email change the account logs in with the new email only,
+    and keeps its chats, its worker token, its queue workers, and a task its
+    worker took before the change."""
+    user_mng = api.user_mng
+    task_queue = api.task_queue
+    session_for(api, BOB, CAP_REGISTER_OWN_WORKER)
+    reset_token = user_mng.generate_reset_token(BOB)
+    assert reset_token is not None
+    assert user_mng.set_password("bob pw", reset_token) == BOB
+    bob = login(api, BOB, "bob pw")
+    assert bob is not None
+    status, res = api.post("/chat/new", {}, session=bob)
+    assert status == 200
+    chat = res["model_session"]
+    worker_token = user_mng.create_worker_token(BOB)
+    assert worker_token is not None
+
+    def worker_post(
+            email: UName, path: str, body: dict[str, Any]) -> tuple[int, Any]:
+        return api.post(path, body, headers={
+            "Authorization": get_authorization(email, worker_token),
+        })
+
+    heartbeat = {"worker_name": "hive", "status": "idle"}
+    assert worker_post(BOB, "/task/heartbeat", heartbeat)[0] == 200
+    workers = [info["worker_id"] for info in task_queue.get_all_workers()]
+    assert len(workers) == 1
+    # a task taken before the change
+    task_id = task_queue.enqueue_task(GNamespace("llama"), {"prompt": "hi"})
+    status, res = worker_post(BOB, "/task/bid", {
+        "worker_name": "hive",
+        "nss": ["llama"],
+        "timeout": 1.0,
+    })
+    assert status == 200
+    assert res["task_id"] == task_id.to_parseable()
+
+    admin = session_for(api, ADMIN_EMAIL)
+    assert change_email(api, admin, BOB, CAROL)[1]["changed"]
+
+    # logged out; only the new email logs in, with the same password
+    assert not is_logged_in(api, bob)
+    assert login(api, BOB, "bob pw") is None
+    carol = login(api, CAROL, "bob pw")
+    assert carol is not None
+    # the chats stayed
+    status, res = api.post("/chat/list", {}, session=carol)
+    assert status == 200
+    assert [info["model_session"] for info in res["model_sessions"]] == [
+        chat]
+    # the worker token works with the new email only
+    assert worker_post(BOB, "/task/heartbeat", heartbeat)[0] == 401
+    assert worker_post(CAROL, "/task/heartbeat", heartbeat)[0] == 200
+    # it is the same worker, and still the account's own
+    assert [
+        info["worker_id"] for info in task_queue.get_all_workers()
+    ] == workers
+    status, res = api.post("/task/workers", {}, session=carol)
+    assert status == 200
+    assert [(info["worker_id"], info["own"]) for info in res["workers"]] == [
+        (workers[0], True)]
+    # the task taken before the change is finished after it
+    status, _ = worker_post(CAROL, "/task/finish", {
+        "worker_name": "hive",
+        "task_id": task_id.to_parseable(),
+        "response": response_to_redis({
+            "ns": GNamespace("llama"),
+            "status": "ready",
+            "result": None,
+            "duration": 1.0,
+            "retries": 0,
+            "error": None,
+            "fmt": None,
+        }),
+    })
+    assert status == 200
+    result = task_queue.get_result(task_id)
+    assert result is not None
+    assert result["status"] == "ready"

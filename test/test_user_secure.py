@@ -22,6 +22,7 @@ from scattermind.system.names import UName
 
 from swai.system.user import (
     CAP_CHANGE_CAPABILITIES,
+    CAP_CHANGE_EMAIL,
     CAP_CREATE_USER,
     CAP_DELETE_USER,
     CAP_LIST_USERS,
@@ -219,7 +220,7 @@ def test_logout_self(
     # logging out everywhere is allowed on one's own account
     sec_ctx.logout_user(second, ALICE)
     assert sec_ctx.get_email(second) is None
-    assert not list(user_mng.get_sessions_for_user(ALICE))
+    assert user_mng.count_sessions(ALICE) == 0
 
 
 def test_logout_other_needs_capability(
@@ -402,6 +403,49 @@ def test_delete_user_spares_self_and_admin(
     # the admin can delete anyone else
     assert sec_ctx.delete_user(admin, ALICE)
     assert set(user_mng.list_users()) == {ADMIN_EMAIL}
+
+
+# *** changing the email ***
+
+
+CAROL = UName("carol@example.com")
+
+
+def test_change_email_needs_capability(
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
+    alice = session_for(user_mng, ALICE)
+    bob = session_for(user_mng, BOB)
+    assert_refused(403, lambda: sec_ctx.change_email(alice, BOB, CAROL))
+    assert_refused(
+        401, lambda: sec_ctx.change_email(NOT_A_SESSION, BOB, CAROL))
+    # other capabilities to manage accounts are not enough
+    for cap in CAPABILITIES:
+        if cap != CAP_CHANGE_EMAIL:
+            user_mng.set_capability(ALICE, cap, has=True)
+    assert_refused(403, lambda: sec_ctx.change_email(alice, BOB, CAROL))
+    assert sec_ctx.get_email(bob) == BOB
+    user_mng.set_capability(ALICE, CAP_CHANGE_EMAIL, has=True)
+    assert sec_ctx.change_email(alice, BOB, CAROL)
+    assert sec_ctx.get_email(bob) is None
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE, CAROL}
+    # taken by the acting user
+    assert not sec_ctx.change_email(alice, CAROL, ALICE)
+
+
+def test_change_email_spares_self_and_admin(
+        sec_ctx: SecureContext, user_mng: UserManager) -> None:
+    admin = session_for(user_mng, ADMIN_EMAIL)
+    alice = session_for(user_mng, ALICE, CAP_CHANGE_EMAIL)
+    assert_refused(403, lambda: sec_ctx.change_email(alice, ALICE, CAROL))
+    assert_refused(
+        403, lambda: sec_ctx.change_email(alice, ADMIN_EMAIL, CAROL))
+    assert_refused(
+        403, lambda: sec_ctx.change_email(admin, ADMIN_EMAIL, CAROL))
+    # nobody can take the admin's email
+    assert not sec_ctx.change_email(admin, ALICE, ADMIN_EMAIL)
+    assert sec_ctx.get_email(alice) == ALICE
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE}
+    assert sec_ctx.change_email(admin, ALICE, CAROL)
 
 
 # *** invitations through the context ***

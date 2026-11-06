@@ -16,8 +16,7 @@ from collections.abc import Callable
 from typing import cast, get_args, Literal, TypeAlias, TypedDict
 
 import requests
-from scattermind.system.names import UName
-from scattermind.system.util import get_short_hash, get_time_str
+from scattermind.system.util import get_time_str
 from urllib3.exceptions import (
     ConnectTimeoutError,
     MaxRetryError,
@@ -31,10 +30,16 @@ WorkerId: TypeAlias = str
 DEFAULT_WAIT = 17.0  # 17s
 
 
-def get_worker_id(user_email: UName, worker_name: str) -> WorkerId:
+def get_worker_id_prefix(account_key: str) -> str:
+    # NOTE: the account key is stored with the account and stays when its
+    # email changes, so do the ids of its workers
+    return f"{account_key}-"
+
+
+def get_worker_id(account_key: str, worker_name: str) -> WorkerId:
     if not worker_name:
         raise ValueError(f"{worker_name=} cannot be empty")
-    return f"{get_short_hash(user_email.get())}-{worker_name}"
+    return f"{get_worker_id_prefix(account_key)}{worker_name}"
 
 
 WorkerStatus = Literal[

@@ -673,6 +673,49 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
     );
   };
 
+  handleChangeEmailClick: MouseEventHandler<HTMLInputElement> = (e) => {
+    e.preventDefault();
+    const { userActions } = this.props;
+    const { selectedUser } = this.state;
+    if (!selectedUser) {
+      return;
+    }
+    const input = window.prompt(
+      `New email for ${selectedUser}? They will be logged out everywhere. ` +
+        'Their worker bees have to use the new email from then on.',
+      `${selectedUser}`,
+    );
+    const newEmail = input?.trim() as UserEmail | undefined;
+    if (!newEmail || newEmail === selectedUser) {
+      return;
+    }
+    this.runUserAction(
+      (email) =>
+        new Promise((resolve, reject) => {
+          userActions
+            .changeEmail(email, newEmail, (changed) => {
+              if (changed) {
+                this.setState(({ users }) => ({
+                  users: users.map((userEntry) =>
+                    userEntry.email === email
+                      ? { ...userEntry, email: newEmail }
+                      : userEntry,
+                  ),
+                  selectedUser: newEmail,
+                }));
+              }
+              resolve(
+                changed
+                  ? `Changed ${email} to ${newEmail}.`
+                  : `${newEmail} is taken (or ${email} does not exist).`,
+              );
+            })
+            .catch(reject);
+        }),
+      'Could not change the email',
+    );
+  };
+
   handleDeleteUserClick: MouseEventHandler<HTMLInputElement> = (e) => {
     e.preventDefault();
     const { userActions } = this.props;
@@ -714,13 +757,15 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
     }
     const { email, isAdmin } = userEntry;
     const isSelf = email === user.email;
-    const { createUser, logoutOtherUser, deleteUser } = user.capabilities;
+    const { createUser, logoutOtherUser, deleteUser, changeEmail } =
+      user.capabilities;
     const canReset = createUser && !isAdmin;
     const canLogout = logoutOtherUser && !isSelf;
+    const canChangeEmail = changeEmail && !isAdmin && !isSelf;
     const canDelete = deleteUser && !isAdmin && !isSelf;
     return (
       <React.Fragment>
-        {canReset || canLogout || canDelete ? (
+        {canReset || canLogout || canChangeEmail || canDelete ? (
           <UserAdminRow>
             {canReset ? (
               <Button
@@ -738,6 +783,15 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
                 value="Log Out Everywhere"
                 disabled={inFlightUserAction}
                 onClick={this.handleLogoutUserClick}
+              />
+            ) : null}
+            {canChangeEmail ? (
+              <Button
+                name="changeemail"
+                type="button"
+                value="Change Email"
+                disabled={inFlightUserAction}
+                onClick={this.handleChangeEmailClick}
               />
             ) : null}
             {canDelete ? (

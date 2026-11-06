@@ -181,9 +181,10 @@ class TaskQueue:
             self,
             *,
             user_email: UName,
+            account_key: str,
             worker_name: str,
             worker_status: WorkerStatus) -> float:
-        worker_id = get_worker_id(user_email, worker_name)
+        worker_id = get_worker_id(account_key, worker_name)
         heartbeat = HEARTBEAT
         with self._redis.pipeline() as pipe:
             pipe.set_value(
@@ -310,9 +311,10 @@ class TaskQueue:
             nss: list[GNamespace],
             *,
             user_email: UName,
+            account_key: str,
             worker_name: str,
             timeout: float) -> tuple[GNamespace, TaskId, InputStr] | None:
-        worker_id = get_worker_id(user_email, worker_name)
+        worker_id = get_worker_id(account_key, worker_name)
         keys = {
             "queue_base": self.queue_key(None),
             "input_base": self.input_key(None),
@@ -469,7 +471,7 @@ class TaskQueue:
             self,
             task_id: TaskId,
             *,
-            user_email: UName,
+            account_key: str,
             worker_name: str,
             response: ResponseObject) -> None:
         output_key = self.output_key(task_id)
@@ -480,7 +482,7 @@ class TaskQueue:
                 "output": output_key,
             },
             args={
-                "worker_id": get_worker_id(user_email, worker_name),
+                "worker_id": get_worker_id(account_key, worker_name),
                 "status": response["status"],
                 "output": response_to_redis(response),
             })

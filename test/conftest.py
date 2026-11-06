@@ -23,13 +23,18 @@ from test.util import (
     ADMIN_PW,
     is_github_action,
     memory_redis,
+    strict_memory_redis,
     TEST_POSTGRES_URL,
     UNUSED_REDIS,
 )
-from typing import cast
+from typing import Any, cast
 
 import pytest
 import sqlalchemy as sa
+from scattermind.system.session import blob_disk as blob_disk_module
+from scattermind.system.session import kv_redis as kv_redis_module
+from scattermind.system.session import user_redis as session_user_module
+from scattermind.system.session.loader import load_session_store
 from scattermind.system.session.session import SessionStore
 
 from swai_server.auction import queue as queue_module
@@ -171,3 +176,31 @@ def fixture_sec_ctx(user_mng: UserManager) -> SecureContext:
         SecureContext: The secure context.
     """
     return SecureContext(user_mng)
+
+
+@pytest.fixture(name="session_store")
+def fixture_session_store(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Any) -> SessionStore:
+    """
+    A session store (where chats are kept) on in-memory redis and a
+    temporary folder.
+
+    Returns:
+        SessionStore: The session store.
+    """
+    # NOTE: deleting without keys must fail as on a real redis: removing a
+    # chat without values does that
+    for module in (blob_disk_module, kv_redis_module, session_user_module):
+        monkeypatch.setattr(module, "Redis", strict_memory_redis)
+    return load_session_store({
+        "user": {"name": "redis", "cfg": UNUSED_REDIS},
+        "key_value": {"name": "redis", "cfg": UNUSED_REDIS},
+        "blob": {
+            "name": "disk",
+            "cfg": UNUSED_REDIS,
+            "disk_path": os.path.join(tmp_path, "disk"),
+        },
+        "cache_path": os.path.join(tmp_path, "cache"),
+        "is_shared": False,
+    })

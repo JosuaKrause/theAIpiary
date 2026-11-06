@@ -42,6 +42,11 @@ NS_A = GNamespace("alpha")
 NS_B = GNamespace("beta")
 ALICE = UName("alice@example.com")
 BOB = UName("bob@example.com")
+KEYS: dict[UName, str] = {
+    ALICE: "alicekey",
+    BOB: "bobkey",
+}
+"""The account keys of the accounts (the user manager stores them)."""
 
 FAST_HEARTBEAT = 0.5
 """Heartbeat lifetime for tests where a worker has to vanish. The cleaner
@@ -140,7 +145,11 @@ def pop(
         worker: str = "w1",
         timeout: float = NO_TASK) -> TaskId | None:
     task = queue.pop_task(
-        nss, user_email=user, worker_name=worker, timeout=timeout)
+        nss,
+        user_email=user,
+        account_key=KEYS[user],
+        worker_name=worker,
+        timeout=timeout)
     if task is None:
         return None
     _, task_id, _ = task
@@ -168,7 +177,7 @@ def finish(
         status: TaskStatus = "ready") -> None:
     queue.set_result(
         task_id,
-        user_email=user,
+        account_key=KEYS[user],
         worker_name=worker,
         response=response(status))
 
@@ -177,7 +186,7 @@ def finish(
 
 
 def test_task_worker_roundtrip() -> None:
-    worker_id = get_worker_id(ALICE, "w1")
+    worker_id = get_worker_id(KEYS[ALICE], "w1")
     text = task_worker_to_redis({"ns": NS_A, "worker_id": worker_id})
     res = redis_to_task_worker(text)
     assert res is not None
@@ -191,12 +200,12 @@ def test_task_worker_missing(text: str | None) -> None:
 
 
 def test_worker_id() -> None:
-    assert get_worker_id(ALICE, "w1") == get_worker_id(ALICE, "w1")
+    assert get_worker_id(KEYS[ALICE], "w1") == get_worker_id(KEYS[ALICE], "w1")
     # the same worker name under two accounts is two workers
-    assert get_worker_id(ALICE, "w1") != get_worker_id(BOB, "w1")
-    assert get_worker_id(ALICE, "w1") != get_worker_id(ALICE, "w2")
+    assert get_worker_id(KEYS[ALICE], "w1") != get_worker_id(KEYS[BOB], "w1")
+    assert get_worker_id(KEYS[ALICE], "w1") != get_worker_id(KEYS[ALICE], "w2")
     with pytest.raises(ValueError, match="cannot be empty"):
-        get_worker_id(ALICE, "")
+        get_worker_id(KEYS[ALICE], "")
 
 
 # *** enqueue and pop ***
@@ -206,7 +215,11 @@ def test_enqueue_and_pop(task_queue: TaskQueue) -> None:
     task_id = enqueue(task_queue, NS_A, "hello")
     assert task_queue.get_status(task_id) == "wait"
     task = task_queue.pop_task(
-        [NS_A], user_email=ALICE, worker_name="w1", timeout=NO_TASK)
+        [NS_A],
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        timeout=NO_TASK)
     assert task is not None
     ns, popped_id, input_str = task
     assert ns == NS_A
@@ -595,10 +608,13 @@ def test_clear_task(task_queue: TaskQueue) -> None:
 
 def test_heartbeat_and_worker_info(task_queue: TaskQueue) -> None:
     wait = task_queue.heartbeat(
-        user_email=ALICE, worker_name="w1", worker_status="idle")
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        worker_status="idle")
     # a worker is asked to report back twice per heartbeat lifetime
     assert wait == HEARTBEAT * 0.5
-    worker_id = get_worker_id(ALICE, "w1")
+    worker_id = get_worker_id(KEYS[ALICE], "w1")
     info = task_queue.get_worker_info(worker_id)
     assert info == {
         "worker_id": worker_id,
@@ -608,41 +624,53 @@ def test_heartbeat_and_worker_info(task_queue: TaskQueue) -> None:
 
 
 def test_unknown_worker(task_queue: TaskQueue) -> None:
-    info = task_queue.get_worker_info(get_worker_id(BOB, "ghost"))
+    info = task_queue.get_worker_info(get_worker_id(KEYS[BOB], "ghost"))
     assert info["email"] is None
     assert info["status"] == "unknown"
 
 
 def test_pop_marks_worker_busy(task_queue: TaskQueue) -> None:
     task_queue.heartbeat(
-        user_email=ALICE, worker_name="w1", worker_status="idle")
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        worker_status="idle")
     enqueue(task_queue, NS_A, "hello")
     assert pop(task_queue, [NS_A], worker="w1") is not None
-    info = task_queue.get_worker_info(get_worker_id(ALICE, "w1"))
+    info = task_queue.get_worker_info(get_worker_id(KEYS[ALICE], "w1"))
     assert info["status"] == "busy"
 
 
 def test_get_all_workers(task_queue: TaskQueue) -> None:
     assert not list(task_queue.get_all_workers())
     task_queue.heartbeat(
-        user_email=ALICE, worker_name="w1", worker_status="idle")
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        worker_status="idle")
     task_queue.heartbeat(
-        user_email=BOB, worker_name="w1", worker_status="backedup")
+        user_email=BOB,
+        account_key=KEYS[BOB],
+        worker_name="w1",
+        worker_status="backedup")
     workers = {
         info["worker_id"]: (info["email"], info["status"])
         for info in task_queue.get_all_workers()
     }
     assert workers == {
-        get_worker_id(ALICE, "w1"): (ALICE, "idle"),
-        get_worker_id(BOB, "w1"): (BOB, "backedup"),
+        get_worker_id(KEYS[ALICE], "w1"): (ALICE, "idle"),
+        get_worker_id(KEYS[BOB], "w1"): (BOB, "backedup"),
     }
 
 
 def test_worker_goes_offline_when_heartbeat_expires(
         fast_queue: TaskQueue) -> None:
     fast_queue.heartbeat(
-        user_email=ALICE, worker_name="w1", worker_status="idle")
-    worker_id = get_worker_id(ALICE, "w1")
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        worker_status="idle")
+    worker_id = get_worker_id(KEYS[ALICE], "w1")
     assert fast_queue.get_worker_info(worker_id)["status"] == "idle"
     time.sleep(FAST_HEARTBEAT + 0.1)
     info = fast_queue.get_worker_info(worker_id)
@@ -668,7 +696,10 @@ def test_offline_heartbeat_requeues_task(task_queue: TaskQueue) -> None:
     task_id = enqueue(task_queue, NS_A, "hello")
     assert pop(task_queue, [NS_A], worker="w1") == task_id
     task_queue.heartbeat(
-        user_email=ALICE, worker_name="w1", worker_status="offline")
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        worker_status="offline")
     start = time.monotonic()
     assert pop(task_queue, [NS_A], worker="w2", timeout=SOME_TASK) == task_id
     # far sooner than the cleaner's regular interval
@@ -704,12 +735,18 @@ def test_offline_heartbeat_while_cleaner_is_busy(
         TaskQueue, "requeue_unavailable_worker_tasks", slow_requeue)
     # wake the cleaner so that it is busy with its first run
     task_queue.heartbeat(
-        user_email=BOB, worker_name="other", worker_status="offline")
+        user_email=BOB,
+        account_key=KEYS[BOB],
+        worker_name="other",
+        worker_status="offline")
     assert in_run.wait(SOME_TASK)
     task_id = enqueue(task_queue, NS_A, "hello")
     assert pop(task_queue, [NS_A], worker="w1") == task_id
     task_queue.heartbeat(
-        user_email=ALICE, worker_name="w1", worker_status="offline")
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        worker_status="offline")
     release.set()
     assert pop(task_queue, [NS_A], worker="w2", timeout=SOME_TASK) == task_id
 
@@ -770,10 +807,13 @@ def test_cleaner_drops_assignment_of_completed_task(
         TaskQueue.task_worker_key(orphan),
         task_worker_to_redis({
             "ns": NS_A,
-            "worker_id": get_worker_id(ALICE, "w1"),
+            "worker_id": get_worker_id(KEYS[ALICE], "w1"),
         }))
     quiet_queue.heartbeat(
-        user_email=ALICE, worker_name="w1", worker_status="offline")
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        worker_status="offline")
     quiet_queue.requeue_unavailable_worker_tasks()
     assert not leftover_keys(queue_redis, "worker")
     assert quiet_queue.get_status(done) == "ready"
@@ -794,7 +834,10 @@ def test_cleaner_does_not_revive_task_cancelled_meanwhile(
     task_id = enqueue(quiet_queue, NS_A, "hello")
     assert pop(quiet_queue, [NS_A], worker="w1") == task_id
     quiet_queue.heartbeat(
-        user_email=ALICE, worker_name="w1", worker_status="offline")
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        worker_status="offline")
     original = getattr(TaskQueue, lookup)
     cancelled = False
 
@@ -871,7 +914,10 @@ def test_result_and_requeue_do_not_interleave(
     task_id = enqueue(quiet_queue, NS_A, "hello")
     assert pop(quiet_queue, [NS_A], worker="w1") == task_id
     quiet_queue.heartbeat(
-        user_email=ALICE, worker_name="w1", worker_status="offline")
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        worker_status="offline")
     finish_with_interleaved(
         quiet_queue,
         queue_redis,

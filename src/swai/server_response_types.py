@@ -46,6 +46,11 @@ SendResetResponse = TypedDict('SendResetResponse', {
     "email": str,
     "sent": bool,
 })
+ChangeEmailResponse = TypedDict('ChangeEmailResponse', {
+    "email": str,
+    "new_email": str,
+    "changed": bool,
+})
 DeleteUserResponse = TypedDict('DeleteUserResponse', {
     "email": str,
     "deleted": bool,

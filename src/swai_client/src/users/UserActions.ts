@@ -107,6 +107,15 @@ export default class UserActions {
     onDone();
   }
 
+  async changeEmail(
+    email: Readonly<UserEmail>,
+    newEmail: Readonly<UserEmail>,
+    onDone: (changed: boolean) => void,
+  ) {
+    const changed = await this.api.changeEmail(email, newEmail);
+    onDone(changed);
+  }
+
   async deleteUser(
     email: Readonly<UserEmail>,
     onDone: (result: DeleteUserResult) => void,

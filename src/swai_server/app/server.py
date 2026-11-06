@@ -34,6 +34,7 @@ from swai.auth import parse_authorization
 from swai.clean import sanity_check
 from swai.server_response_types import (
     ChangeCapabilityResponse,
+    ChangeEmailResponse,
     ChatInitResponse,
     ChatListResponse,
     ChatPromptResponse,
@@ -62,7 +63,12 @@ from swai.server_response_types import (
     WorkerUserResponse,
     WorkerValueResponse,
 )
-from swai.system.base import SessionInfoJSON, STATUS_MAPPING, to_worker_status
+from swai.system.base import (
+    get_worker_id_prefix,
+    SessionInfoJSON,
+    STATUS_MAPPING,
+    to_worker_status,
+)
 from swai_server.app.email import (
     EmailConfig,
     is_valid_email_config,
@@ -346,7 +352,13 @@ def setup(
             return Response("must include authorization header", 401)
         email, worker_token = parse_authorization(auth)
         sec_ctx.ensure_worker_token(email, worker_token)
+        account_key = sec_ctx.force_account_key(email)
+        if account_key is None:
+            # NOTE: the account was deleted in between
+            return Response("invalid worker token", 401)
         rargs["meta"]["user_email"] = email
+        # NOTE: workers belong to the account, not to its current email
+        rargs["meta"]["account_key"] = account_key
         return okay
 
     # *** misc ***
@@ -586,21 +598,45 @@ def setup(
         user_session: SessionToken = rargs["meta"]["user_session"]
         args = rargs["post"]
         user_email = UName(args["name"])
-        deleted = sec_ctx.delete_user(user_session, user_email)
-        # NOTE: chats belong to the user id that is derived from the email.
-        # they are deleted with the account: nobody else can read them, and a
-        # new account with the same email would get them otherwise. the
-        # chats are removed even if the account is gone already so that a
-        # deletion that failed halfway can be repeated
-        user_id = sec_ctx.force_user_id(user_email)
         chats = 0
-        for session in list(session_store.get_sessions(user_id)):
-            remove_chat(session_store, session.get_session_id())
-            chats += 1
+
+        def remove_chats(user_id: UserId) -> None:
+            # NOTE: the chats are deleted with the account: nobody else can
+            # read them, and keeping them is no use once nobody has the user
+            # id anymore
+            nonlocal chats
+
+            for session in list(session_store.get_sessions(user_id)):
+                remove_chat(session_store, session.get_session_id())
+                chats += 1
+
+        deleted = sec_ctx.delete_user(
+            user_session, user_email, remove_chats=remove_chats)
         return {
             "email": user_email.get(),
             "deleted": deleted,
             "chats": chats,
+        }
+
+    @server.json_post(f"{prefix}/user/change_email")
+    @server.middleware(verify_user_session)
+    def _post_user_change_email(
+            _req: QSRH, rargs: ReqArgs) -> ChangeEmailResponse:
+        user_session: SessionToken = rargs["meta"]["user_session"]
+        args = rargs["post"]
+        user_email = UName(args["name"])
+        new_email_str = f"{args['new_email']}".strip()
+        if not new_email_str:
+            raise PreventDefaultResponse(400, "the new email is empty")
+        new_email = UName(new_email_str)
+        # NOTE: the account keeps its chats, worker token and workers. its
+        # workers have to be told the new email (AIPIARY_USER) since that is
+        # how they log in
+        changed = sec_ctx.change_email(user_session, user_email, new_email)
+        return {
+            "email": user_email.get(),
+            "new_email": new_email.get(),
+            "changed": changed,
         }
 
     # *** worker API ***
@@ -612,6 +648,9 @@ def setup(
     def _post_task_workers(_req: QSRH, rargs: ReqArgs) -> WorkerInfoResponse:
         user_session: SessionToken = rargs["meta"]["user_session"]
         user_email: UName = rargs["meta"]["user_email"]
+        own_key = sec_ctx.force_account_key(user_email)
+        own_prefix = (
+            None if own_key is None else get_worker_id_prefix(own_key))
         status_mapping = STATUS_MAPPING
 
         def convert(info: WorkerInfo) -> WorkerInfoJSON:
@@ -624,7 +663,11 @@ def setup(
                 "worker_id": info["worker_id"],
                 "email": email_str,
                 "status": info["status"],
-                "own": info["email"] == user_email,
+                # NOTE: the email of a worker is the one it last sent; the
+                # worker id is tied to the account
+                "own": (
+                    own_prefix is not None
+                    and info["worker_id"].startswith(own_prefix)),
             }
 
         def sort_key(info: WorkerInfoJSON) -> tuple[int, int, str, str]:
@@ -652,6 +695,7 @@ def setup(
         worker_status = to_worker_status(args["status"])
         timeout = task_queue.heartbeat(
             user_email=user_email,
+            account_key=rargs["meta"]["account_key"],
             worker_name=worker_name,
             worker_status=worker_status)
         return {
@@ -670,6 +714,7 @@ def setup(
         task = task_queue.pop_task(
             nss,
             user_email=user_email,
+            account_key=rargs["meta"]["account_key"],
             worker_name=worker_name,
             timeout=timeout)
         if task is None:
@@ -688,14 +733,13 @@ def setup(
     @server.json_post(f"{prefix}/task/finish")
     @server.middleware(verify_worker_token)
     def _post_task_finish(_req: QSRH, rargs: ReqArgs) -> TaskFinishResponse:
-        user_email: UName = rargs["meta"]["user_email"]
         args = rargs["post"]
         worker_name: str = args["worker_name"]
         task_id = TaskId.parse(args["task_id"])
         response = redis_to_response(args["response"])
         task_queue.set_result(
             task_id,
-            user_email=user_email,
+            account_key=rargs["meta"]["account_key"],
             worker_name=worker_name,
             response=response)
         return {

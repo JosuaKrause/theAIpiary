@@ -11,19 +11,37 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""A user manager that keeps accounts in redis.
+
+An account is stored under its account key (see `derive_account_key`):
+`info:<key>` (email, display name, password hash, user id), `perm:<key>`
+(capabilities), `sess:<key>` (the hashes of the session tokens, see
+`hash_token`), and `cooldown:<key>`. The emails point to their account
+through `email:<hash of the email>`, the user ids through `uid:<user id>`
+(which keeps user ids unique), and the worker token is `worker:<user id>`.
+Reset tokens are `reset:<hash of the token>` and hold the email.
+"""
 import uuid
 from collections.abc import Iterable
-from typing import cast, TypeAlias, TypedDict
+from typing import cast
 
 from redipy import Redis, RedisConfig
 from redipy.script import ExecFunction, FnContext, RedisHash, RedisVar
+from scattermind.system.base import UserId
 from scattermind.system.names import UName
 from scattermind.system.util import get_short_hash, short_hash_size
 
 from swai.system.user import CapabilityName, WorkerToken
 from swai_server.system.user.manager import (
+    AccountIds,
+    AccountKey,
     as_capability,
+    derive_account_key,
+    derive_user_id,
+    hash_token,
     HashPassword,
+    random_account_key,
+    random_user_id,
     ResetToken,
     SessionToken,
     UserInfo,
@@ -31,14 +49,16 @@ from swai_server.system.user.manager import (
 )
 
 
-UserHash: TypeAlias = str
+STORE_VERSION = 3
+"""The layout version of the store. 1 (no version stored): accounts were
+keyed by the hash of their current email and had no stored user id. 2:
+session and reset tokens were stored as they are. 3: the layout described
+in the module docstring."""
 
 
-UserInfoRedis = TypedDict('UserInfoRedis', {
-    "email": str,
-    "display_name": str,
-    "hashpw": str,
-})
+CREATE_EMAIL_TAKEN = 0
+CREATE_OK = 1
+CREATE_ID_TAKEN = 2
 
 
 class RedisUserManager(UserManager):
@@ -50,24 +70,54 @@ class RedisUserManager(UserManager):
             cfg: RedisConfig) -> None:
         super().__init__(admin_email=admin_email, admin_pw=admin_pw)
         self._redis = Redis("redis", cfg=cfg, redis_module="users")
-        self._admin_hash = (
-            None if admin_email is None else self._userhash(admin_email))
+        self._admin_key = (
+            None if admin_email is None else derive_account_key(admin_email))
         self._create_user = self._create_user_script()
+        self._login = self._login_script()
         self._generate_reset_token = self._generate_reset_token_script()
         self._delete_user = self._delete_user_script()
+        self._change_email = self._change_email_script()
+        self.migrate()
+
+    # *** scripts ***
 
     def _create_user_script(self) -> ExecFunction:
         ctx = FnContext()
+        email_key = RedisVar(ctx.add_key("email"))
         info = RedisHash(ctx.add_key("info"))
+        uid = RedisVar(ctx.add_key("uid"))
         email = ctx.add_arg("email")
         display_name = ctx.add_arg("display_name")
-        res = ctx.add_local(False)
-        b_then, _ = ctx.if_(info.exists().eq_(0))
-        b_then.add(info.hset({
+        account_key = ctx.add_arg("account_key")
+        user_id = ctx.add_arg("user_id")
+        res = ctx.add_local(CREATE_EMAIL_TAKEN)
+        b_free, _ = ctx.if_(email_key.exists().eq_(0))
+        b_ok, b_taken = b_free.if_(
+            info.exists().eq_(0).and_(uid.exists().eq_(0)))
+        b_ok.add(info.hset({
             "email": email,
             "display_name": display_name,
             "hashpw": "",
+            "user_id": user_id,
         }))
+        b_ok.add(email_key.set_value(account_key))
+        b_ok.add(uid.set_value(account_key))
+        b_ok.add(res.assign(CREATE_OK))
+        b_taken.add(res.assign(CREATE_ID_TAKEN))
+        ctx.set_return_value(res)
+        return self._redis.register_script(ctx)
+
+    def _login_script(self) -> ExecFunction:
+        ctx = FnContext()
+        info = RedisHash(ctx.add_key("info"))
+        sess = RedisVar(ctx.add_key("sess"))
+        email = ctx.add_arg("email")
+        token = ctx.add_arg("token")
+        res = ctx.add_local(False)
+        # NOTE: the email is checked in the same step so that no session can
+        # be added after a concurrent email change logged the account out
+        b_then, _ = ctx.if_(info.hget("email").eq_(email))
+        b_then.add(sess.redis_fn("sadd", token))
         b_then.add(res.assign(True))
         ctx.set_return_value(res)
         return self._redis.register_script(ctx)
@@ -78,16 +128,15 @@ class RedisUserManager(UserManager):
         cooldown = RedisVar(ctx.add_key("cooldown"))
         reset = RedisVar(ctx.add_key("reset"))
         email = ctx.add_arg("email")
-        reset_token = ctx.add_arg("reset_token")
         expire_ms = ctx.add_arg("expire_ms")
         cooldown_ms = ctx.add_arg("cooldown_ms")
         res = ctx.add_local(False)
         b_then, _ = ctx.if_(
-            info.exists().eq_(1).and_(cooldown.exists().eq_(0)))
+            info.hget("email").eq_(email).and_(cooldown.exists().eq_(0)))
         # NOTE: RedisVar.set_value only takes a constant expiration so the
         # set calls are spelled out to read the expiration from the arguments
         b_then.add(reset.redis_fn("set", email, "PX", expire_ms))
-        b_then.add(cooldown.redis_fn("set", reset_token, "PX", cooldown_ms))
+        b_then.add(cooldown.redis_fn("set", "1", "PX", cooldown_ms))
         b_then.add(res.assign(True))
         ctx.set_return_value(res)
         return self._redis.register_script(ctx)
@@ -99,142 +148,333 @@ class RedisUserManager(UserManager):
         sess = RedisVar(ctx.add_key("sess"))
         cooldown = RedisVar(ctx.add_key("cooldown"))
         worker = RedisVar(ctx.add_key("worker"))
-        res = ctx.add_local(info.exists())
-        ctx.add(info.delete())
-        ctx.add(perm.delete())
-        ctx.add(sess.delete())
-        ctx.add(cooldown.delete())
-        ctx.add(worker.delete())
+        email_key = RedisVar(ctx.add_key("email"))
+        uid = RedisVar(ctx.add_key("uid"))
+        email = ctx.add_arg("email")
+        res = ctx.add_local(False)
+        b_then, _ = ctx.if_(info.hget("email").eq_(email))
+        b_then.add(info.delete())
+        b_then.add(perm.delete())
+        b_then.add(sess.delete())
+        b_then.add(cooldown.delete())
+        b_then.add(worker.delete())
+        b_then.add(email_key.delete())
+        b_then.add(uid.delete())
+        b_then.add(res.assign(True))
         ctx.set_return_value(res)
         return self._redis.register_script(ctx)
 
+    def _change_email_script(self) -> ExecFunction:
+        ctx = FnContext()
+        info = RedisHash(ctx.add_key("info"))
+        old_key = RedisVar(ctx.add_key("old"))
+        new_key = RedisVar(ctx.add_key("new"))
+        sess = RedisVar(ctx.add_key("sess"))
+        cooldown = RedisVar(ctx.add_key("cooldown"))
+        email = ctx.add_arg("email")
+        new_email = ctx.add_arg("new_email")
+        account_key = ctx.add_arg("account_key")
+        res = ctx.add_local(False)
+        # NOTE: checking that the new email is free and taking it is one step,
+        # so of two changes to the same email only one succeeds
+        b_then, _ = ctx.if_(
+            info.hget("email").eq_(email).and_(new_key.exists().eq_(0)))
+        b_then.add(new_key.set_value(account_key))
+        b_then.add(old_key.delete())
+        b_then.add(info.hset({"email": new_email}))
+        b_then.add(sess.delete())
+        b_then.add(cooldown.delete())
+        b_then.add(res.assign(True))
+        ctx.set_return_value(res)
+        return self._redis.register_script(ctx)
+
+    # *** keys ***
+
     @staticmethod
-    def _userhash(email: UName) -> UserHash:
-        return get_short_hash(email.get())
-
-    @classmethod
-    def _key_user_info(cls, email: UName) -> str:
-        return cls._key_userhash_info(cls._userhash(email))
+    def _key_email(email: UName) -> str:
+        return f"email:{get_short_hash(email.get())}"
 
     @staticmethod
-    def _key_userhash_info(userhash: UserHash | None) -> str:
-        return f"info:{'' if userhash is None else userhash}"
-
-    @classmethod
-    def _key_user_perm(cls, email: UName) -> str:
-        return cls._key_userhash_perm(cls._userhash(email))
+    def _key_info(account_key: AccountKey | None) -> str:
+        return f"info:{'' if account_key is None else account_key}"
 
     @staticmethod
-    def _key_userhash_perm(userhash: UserHash) -> str:
-        return f"perm:{userhash}"
-
-    @classmethod
-    def _key_user_session(cls, email: UName) -> str:
-        return cls._key_userhash_session(cls._userhash(email))
+    def _key_uid(user_id: UserId) -> str:
+        return f"uid:{user_id.to_parseable()}"
 
     @staticmethod
-    def _key_userhash_session(userhash: UserHash) -> str:
-        return f"sess:{userhash}"
+    def _key_perm(account_key: AccountKey) -> str:
+        return f"perm:{account_key}"
+
+    @staticmethod
+    def _key_session(account_key: AccountKey | None) -> str:
+        return f"sess:{'' if account_key is None else account_key}"
+
+    @staticmethod
+    def _key_pw_cooldown(account_key: AccountKey) -> str:
+        return f"cooldown:{account_key}"
+
+    @staticmethod
+    def _key_pw_reset_prefix() -> str:
+        return "reset:"
 
     @classmethod
-    def _key_pw_reset(cls, reset_token: ResetToken | None) -> str:
-        return f"reset:{'' if reset_token is None else reset_token}"
+    def _key_pw_reset(cls, reset_token: ResetToken) -> str:
+        return f"{cls._key_pw_reset_prefix()}{hash_token(reset_token)}"
 
-    @classmethod
-    def _key_pw_cooldown(cls, email: UName) -> str:
-        return f"cooldown:{cls._userhash(email)}"
-
-    def _key_worker(self, email: UName) -> str:
-        user_id = self.get_user_id(email)
+    @staticmethod
+    def _key_worker(user_id: UserId) -> str:
         return f"worker:{user_id.to_parseable()}"
 
-    @classmethod
-    def _session_token(cls, email: UName) -> SessionToken:
-        return f"{cls._userhash(email)}{uuid.uuid4().hex}"
+    @staticmethod
+    def _key_version() -> str:
+        return "meta:version"
 
     @staticmethod
-    def _extract_userhash(token: SessionToken) -> UserHash:
+    def _session_token(account_key: AccountKey) -> SessionToken:
+        return f"{account_key}{uuid.uuid4().hex}"
+
+    @staticmethod
+    def _extract_account_key(token: SessionToken) -> AccountKey:
         return token[:short_hash_size()]
 
-    def _get_user_info(self, email: UName) -> UserInfoRedis:
+    # *** migration ***
+
+    def migrate(self) -> None:
+        """
+        Brings a store of an older version up to date, once, when the server
+        starts. Every step can run again if a previous run was interrupted.
+        Version 1 to 2: accounts keep their key (the hash of their email) and
+        get the user id derived from their email stored, and their email and
+        user id point to them. So their chats, worker token and workers stay
+        theirs. Version 2 to 3: all sessions and reset tokens are dropped
+        (they were stored as they are; now their hashes are).
+        """
+        redis = self._redis
+        raw_version = redis.get_value(self._key_version())
+        version = 1 if raw_version is None else int(raw_version)
+        if version >= STORE_VERSION:
+            return
+        if version < 2:
+            self._migrate_v1_to_v2()
+        if version < 3:
+            self._migrate_v2_to_v3()
+        redis.set_value(self._key_version(), f"{STORE_VERSION}")
+
+    def _migrate_v1_to_v2(self) -> None:
+        redis = self._redis
+        prefix = self._key_info(None)
+        for key in list(redis.keys(match=f"{prefix}*", block=False)):
+            account_key = key.removeprefix(prefix)
+            raw_email = redis.hget(key, "email")
+            if raw_email is None:
+                continue
+            email = UName(raw_email)
+            user_id_str = redis.hget(key, "user_id")
+            if user_id_str is None:
+                user_id = derive_user_id(email)
+                redis.hset(key, {"user_id": user_id.to_parseable()})
+            else:
+                user_id = UserId.parse(user_id_str)
+            redis.set_value(
+                self._key_email(email), account_key, mode="if_missing")
+            redis.set_value(
+                self._key_uid(user_id), account_key, mode="if_missing")
+
+    def _migrate_v2_to_v3(self) -> None:
+        # NOTE: session and reset tokens were kept as they are; the store has
+        # their hashes now. the old entries could never match a hash (and
+        # could be read from the store), so they are removed: everybody logs
+        # in again and outstanding reset links stop working, once
+        redis = self._redis
+        for prefix in (
+                self._key_session(None),
+                self._key_pw_reset_prefix(),
+                self._key_pw_cooldown(""),
+                ):
+            for key in list(redis.keys(match=f"{prefix}*", block=False)):
+                redis.delete(key)
+
+    # *** accounts ***
+
+    def _account_key(self, email: UName) -> AccountKey | None:
         if self.is_admin(email):
-            raise ValueError("cannot read info for admin")
-        res = self._redis.hgetall(self._key_user_info(email))
+            return self._admin_key
+        account_key = self._redis.get_value(self._key_email(email))
+        if account_key is None:
+            return None
+        # NOTE: guards against a stale pointer and a collision of the hash
+        if self._redis.hget(self._key_info(account_key), "email") != (
+                email.get()):
+            return None
+        return account_key
+
+    def do_get_ids(self, email: UName) -> AccountIds | None:
+        account_key = self._account_key(email)
+        if account_key is None:
+            return None
+        user_id_str = self._redis.hget(self._key_info(account_key), "user_id")
+        if user_id_str is None:
+            return None
         return {
-            "email": res["email"],
-            "display_name": res["display_name"],
-            "hashpw": res["hashpw"],
+            "user_id": UserId.parse(user_id_str),
+            "account_key": account_key,
         }
-
-    def _set_user_info(self, info: UserInfoRedis) -> None:
-        email = UName(info["email"])
-        if self.is_admin(email):
-            raise ValueError("cannot set info for admin")
-        self._redis.hset(self._key_user_info(email), cast(dict, info))
-
-    def do_login(self, email: UName) -> SessionToken | None:
-        token = self._session_token(email)
-        self._redis.sadd(self._key_user_session(email), token)
-        return token
-
-    def logout(self, token: SessionToken) -> None:
-        userhash = self._extract_userhash(token)
-        self._redis.srem(self._key_userhash_session(userhash), token)
-
-    def get_sessions_for_user(self, email: UName) -> Iterable[SessionToken]:
-        yield from sorted(self._redis.smembers(self._key_user_session(email)))
 
     def do_create_user(self, email: UName, display_name: str) -> bool:
         if self.is_admin(email):
             raise ValueError("cannot set info for admin")
-        # NOTE: checking for and writing the user in one step so that of two
-        # concurrent registrations for the same email only one succeeds
-        res = self._create_user(
+        # NOTE: the ids derived from the email belong to another account if
+        # an account with this email had its email changed. then the new
+        # account gets random ids: it must not get that account's chats
+        account_key = derive_account_key(email)
+        user_id = derive_user_id(email)
+        for _ in range(3):
+            res = int(cast(int, self._create_user(
+                keys={
+                    "email": self._key_email(email),
+                    "info": self._key_info(account_key),
+                    "uid": self._key_uid(user_id),
+                },
+                args={
+                    "email": email.get(),
+                    "display_name": display_name,
+                    "account_key": account_key,
+                    "user_id": user_id.to_parseable(),
+                })))
+            if res == CREATE_OK:
+                return True
+            if res == CREATE_EMAIL_TAKEN:
+                return False
+            account_key = random_account_key()
+            user_id = random_user_id()
+        raise ValueError(f"could not find free ids for {email}")
+
+    def do_delete_user(self, email: UName) -> bool:
+        ids = self.get_ids(email)
+        if ids is None:
+            return False
+        account_key = ids["account_key"]
+        res = self._delete_user(
             keys={
-                "info": self._key_user_info(email),
+                "info": self._key_info(account_key),
+                "perm": self._key_perm(account_key),
+                "sess": self._key_session(account_key),
+                "cooldown": self._key_pw_cooldown(account_key),
+                "worker": self._key_worker(ids["user_id"]),
+                "email": self._key_email(email),
+                "uid": self._key_uid(ids["user_id"]),
             },
             args={
                 "email": email.get(),
-                "display_name": display_name,
             })
+        # NOTE: no new reset token can be issued for the account anymore
+        # (issuing one checks the account in the same script)
+        self._remove_reset_tokens(email)
         return bool(res)
 
-    def do_delete_user(self, email: UName) -> bool:
-        # NOTE: removing the account first means that no new reset token can
-        # be issued for it (issuing one checks for the account in the same
-        # script) while the remaining tokens are looked for below
-        res = self._delete_user(
+    def do_change_email(self, email: UName, new_email: UName) -> bool:
+        account_key = self._account_key(email)
+        if account_key is None:
+            return False
+        res = self._change_email(
             keys={
-                "info": self._key_user_info(email),
-                "perm": self._key_user_perm(email),
-                "sess": self._key_user_session(email),
-                "cooldown": self._key_pw_cooldown(email),
-                "worker": self._key_worker(email),
+                "info": self._key_info(account_key),
+                "old": self._key_email(email),
+                "new": self._key_email(new_email),
+                "sess": self._key_session(account_key),
+                "cooldown": self._key_pw_cooldown(account_key),
             },
-            args={})
+            args={
+                "email": email.get(),
+                "new_email": new_email.get(),
+                "account_key": account_key,
+            })
+        if not res:
+            return False
+        # NOTE: a reset link sent to the old address must not work anymore
+        self._remove_reset_tokens(email)
+        return True
+
+    def _remove_reset_tokens(self, email: UName) -> None:
         # NOTE: reset tokens are only found by token. there are few of them
         # (they expire after a day) so going through all of them is cheap.
-        # a token must not outlive its account: it would be good for a new
-        # account with the same email
-        pat = f"{self._key_pw_reset(None)}*"
+        # a token must not outlive its account (or the account's email): it
+        # would be good for a new account with the same email
+        pat = f"{self._key_pw_reset_prefix()}*"
         for key in list(self._redis.keys(match=pat, block=False)):
             if self._redis.get_value(key) == email.get():
                 self._redis.delete(key)
-        return bool(res)
+
+    # *** sessions ***
+
+    def do_login(self, email: UName) -> SessionToken | None:
+        account_key = self._account_key(email)
+        if account_key is None:
+            return None
+        token = self._session_token(account_key)
+        if account_key == self._admin_key and self.is_admin(email):
+            self._redis.sadd(self._key_session(account_key), hash_token(token))
+            return token
+        if not self._login(
+                keys={
+                    "info": self._key_info(account_key),
+                    "sess": self._key_session(account_key),
+                },
+                args={
+                    "email": email.get(),
+                    "token": hash_token(token),
+                }):
+            return None
+        return token
+
+    def logout(self, token: SessionToken) -> None:
+        account_key = self._extract_account_key(token)
+        self._redis.srem(self._key_session(account_key), hash_token(token))
+
+    def count_sessions(self, email: UName) -> int:
+        account_key = self._account_key(email)
+        if account_key is None:
+            return 0
+        return self._redis.scard(self._key_session(account_key))
+
+    def logout_everywhere(self, email: UName) -> None:
+        account_key = self._account_key(email)
+        if account_key is None:
+            return
+        self._redis.delete(self._key_session(account_key))
+
+    def get_email(self, token: SessionToken) -> UName | None:
+        account_key = self._extract_account_key(token)
+        if not self._redis.sismember(
+                self._key_session(account_key), hash_token(token)):
+            return None
+        if account_key == self._admin_key:
+            return self.get_admin()
+        res = self._redis.hget(self._key_info(account_key), "email")
+        if res is None:
+            return None
+        return UName(res)
+
+    # *** passwords ***
 
     def do_generate_reset_token(self, email: UName) -> ResetToken | None:
         reset_token: ResetToken = uuid.uuid4().hex
+        account_key = self._account_key(email)
+        if account_key is None:
+            # NOTE: an account key nobody has (the same number of redis calls
+            # as for an account: no difference in how long the check takes)
+            account_key = derive_account_key(email)
         # NOTE: one script call whether or not the account exists: no token
-        # for unknown emails and no difference in how long the check takes
+        # for unknown emails
         res = self._generate_reset_token(
             keys={
-                "info": self._key_user_info(email),
-                "cooldown": self._key_pw_cooldown(email),
+                "info": self._key_info(account_key),
+                "cooldown": self._key_pw_cooldown(account_key),
                 "reset": self._key_pw_reset(reset_token),
             },
             args={
                 "email": email.get(),
-                "reset_token": reset_token,
                 "expire_ms": int(self.reset_expire() * 1000.0),
                 "cooldown_ms": int(self.reset_cooldown() * 1000.0),
             })
@@ -255,46 +495,38 @@ class RedisUserManager(UserManager):
             email: UName,
             hashpw: HashPassword,
             reset_token: ResetToken) -> bool:
-        cooldown_key = self._key_pw_cooldown(email)
+        account_key = self._account_key(email)
         reset_key = self._key_pw_reset(reset_token)
         with self._redis.pipeline() as pipe:
-            pipe.delete(cooldown_key)
+            if account_key is not None:
+                pipe.delete(self._key_pw_cooldown(account_key))
             pipe.delete(reset_key)
-        if not self._redis.exists(self._key_user_info(email)):
+        if account_key is None or account_key == self._admin_key:
             # NOTE: a token for an email without an account (tokens like this
             # used to be issued) must not create the account
             return False
-        info = self._get_user_info(email)
-        info["hashpw"] = hashpw
-        self._set_user_info(info)
+        self._redis.hset(self._key_info(account_key), {"hashpw": hashpw})
         return True
 
     def get_password_hash(self, email: UName) -> HashPassword | None:
-        return self._redis.hget(self._key_user_info(email), "hashpw")
+        account_key = self._account_key(email)
+        if account_key is None or account_key == self._admin_key:
+            return None
+        return self._redis.hget(self._key_info(account_key), "hashpw")
 
-    def _is_logged_in(self, token: SessionToken) -> UserHash | None:
-        userhash = self._extract_userhash(token)
-        if not self._redis.sismember(
-                self._key_userhash_session(userhash), token):
-            return None
-        return userhash
-
-    def get_email(self, token: SessionToken) -> UName | None:
-        if self._is_logged_in(token) == self._admin_hash:
-            return self.get_admin()
-        userhash = self._is_logged_in(token)
-        if userhash is None:
-            return None
-        res = self._redis.hget(self._key_userhash_info(userhash), "email")
-        if res is None:
-            return None
-        return UName(res)
+    # *** info and capabilities ***
 
     def do_get_user_info(self, email: UName) -> UserInfo:
-        obj = self._get_user_info(email)
+        account_key = self._account_key(email)
+        display_name = (
+            None
+            if account_key is None
+            else self._redis.hget(self._key_info(account_key), "display_name"))
+        if display_name is None:
+            raise KeyError(f"unknown user {email}")
         return {
             "email": email,
-            "display_name": obj["display_name"],
+            "display_name": display_name,
             "capabilities": self.list_capabilities(email),
         }
 
@@ -302,7 +534,10 @@ class RedisUserManager(UserManager):
             self,
             email: UName,
             capability: CapabilityName) -> bool:
-        return self._redis.sismember(self._key_user_perm(email), capability)
+        account_key = self._account_key(email)
+        if account_key is None:
+            return False
+        return self._redis.sismember(self._key_perm(account_key), capability)
 
     def do_set_capability(
             self,
@@ -310,28 +545,37 @@ class RedisUserManager(UserManager):
             capability: CapabilityName,
             *,
             has: bool) -> None:
+        account_key = self._account_key(email)
+        if account_key is None:
+            return
         if has:
-            self._redis.sadd(self._key_user_perm(email), capability)
+            self._redis.sadd(self._key_perm(account_key), capability)
         else:
-            self._redis.srem(self._key_user_perm(email), capability)
+            self._redis.srem(self._key_perm(account_key), capability)
 
     def do_list_capabilities(self, email: UName) -> set[CapabilityName]:
+        account_key = self._account_key(email)
+        if account_key is None:
+            return set()
         return {
             as_capability(cap)
-            for cap in self._redis.smembers(self._key_user_perm(email))
+            for cap in self._redis.smembers(self._key_perm(account_key))
         }
 
     def do_list_users(self) -> Iterable[UName]:
-        pat = f"{self._key_userhash_info(None)}*"
-        for key in sorted(self._redis.keys(match=pat, block=False)):
+        pat = f"{self._key_info(None)}*"
+        emails: list[str] = []
+        for key in self._redis.keys(match=pat, block=False):
             name = self._redis.hget(key, "email")
-            if name is None:
-                continue
-            yield UName(name)
+            if name is not None:
+                emails.append(name)
+        yield from (UName(email) for email in sorted(emails))
+
+    # *** worker tokens ***
 
     def store_worker_token(
-            self, email: UName, worker_token: WorkerToken) -> None:
-        self._redis.set_value(self._key_worker(email), worker_token)
+            self, user_id: UserId, worker_token: WorkerToken) -> None:
+        self._redis.set_value(self._key_worker(user_id), worker_token)
 
-    def get_worker_token(self, email: UName) -> WorkerToken | None:
-        return self._redis.get_value(self._key_worker(email))
+    def get_worker_token(self, user_id: UserId) -> WorkerToken | None:
+        return self._redis.get_value(self._key_worker(user_id))

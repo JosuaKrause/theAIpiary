@@ -19,6 +19,7 @@ WorkerToken: TypeAlias = str
 
 CapabilityName = Literal[
     "change_capabilities",
+    "change_email",
     "logout_other_user",
     "create_user",
     "delete_user",
@@ -28,6 +29,7 @@ CapabilityName = Literal[
 ]
 CAPABILITIES: tuple[CapabilityName] = get_args(CapabilityName)
 CAP_CHANGE_CAPABILITIES: CapabilityName = "change_capabilities"
+CAP_CHANGE_EMAIL: CapabilityName = "change_email"
 CAP_LOGOUT_OTHER_USER: CapabilityName = "logout_other_user"
 CAP_CREATE_USER: CapabilityName = "create_user"
 CAP_DELETE_USER: CapabilityName = "delete_user"
