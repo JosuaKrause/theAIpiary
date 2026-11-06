@@ -11,25 +11,17 @@ RUN apt-get update \
   make
 WORKDIR /usr/src/app
 ENV CUDA_VERSION_SHORT=cu125
-# FIXME remove with 311 image *****
-ENV PATH="/usr/local/nvidia/bin:${PATH}"
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=all
-RUN conda update -y pip setuptools wheel conda filelock \
-  && conda clean --all \
-  && conda install -y python=3.11 \
-  && conda clean --all
-# *****
+# the base image ships Ubuntu's python 3.12 (PEP 668 marked as externally managed)
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 COPY Makefile .
 ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
 RUN mkdir sh
 COPY sh/install.sh sh
-# FIXME remove with 311 image *****
 ENV FORCE_CUDA=1
-# *****
 RUN REQUIREMENTS_PATH="requirements.docker.txt" make install-provider \
-  && conda clean --all \
   && pip cache purge
 COPY LICENSE .
 COPY sh/ sh/
