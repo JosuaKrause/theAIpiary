@@ -1,1 +1,1 @@
-[josua.krause@gmail.com](mailto:josua.krause@gmail.com)
+Open an issue on [GitHub](https://github.com/JosuaKrause/theAIpiary/issues).

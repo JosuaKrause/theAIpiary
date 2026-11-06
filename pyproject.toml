@@ -4,7 +4,7 @@
     readme = "README.md"
     version = "0.0.0"
     authors = [
-        {name = "Josua Krause", email = "josua.krause@gmail.com"},
+        {name = "Josua Krause"},
     ]
     keywords = [
         "distributed",
@@ -23,7 +23,7 @@
     dynamic = ["dependencies", "optional-dependencies"]
 
 [project.urls]
-    repository = "https://github.com/JosuaKrause/swai"
+    repository = "https://github.com/JosuaKrause/theAIpiary"
 
 [build-system]
     requires = ["setuptools>=61.2"]
