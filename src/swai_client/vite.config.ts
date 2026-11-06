@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 // NOTE: the API server (`make run-server`) listens on port 8080
 const API_SERVER = 'http://127.0.0.1:8080';
@@ -43,6 +43,18 @@ export default defineConfig({
         ws: true,
         xfwd: true,
       },
+    },
+  },
+  test: {
+    // the tests use describe, test and expect without importing them
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/setupTests.ts'],
+    coverage: {
+      provider: 'v8',
+      // report on every source file, not only the ones a test imports
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.d.ts', 'src/**/*.test.{ts,tsx}'],
     },
   },
 });

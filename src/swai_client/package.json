@@ -5,10 +5,6 @@
   "type": "module",
   "dependencies": {
     "@reduxjs/toolkit": "^1.8.6",
-    "@testing-library/jest-dom": "^5.14.1",
-    "@testing-library/react": "^13.0.0",
-    "@testing-library/user-event": "^13.2.1",
-    "@types/jest": "^27.0.1",
     "@types/node": "^22",
     "@types/qs": "^6.9.7",
     "@types/react": "^18.0.24",
@@ -22,7 +18,6 @@
     "react-markdown": "^8.0.3",
     "react-redux": "^8.0.4",
     "react-router-dom": "^6.30.4",
-    "react-scripts": "5.0.1",
     "redux": "^4.2.0",
     "styled-components": "^5.3.5",
     "typescript": "^5.9.3",
@@ -40,9 +35,9 @@
     "start": "vite",
     "build": "tsc && tsc -p tsconfig.node.json && vite build",
     "preview": "vite preview",
-    "test": "react-scripts test",
-    "testall": "react-scripts test --all --watchAll=false --coverage",
-    "testwall": "react-scripts test --all --watchAll --coverage",
+    "test": "vitest",
+    "testall": "vitest run --coverage",
+    "testwall": "vitest --coverage",
     "lint": "eslint .",
     "nice": "yarn prettier --write .",
     "unused": "./node_modules/.bin/ts-unused-exports tsconfig.json"
@@ -50,16 +45,23 @@
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@stylistic/eslint-plugin": "^5.10.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@vitejs/plugin-react": "^6.2.1",
+    "@vitest/coverage-v8": "^4.1.12",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.7",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.14.0",
+    "jsdom": "^31.0.0",
     "prettier": "^3.9.10",
     "ts-unused-exports": "^8.0.0",
     "typescript-eslint": "^8.72.1",
-    "vite": "^8.3.6"
+    "vite": "^8.3.6",
+    "vitest": "^4.1.12"
   }
 }
