@@ -462,6 +462,39 @@ def test_offline_heartbeat_requeues_task(task_queue: TaskQueue) -> None:
     assert task_queue.get_status(task_id) == "busy"
 
 
+def test_offline_heartbeat_while_cleaner_is_busy(
+        task_queue: TaskQueue, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An offline heartbeat that arrives while the cleaner is in the middle of
+    a run still wakes it once that run ends, instead of being lost until the
+    cleaner's regular interval."""
+    in_run = threading.Event()
+    release = threading.Event()
+    original = TaskQueue.requeue_unavailable_worker_tasks
+    calls = 0
+
+    def slow_requeue(self: TaskQueue) -> None:
+        nonlocal calls
+        calls += 1
+        original(self)
+        if calls == 1:
+            # the scan is done; the cleaner is still busy finishing its run
+            in_run.set()
+            release.wait(SOME_TASK)
+
+    monkeypatch.setattr(
+        TaskQueue, "requeue_unavailable_worker_tasks", slow_requeue)
+    # wake the cleaner so that it is busy with its first run
+    task_queue.heartbeat(
+        user_email=BOB, worker_name="other", worker_status="offline")
+    assert in_run.wait(SOME_TASK)
+    task_id = enqueue(task_queue, NS_A, "hello")
+    assert pop(task_queue, [NS_A], worker="w1") == task_id
+    task_queue.heartbeat(
+        user_email=ALICE, worker_name="w1", worker_status="offline")
+    release.set()
+    assert pop(task_queue, [NS_A], worker="w2", timeout=SOME_TASK) == task_id
+
+
 def test_vanished_worker_task_goes_to_next_worker(
         fast_queue: TaskQueue) -> None:
     """A worker that stops sending heartbeats loses its task to the next

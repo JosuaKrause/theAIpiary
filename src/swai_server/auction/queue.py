@@ -91,21 +91,24 @@ class TaskQueue:
         self._session_store = session_store
         self._redis = Redis(cfg=cfg, redis_module="task")
         self._cleaner_th: threading.Thread | None = None
-        self._cleaner_cond = threading.Condition()
+        self._cleaner_lock = threading.Lock()
+        self._cleaner_wake = threading.Event()
         self.start_cleaner()
 
     def start_cleaner(self) -> None:
-        cleaner_cond = self._cleaner_cond
-        with cleaner_cond:
+        # NOTE: an Event, unlike Condition.notify, is not lost when the cleaner
+        # is busy (or not yet waiting) at the moment it is woken
+        cleaner_wake = self._cleaner_wake
+        with self._cleaner_lock:
             if self._cleaner_th is not None:
-                cleaner_cond.notify_all()
+                cleaner_wake.set()
                 return
 
             def run() -> None:
                 cleaner_freq = HEARTBEAT * 0.5
                 while th is self._cleaner_th:
-                    with cleaner_cond:
-                        cleaner_cond.wait(cleaner_freq)
+                    cleaner_wake.wait(cleaner_freq)
+                    cleaner_wake.clear()
                     self.requeue_unavailable_worker_tasks()
 
             th = threading.Thread(target=run, daemon=True)
