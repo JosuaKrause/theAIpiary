@@ -16,6 +16,7 @@ import os
 import shutil
 import sys
 import threading
+import traceback
 from http.cookies import SimpleCookie
 from typing import TypedDict
 
@@ -238,6 +239,19 @@ def setup(
         cookie["user_session"]["expires"] = "Thu, 01 Jan 1970 00:00:00 GMT"
         req.send_cookie(cookie)
 
+    def send_password_reset_email(
+            user_email: UName, reset_token: ResetToken) -> None:
+        try:
+            user_info = sec_ctx.force_user_info(user_email)
+            send_password_reset(
+                email_config,
+                user=user_info,
+                reset_token=reset_token)
+        except Exception:  # pylint: disable=broad-except
+            print(
+                "error sending password reset email:\n"
+                f"{traceback.format_exc()}")
+
     setup_www_redirect(server, public_url)
 
     def maybe_user_session(
@@ -453,16 +467,17 @@ def setup(
         args = rargs["post"]
         user_name: str = args["name"]
         user_email = UName(user_name)
+        # NOTE: anyone can call this endpoint, so the response must not tell
+        # whether an email was sent: it is the same for existing accounts,
+        # unknown emails, accounts in their cooldown, and the admin. sending
+        # the email (slow) happens in the background so that the response
+        # time does not tell either
         reset_token = sec_ctx.generate_reset_token(user_email)
-        if reset_token is None:
-            return {
-                "email": None,
-            }
-        user_info = sec_ctx.force_user_info(user_email)
-        send_password_reset(
-            email_config,
-            user=user_info,
-            reset_token=reset_token)
+        if reset_token is not None:
+            threading.Thread(
+                target=send_password_reset_email,
+                args=(user_email, reset_token),
+                daemon=True).start()
         return {
             "email": user_email.get(),
         }

@@ -77,6 +77,9 @@ jobs:
         # CUDA libraries, which fill the runner's disk and are unused by lints
         env:
           PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+          # runners have no GPU: build llama-cpp-python for the CPU (the CUDA
+          # wheel cannot be loaded, which the server tests need)
+          FORCE_CPU: 1
         run: |
           make install PYTHON=python
 

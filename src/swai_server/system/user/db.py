@@ -66,7 +66,7 @@ class DBUserManager(UserManager):
             self,
             email: UName,
             hashpw: HashPassword,
-            reset_token: ResetToken) -> None:
+            reset_token: ResetToken) -> bool:
         raise NotImplementedError()
 
     def get_password_hash(self, email: UName) -> HashPassword | None:
