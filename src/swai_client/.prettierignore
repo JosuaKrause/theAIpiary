@@ -1,3 +1,5 @@
 build/
 coverage/
 node_modules/
+# served as is; the server and the app fill in their placeholders
+public/

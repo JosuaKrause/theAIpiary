@@ -45,9 +45,10 @@ one model, a Llama 3 chat assistant that calls itself Beatrix Buzz.
   `deploy/graphs/graph_llama.json` (local runs use `local/graphs/`). Its single
   node (`src/swai/smind/nodes/node_llama.py`) runs a GGUF Llama model with
   llama-cpp-python.
-- **Client** (`src/swai_client`). A create-react-app TypeScript/Redux app with
-  the chat, login, password reset, FAQ and profile pages. The profile page lists
-  workers, creates worker tokens and, for users allowed to, creates accounts.
+- **Client** (`src/swai_client`). A React TypeScript/Redux app, built with
+  Vite, with the chat, login, password reset, FAQ and profile pages. The
+  profile page lists workers, creates worker tokens and, for users allowed to,
+  creates accounts.
 - **Shared code** (`src/swai`): the API response types, the authorization header
   format, and the Llama prompt and session handling used by both sides.
 - **Postgres**. `src/swai_server/system/db/` has SQLAlchemy tables and
@@ -58,7 +59,7 @@ one model, a Llama 3 chat assistant that calls itself Beatrix Buzz.
 ## Prerequisites
 
 - Python 3.11 or newer (`sh/install.sh` refuses older versions)
-- Node 22 and yarn 1 (classic)
+- Node 22 (22.22.2 or newer) and yarn 1 (classic)
 - Redis (`redis-server` on the `PATH`; the local scripts start their own instances)
 - A C/C++ compiler and CMake, to build llama-cpp-python
 - Docker, for building images and for running a worker bee the way volunteers do
@@ -107,11 +108,11 @@ one model, a Llama 3 chat assistant that calls itself Beatrix Buzz.
 
 4. **Run the server and the client.** `make run-server` starts a Redis instance
    on port 6385 and the server on port 8080, both in the background, then runs
-   the CRA dev server (`make run-ts`) in the foreground. Open
-   http://localhost:3000. The dev server forwards API calls to port 8080 (the
-   `proxy` entry in `src/swai_client/package.json`). The server's log is in
-   `userdata/server/swai/`. Stopping the dev server leaves the server and Redis
-   running; stop them with `pkill -f 'swai_server --dedicated'` and
+   the Vite dev server (`make run-ts`) in the foreground. Open
+   http://localhost:3000. The dev server forwards API calls (`/api`) to port
+   8080 (`server.proxy` in `src/swai_client/vite.config.ts`). The server's log
+   is in `userdata/server/swai/`. Stopping the dev server leaves the server and
+   Redis running; stop them with `pkill -f 'swai_server --dedicated'` and
    `redis-cli -p 6385 shutdown`.
 
 5. **Create a user.** Log in as the admin, open the profile page and create an

@@ -15,7 +15,7 @@
  */
 import { PureComponent } from 'react';
 import { ConnectedProps, connect } from 'react-redux';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router';
 import styled from 'styled-components';
 import { SessionId } from './api/types';
 import Chat from './chat/Chat';
