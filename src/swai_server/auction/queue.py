@@ -110,7 +110,9 @@ def task_worker_to_redis(task_worker: TaskWorker) -> str:
     return json_compact(obj)
 
 
-# FIXME: replace task queue with scattermind later
+# NOTE: this queue predates scattermind's own task queue. It could be
+# replaced by it once scattermind supports workers that bid for tasks
+# across namespaces.
 class TaskQueue:
     def __init__(self, session_store: SessionStore, cfg: RedisConfig) -> None:
         self._session_store = session_store
