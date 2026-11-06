@@ -184,9 +184,10 @@ example for people who already run a cluster.
    of 16384 tokens (`model_path` and `n_ctx`). Volunteers' `userdata/models/`
    folder is mounted at `/models/`, and `run-worker.sh` downloads the model into
    it from `MODEL_URL` (step 5), so the file name at the end of `MODEL_URL` has
-   to match `model_path`. The default model can be downloaded from
+   to match `model_path`. `server.env.sample` sets `MODEL_URL` to the default
+   model on Hugging Face,
    `https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf`;
-   use that URL, host the file yourself, or leave `MODEL_URL` empty and tell
+   keep it, host the file yourself, or leave `MODEL_URL` empty and tell
    volunteers which file to place there. To serve a different model, change
    `model_path` (and `n_ctx`) before building the image.
 
