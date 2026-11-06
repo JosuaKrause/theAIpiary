@@ -62,10 +62,11 @@ one model, a Llama 3.1 chat assistant that calls itself Beatrix Buzz.
 
 ## Prerequisites
 
-- Python 3.11 or newer (`sh/install.sh` refuses older versions)
+- Python 3.12 or newer (`sh/install.sh` refuses older versions)
 - Node 22 (22.22.2 or newer) and yarn 1 (classic)
 - Redis (`redis-server` on the `PATH`; the local scripts start their own instances)
-- A C/C++ compiler and CMake, to build llama-cpp-python
+- A C/C++ compiler and CMake, to build llama-cpp-python (on Linux without a GPU
+  also `libopenblas-dev` and `pkg-config`)
 - Docker, for building images and for running a worker bee the way volunteers do
 - A GPU is optional for development. `make install` builds llama-cpp-python for
   Metal on Apple silicon, for CUDA if PyTorch sees one, and for the CPU (with
@@ -76,7 +77,7 @@ one model, a Llama 3.1 chat assistant that calls itself Beatrix Buzz.
 1. **Install the dependencies.**
 
    ```
-   make install PYTHON=python3.11   # or whichever python is 3.11+
+   make install PYTHON=python3.12   # or whichever python is 3.12+
    make install-ts
    ```
 

@@ -21,15 +21,15 @@ jobs:
       ENV: CI
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
 
       - name: Install node ${{ matrix.node }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
 
       - name: Cache node modules
-        uses: actions/cache@v3
+        uses: actions/cache@v6
         with:
           path: src/swai_client/node_modules/
           key: v1-${{ matrix.node }}-${{ hashFiles('src/swai_client/yarn.lock') }}
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ['3.11']
+        python: ['3.12', '3.15']
     env:
       ENV: CI
     services:
@@ -77,13 +77,20 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
           cache: 'pip'
+
+      - name: Install system libraries
+        # llama-cpp-python has no CPU wheels for Linux and is built from source
+        # with OpenBLAS (see sh/install.sh), which needs these
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopenblas-dev pkg-config
 
       - name: Install dependencies
         # CPU-only torch wheels: the default Linux wheel pulls in several GB of
@@ -173,19 +180,19 @@ jobs:
       DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # the image tag is derived from the git tags
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
+          python-version: '3.15'
 
       - name: Install node
         if: vars.SERVER_REGISTRY != ''
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 

@@ -12,16 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tests for the auction queue that hands chat tasks to workers."""
+import gzip
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from test.util import memory_redis, UNUSED_REDIS
-from typing import cast
+from typing import Any, cast
 
 import pytest
+from redipy import Redis
 from scattermind.api.api import task_input_to_redis
 from scattermind.system.base import TaskId
 from scattermind.system.names import GNamespace, UName
+from scattermind.system.redis_util import redis_to_bytes, redis_to_robj
 from scattermind.system.response import ResponseObject, TaskStatus
 from scattermind.system.session.session import SessionStore
 
@@ -55,19 +58,79 @@ SOME_TASK = 5.0
 an upper bound only: the pop returns as soon as the task arrives."""
 
 
+@pytest.fixture(name="queue_redis")
+def fixture_queue_redis(monkeypatch: pytest.MonkeyPatch) -> Redis:
+    """
+    The in-memory redis that the next `TaskQueue` created in the test runs
+    on. Tests use it to look at the raw state (e.g. leftover keys) or to
+    interleave other work with the queue's redis calls.
+
+    Returns:
+        Redis: The redis of the queue under test.
+    """
+    redis = memory_redis()
+    monkeypatch.setattr(
+        queue_module, "Redis", lambda *_args, **_kwargs: redis)
+    return redis
+
+
 @pytest.fixture(name="fast_queue")
-def fixture_fast_queue(monkeypatch: pytest.MonkeyPatch) -> Iterator[TaskQueue]:
+def fixture_fast_queue(
+        monkeypatch: pytest.MonkeyPatch,
+        queue_redis: Redis) -> Iterator[TaskQueue]:
     """
     A task queue whose worker heartbeats expire after `FAST_HEARTBEAT`
     seconds and whose cleaner thread runs accordingly often, so a worker that
-    stops sending heartbeats is noticed within a test.
+    stops sending heartbeats is noticed within a test. It runs on
+    `queue_redis`.
 
     Yields:
         TaskQueue: The queue.
     """
-    monkeypatch.setattr(queue_module, "Redis", memory_redis)
+    assert queue_redis is not None  # NOTE: requested so the queue uses it
     monkeypatch.setattr(queue_module, "HEARTBEAT", FAST_HEARTBEAT)
     yield TaskQueue(cast(SessionStore, None), UNUSED_REDIS)
+
+
+@pytest.fixture(name="quiet_queue")
+def fixture_quiet_queue(queue_redis: Redis) -> TaskQueue:
+    """
+    A task queue on `queue_redis` whose cleaner thread never runs on its
+    own: a test calls `requeue_unavailable_worker_tasks` itself, so that it
+    alone decides when the cleaner runs.
+
+    Returns:
+        TaskQueue: The queue.
+    """
+    assert queue_redis is not None  # NOTE: requested so the queue uses it
+    queue = TaskQueue(cast(SessionStore, None), UNUSED_REDIS)
+    # NOTE: the cleaner thread waits for HEARTBEAT / 2 (5min) unless woken
+    queue.start_cleaner = lambda: None  # type: ignore[method-assign]
+    return queue
+
+
+def leftover_keys(redis: Redis, kind: str) -> list[str]:
+    """
+    All keys of one kind that the queue keeps per task (or per namespace).
+
+    Args:
+        redis (Redis): The redis of the queue.
+        kind (str): The kind, e.g., "worker" or "status".
+
+    Returns:
+        list[str]: The keys.
+    """
+    return sorted(redis.keys(match=f"{kind}:*", block=True))
+
+
+def decoded_input(text: str) -> dict[str, bytes]:
+    """The uncompressed tensor bytes of an encoded task input. The encoded
+    form itself is not stable: scattermind's gzip header carries the current
+    second, so two encodings of the same input can differ."""
+    return {
+        key: gzip.decompress(redis_to_bytes(value))
+        for key, value in redis_to_robj(text).items()
+    }
 
 
 def enqueue(queue: TaskQueue, ns: GNamespace, prompt: str) -> TaskId:
@@ -161,7 +224,8 @@ def test_enqueue_and_pop(task_queue: TaskQueue) -> None:
     ns, popped_id, input_str = task
     assert ns == NS_A
     assert popped_id == task_id
-    assert input_str == task_input_to_redis({"prompt": "hello"})
+    assert decoded_input(input_str) == decoded_input(
+        task_input_to_redis({"prompt": "hello"}))
     assert task_queue.get_status(task_id) == "busy"
     # a task is handed out only once
     assert pop(task_queue, [NS_A], worker="w2") is None
@@ -268,13 +332,6 @@ def test_cleared_task_is_skipped(task_queue: TaskQueue) -> None:
     assert task_queue.get_status(stale) == "unknown"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "pop_task gives up on a namespace after one cancelled entry: a bid "
-        "that meets cancelled tasks at the head of the queue returns nothing "
-        "(or only after its full timeout) although a live task waits behind "
-        "them"))
 def test_bid_is_not_delayed_by_cancelled_tasks(task_queue: TaskQueue) -> None:
     """`start_llama_response` clears a task that is still queued when the
     user sends a new prompt, so cancelled entries at the head of a queue are
@@ -286,6 +343,163 @@ def test_bid_is_not_delayed_by_cancelled_tasks(task_queue: TaskQueue) -> None:
     start = time.monotonic()
     assert pop(task_queue, [NS_A], timeout=1.0) == task_id
     assert time.monotonic() - start < 0.5
+
+
+def test_cancelled_tasks_keep_namespace_priority(
+        task_queue: TaskQueue) -> None:
+    """A cancelled entry at the head of the preferred namespace does not make
+    the bid fall through to the next namespace while a live task waits in
+    the preferred one."""
+    stale = enqueue(task_queue, NS_A, "cancelled")
+    task_a = enqueue(task_queue, NS_A, "wanted first")
+    task_b = enqueue(task_queue, NS_B, "wanted second")
+    task_queue.clear_task(stale)
+    assert pop(task_queue, [NS_A, NS_B]) == task_a
+    assert pop(task_queue, [NS_A, NS_B]) == task_b
+
+
+def test_bid_drains_cancelled_tasks(
+        quiet_queue: TaskQueue, queue_redis: Redis) -> None:
+    """A bid that only finds cancelled tasks removes all of them and returns
+    nothing; a task enqueued afterwards is handed out right away."""
+    for ix in range(5):
+        quiet_queue.clear_task(enqueue(quiet_queue, NS_A, f"cancelled {ix}"))
+    assert pop(quiet_queue, [NS_A]) is None
+    assert queue_redis.llen(TaskQueue.queue_key(NS_A)) == 0
+    assert not leftover_keys(queue_redis, "status")
+    task_id = enqueue(quiet_queue, NS_A, "wanted")
+    assert pop(quiet_queue, [NS_A]) == task_id
+
+
+def test_concurrent_bids_and_cancels(
+        quiet_queue: TaskQueue, queue_redis: Redis) -> None:
+    """Several workers bid while the queue holds runs of cancelled tasks and
+    while users cancel further tasks. No task is handed out twice, no live
+    task is lost, no task cancelled before the bids is handed out, and
+    nothing of a cancelled task is left behind."""
+    nss = [NS_A, NS_B]
+    task_ids = [
+        enqueue(quiet_queue, nss[ix % 2], f"p{ix}") for ix in range(80)
+    ]
+    # runs of cancelled entries at and behind the head of both queues
+    cancelled_before = {
+        task_id for ix, task_id in enumerate(task_ids) if ix % 8 < 4
+    }
+    for task_id in cancelled_before:
+        quiet_queue.clear_task(task_id)
+    cancelled_during = [
+        task_id for ix, task_id in enumerate(task_ids) if ix % 8 == 5
+    ]
+    received: dict[str, list[TaskId]] = {}
+    go = threading.Event()
+
+    def work(name: str) -> None:
+        mine: list[TaskId] = []
+        received[name] = mine
+        go.wait()
+        while True:
+            task_id = pop(quiet_queue, nss, worker=name, timeout=0.2)
+            if task_id is None:
+                return
+            mine.append(task_id)
+
+    def cancel() -> None:
+        go.wait()
+        for task_id in cancelled_during:
+            quiet_queue.clear_task(task_id)
+
+    ths = [
+        threading.Thread(target=work, args=(f"w{ix}",), daemon=True)
+        for ix in range(4)
+    ]
+    ths.append(threading.Thread(target=cancel, daemon=True))
+    for th in ths:
+        th.start()
+    go.set()
+    for th in ths:
+        th.join(10.0)
+        assert not th.is_alive()
+    all_received = [
+        task_id for tasks in received.values() for task_id in tasks
+    ]
+    assert len(all_received) == len(set(all_received))
+    live = set(task_ids) - cancelled_before - set(cancelled_during)
+    assert live <= set(all_received)
+    assert set(all_received) <= live | set(cancelled_during)
+    for ns in nss:
+        assert queue_redis.llen(TaskQueue.queue_key(ns)) == 0
+    for task_id in [*cancelled_before, *cancelled_during]:
+        assert quiet_queue.get_status(task_id) == "unknown"
+        assert queue_redis.get_value(
+            TaskQueue.task_worker_key(task_id)) is None
+
+
+def test_cancel_during_bid_leaves_nothing_behind(
+        quiet_queue: TaskQueue,
+        queue_redis: Redis,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A user cancels a task at the moment a bid reads its input. Whatever
+    the bid then returns, the cancelled task must not come back to life as
+    busy, and the worker's late result is dropped."""
+    task_id = enqueue(quiet_queue, NS_A, "hello")
+    input_key = TaskQueue.input_key(task_id)
+    original = queue_redis.get_value
+    cancelled = False
+
+    def get_value_then_cancel(key: str) -> str | None:
+        nonlocal cancelled
+        res = original(key)
+        if key == input_key and not cancelled:
+            cancelled = True
+            quiet_queue.clear_task(task_id)
+        return res
+
+    monkeypatch.setattr(queue_redis, "get_value", get_value_then_cancel)
+    pop(quiet_queue, [NS_A])
+    if not cancelled:
+        # NOTE: the bid never read the input on its own; the earliest the
+        # user can cancel is right after the bid
+        quiet_queue.clear_task(task_id)
+    monkeypatch.setattr(queue_redis, "get_value", original)
+    assert quiet_queue.get_status(task_id) == "unknown"
+    assert not leftover_keys(queue_redis, "worker")
+    finish(quiet_queue, task_id)
+    assert quiet_queue.get_result(task_id) is None
+    assert quiet_queue.get_status(task_id) == "unknown"
+
+
+class SimulatedCrash(Exception):
+    """The server process dies in the middle of a redis interaction."""
+
+
+def test_crash_during_bid_does_not_lose_task(
+        fast_queue: TaskQueue,
+        queue_redis: Redis,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The server dies at the first write after a bid took a task off the
+    queue. The task must not be lost: it is either still queued or assigned
+    to the bidding worker, so that the cleaner hands it to the next worker
+    once the first one is gone."""
+    task_id = enqueue(fast_queue, NS_A, "hello")
+    original = queue_redis.set_value
+    crashed = False
+
+    def crash(*args: Any, **kwargs: Any) -> Any:
+        nonlocal crashed
+        if not crashed:
+            crashed = True
+            raise SimulatedCrash()
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(queue_redis, "set_value", crash)
+    try:
+        pop(fast_queue, [NS_A], worker="w1")
+    except SimulatedCrash:
+        pass
+    monkeypatch.setattr(queue_redis, "set_value", original)
+    # w1 never reports back
+    assert pop(fast_queue, [NS_A], worker="w2", timeout=SOME_TASK) == task_id
+    assert fast_queue.get_status(task_id) == "busy"
 
 
 # *** status ***
@@ -505,6 +719,11 @@ def test_offline_heartbeat_while_cleaner_is_busy(
 
     def slow_requeue(self: TaskQueue) -> None:
         nonlocal calls
+        if self is not task_queue:
+            # NOTE: the cleaner threads of queues from earlier tests keep
+            # running; they must not count as this queue's cleaner runs
+            original(self)
+            return
         calls += 1
         original(self)
         if calls == 1:
@@ -572,3 +791,164 @@ def test_completed_task_is_not_requeued(fast_queue: TaskQueue) -> None:
     time.sleep(FAST_HEARTBEAT * 2.5)  # several cleaner runs
     assert fast_queue.get_status(task_id) == "ready"
     assert pop(fast_queue, [NS_A], worker="w2") is None
+
+
+def test_cleaner_drops_assignment_of_completed_task(
+        quiet_queue: TaskQueue, queue_redis: Redis) -> None:
+    """A completed task that is still assigned to a vanished worker (e.g.,
+    the server died in `set_result` after storing the status) and an
+    assignment whose task no longer exists are removed by the cleaner rather
+    than rescanned forever. The completed task's result stays available."""
+    done = enqueue(quiet_queue, NS_A, "done")
+    assert pop(quiet_queue, [NS_A], worker="w1") == done
+    quiet_queue.set_status(done, "ready")
+    orphan = TaskId.create()
+    queue_redis.set_value(
+        TaskQueue.task_worker_key(orphan),
+        task_worker_to_redis({
+            "ns": NS_A,
+            "worker_id": get_worker_id(KEYS[ALICE], "w1"),
+        }))
+    quiet_queue.heartbeat(
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        worker_status="offline")
+    quiet_queue.requeue_unavailable_worker_tasks()
+    assert not leftover_keys(queue_redis, "worker")
+    assert quiet_queue.get_status(done) == "ready"
+    assert quiet_queue.get_status(orphan) == "unknown"
+    assert pop(quiet_queue, [NS_A], worker="w2") is None
+
+
+@pytest.mark.parametrize("lookup", ["get_worker_info", "get_status"])
+def test_cleaner_does_not_revive_task_cancelled_meanwhile(
+        quiet_queue: TaskQueue,
+        queue_redis: Redis,
+        monkeypatch: pytest.MonkeyPatch,
+        lookup: str) -> None:
+    """The user cancels a task while the cleaner is deciding what to do with
+    it: right after the cleaner looked up the task's worker or the task's
+    status, but before it puts the task back on the queue. The cleaner must
+    not bring the task back."""
+    task_id = enqueue(quiet_queue, NS_A, "hello")
+    assert pop(quiet_queue, [NS_A], worker="w1") == task_id
+    quiet_queue.heartbeat(
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        worker_status="offline")
+    original = getattr(TaskQueue, lookup)
+    cancelled = False
+
+    def lookup_then_cancel(self: TaskQueue, arg: object) -> object:
+        nonlocal cancelled
+        res = original(self, arg)
+        if not cancelled:
+            cancelled = True
+            quiet_queue.clear_task(task_id)
+        return res
+
+    monkeypatch.setattr(TaskQueue, lookup, lookup_then_cancel)
+    quiet_queue.requeue_unavailable_worker_tasks()
+    monkeypatch.setattr(TaskQueue, lookup, original)
+    if not cancelled:
+        # NOTE: the cleaner does not do this lookup outside of an atomic
+        # step; the earliest the user can cancel is right after the run
+        quiet_queue.clear_task(task_id)
+    assert quiet_queue.get_status(task_id) == "unknown"
+    assert not leftover_keys(queue_redis, "worker")
+    # a stale queue entry is fine as long as no bid hands the task out
+    assert pop(quiet_queue, [NS_A], worker="w2") is None
+    assert queue_redis.llen(TaskQueue.queue_key(NS_A)) == 0
+    assert not leftover_keys(queue_redis, "status")
+
+
+def finish_with_interleaved(
+        queue: TaskQueue,
+        redis: Redis,
+        monkeypatch: pytest.MonkeyPatch,
+        task_id: TaskId,
+        action: Callable[[], None]) -> None:
+    """
+    Worker w1 delivers its result for the task while `action` runs at the
+    moment `set_result` has read the task's assignment, i.e., after the check
+    that the result comes from the assigned worker. If `set_result` never
+    reads the assignment on its own (it checks and writes in one atomic step)
+    `action` runs right after `set_result` instead.
+
+    Args:
+        queue (TaskQueue): The queue.
+        redis (Redis): The redis of the queue.
+        monkeypatch (pytest.MonkeyPatch): For installing the hook.
+        task_id (TaskId): The task.
+        action (Callable[[], None]): What runs in between.
+    """
+    worker_key = TaskQueue.task_worker_key(task_id)
+    original = redis.get_value
+    fired = False
+
+    def get_value_then_act(key: str) -> str | None:
+        nonlocal fired
+        res = original(key)
+        if key == worker_key and not fired:
+            fired = True
+            action()
+        return res
+
+    monkeypatch.setattr(redis, "get_value", get_value_then_act)
+    finish(queue, task_id, worker="w1")
+    monkeypatch.setattr(redis, "get_value", original)
+    if not fired:
+        action()
+
+
+def test_result_and_requeue_do_not_interleave(
+        quiet_queue: TaskQueue,
+        queue_redis: Redis,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cleaner takes the task back from a worker it believes is gone just
+    as that worker delivers its result. Either the result counts and the task
+    is not handed out again, or the result is dropped and the task is back
+    on the queue; a completed task must not be computed a second time."""
+    task_id = enqueue(quiet_queue, NS_A, "hello")
+    assert pop(quiet_queue, [NS_A], worker="w1") == task_id
+    quiet_queue.heartbeat(
+        user_email=ALICE,
+        account_key=KEYS[ALICE],
+        worker_name="w1",
+        worker_status="offline")
+    finish_with_interleaved(
+        quiet_queue,
+        queue_redis,
+        monkeypatch,
+        task_id,
+        quiet_queue.requeue_unavailable_worker_tasks)
+    if quiet_queue.get_result(task_id) is not None:
+        assert quiet_queue.get_status(task_id) == "ready"
+        assert pop(quiet_queue, [NS_A], worker="w2") is None
+    else:
+        assert quiet_queue.get_status(task_id) == "wait"
+        assert pop(quiet_queue, [NS_A], worker="w2") == task_id
+    assert quiet_queue.get_status(task_id) in ("ready", "busy")
+
+
+def test_result_and_cancel_do_not_interleave(
+        quiet_queue: TaskQueue,
+        queue_redis: Redis,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The user cancels a task (e.g., by sending a new prompt) just as the
+    worker delivers its result. Nothing of the cancelled task may come back:
+    no status, no result, no assignment."""
+    task_id = enqueue(quiet_queue, NS_A, "hello")
+    assert pop(quiet_queue, [NS_A], worker="w1") == task_id
+    finish_with_interleaved(
+        quiet_queue,
+        queue_redis,
+        monkeypatch,
+        task_id,
+        lambda: quiet_queue.clear_task(task_id))
+    assert quiet_queue.get_status(task_id) == "unknown"
+    assert quiet_queue.get_result(task_id) is None
+    assert not leftover_keys(queue_redis, "worker")
+    assert not leftover_keys(queue_redis, "output")
