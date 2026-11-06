@@ -68,7 +68,12 @@ from swai_server.app.email import (
 )
 from swai_server.auction.queue import TaskQueue, WorkerInfo
 from swai_server.config import get_config
-from swai_server.env import envload_int, envload_path, envload_str
+from swai_server.env import (
+    envload_bool,
+    envload_int,
+    envload_path,
+    envload_str,
+)
 from swai_server.smind.server_api import (
     create_session_store,
     get_session_info,
@@ -150,7 +155,12 @@ def setup(
     server.timeout = server_timeout
     server.socket.settimeout(server_timeout)
 
-    server.cross_origin = True  # FIXME: for now...
+    # the client is served by this server and calls the API on its own origin
+    # (the dev server proxies API calls), so cross origin headers are only
+    # needed for a client hosted elsewhere. quick_server can only answer with
+    # "Access-Control-Allow-Origin: *", which browsers refuse for requests
+    # that send cookies, so logged in requests cannot work cross origin.
+    server.cross_origin = envload_bool("CROSS_ORIGIN", default=False)
 
     if deploy:
         server.no_command_loop = True
