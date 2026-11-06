@@ -15,10 +15,11 @@
 
 An account is stored under its account key (see `derive_account_key`):
 `info:<key>` (email, display name, password hash, user id), `perm:<key>`
-(capabilities), `sess:<key>` (sessions), and `cooldown:<key>`. The emails
-point to their account through `email:<hash of the email>`, the user ids
-through `uid:<user id>` (which keeps user ids unique), and the worker token
-is `worker:<user id>`. Reset tokens are `reset:<token>` and hold the email.
+(capabilities), `sess:<key>` (the hashes of the session tokens, see
+`hash_token`), and `cooldown:<key>`. The emails point to their account
+through `email:<hash of the email>`, the user ids through `uid:<user id>`
+(which keeps user ids unique), and the worker token is `worker:<user id>`.
+Reset tokens are `reset:<hash of the token>` and hold the email.
 """
 import uuid
 from collections.abc import Iterable
@@ -37,6 +38,7 @@ from swai_server.system.user.manager import (
     as_capability,
     derive_account_key,
     derive_user_id,
+    hash_token,
     HashPassword,
     random_account_key,
     random_user_id,
@@ -47,10 +49,11 @@ from swai_server.system.user.manager import (
 )
 
 
-STORE_VERSION = 2
+STORE_VERSION = 3
 """The layout version of the store. 1 (no version stored): accounts were
-keyed by the hash of their current email and had no stored user id. 2: the
-layout described in the module docstring."""
+keyed by the hash of their current email and had no stored user id. 2:
+session and reset tokens were stored as they are. 3: the layout described
+in the module docstring."""
 
 
 CREATE_EMAIL_TAKEN = 0
@@ -125,7 +128,6 @@ class RedisUserManager(UserManager):
         cooldown = RedisVar(ctx.add_key("cooldown"))
         reset = RedisVar(ctx.add_key("reset"))
         email = ctx.add_arg("email")
-        reset_token = ctx.add_arg("reset_token")
         expire_ms = ctx.add_arg("expire_ms")
         cooldown_ms = ctx.add_arg("cooldown_ms")
         res = ctx.add_local(False)
@@ -134,7 +136,7 @@ class RedisUserManager(UserManager):
         # NOTE: RedisVar.set_value only takes a constant expiration so the
         # set calls are spelled out to read the expiration from the arguments
         b_then.add(reset.redis_fn("set", email, "PX", expire_ms))
-        b_then.add(cooldown.redis_fn("set", reset_token, "PX", cooldown_ms))
+        b_then.add(cooldown.redis_fn("set", "1", "PX", cooldown_ms))
         b_then.add(res.assign(True))
         ctx.set_return_value(res)
         return self._redis.register_script(ctx)
@@ -213,8 +215,12 @@ class RedisUserManager(UserManager):
         return f"cooldown:{account_key}"
 
     @staticmethod
-    def _key_pw_reset(reset_token: ResetToken | None) -> str:
-        return f"reset:{'' if reset_token is None else reset_token}"
+    def _key_pw_reset_prefix() -> str:
+        return "reset:"
+
+    @classmethod
+    def _key_pw_reset(cls, reset_token: ResetToken) -> str:
+        return f"{cls._key_pw_reset_prefix()}{hash_token(reset_token)}"
 
     @staticmethod
     def _key_worker(user_id: UserId) -> str:
@@ -241,13 +247,22 @@ class RedisUserManager(UserManager):
         Version 1 to 2: accounts keep their key (the hash of their email) and
         get the user id derived from their email stored, and their email and
         user id point to them. So their chats, worker token and workers stay
-        theirs.
+        theirs. Version 2 to 3: all sessions and reset tokens are dropped
+        (they were stored as they are; now their hashes are).
         """
         redis = self._redis
         raw_version = redis.get_value(self._key_version())
         version = 1 if raw_version is None else int(raw_version)
         if version >= STORE_VERSION:
             return
+        if version < 2:
+            self._migrate_v1_to_v2()
+        if version < 3:
+            self._migrate_v2_to_v3()
+        redis.set_value(self._key_version(), f"{STORE_VERSION}")
+
+    def _migrate_v1_to_v2(self) -> None:
+        redis = self._redis
         prefix = self._key_info(None)
         for key in list(redis.keys(match=f"{prefix}*", block=False)):
             account_key = key.removeprefix(prefix)
@@ -265,7 +280,20 @@ class RedisUserManager(UserManager):
                 self._key_email(email), account_key, mode="if_missing")
             redis.set_value(
                 self._key_uid(user_id), account_key, mode="if_missing")
-        redis.set_value(self._key_version(), f"{STORE_VERSION}")
+
+    def _migrate_v2_to_v3(self) -> None:
+        # NOTE: session and reset tokens were kept as they are; the store has
+        # their hashes now. the old entries could never match a hash (and
+        # could be read from the store), so they are removed: everybody logs
+        # in again and outstanding reset links stop working, once
+        redis = self._redis
+        for prefix in (
+                self._key_session(None),
+                self._key_pw_reset_prefix(),
+                self._key_pw_cooldown(""),
+                ):
+            for key in list(redis.keys(match=f"{prefix}*", block=False)):
+                redis.delete(key)
 
     # *** accounts ***
 
@@ -373,7 +401,7 @@ class RedisUserManager(UserManager):
         # (they expire after a day) so going through all of them is cheap.
         # a token must not outlive its account (or the account's email): it
         # would be good for a new account with the same email
-        pat = f"{self._key_pw_reset(None)}*"
+        pat = f"{self._key_pw_reset_prefix()}*"
         for key in list(self._redis.keys(match=pat, block=False)):
             if self._redis.get_value(key) == email.get():
                 self._redis.delete(key)
@@ -386,7 +414,7 @@ class RedisUserManager(UserManager):
             return None
         token = self._session_token(account_key)
         if account_key == self._admin_key and self.is_admin(email):
-            self._redis.sadd(self._key_session(account_key), token)
+            self._redis.sadd(self._key_session(account_key), hash_token(token))
             return token
         if not self._login(
                 keys={
@@ -395,24 +423,31 @@ class RedisUserManager(UserManager):
                 },
                 args={
                     "email": email.get(),
-                    "token": token,
+                    "token": hash_token(token),
                 }):
             return None
         return token
 
     def logout(self, token: SessionToken) -> None:
         account_key = self._extract_account_key(token)
-        self._redis.srem(self._key_session(account_key), token)
+        self._redis.srem(self._key_session(account_key), hash_token(token))
 
-    def get_sessions_for_user(self, email: UName) -> Iterable[SessionToken]:
+    def count_sessions(self, email: UName) -> int:
+        account_key = self._account_key(email)
+        if account_key is None:
+            return 0
+        return self._redis.scard(self._key_session(account_key))
+
+    def logout_everywhere(self, email: UName) -> None:
         account_key = self._account_key(email)
         if account_key is None:
             return
-        yield from sorted(self._redis.smembers(self._key_session(account_key)))
+        self._redis.delete(self._key_session(account_key))
 
     def get_email(self, token: SessionToken) -> UName | None:
         account_key = self._extract_account_key(token)
-        if not self._redis.sismember(self._key_session(account_key), token):
+        if not self._redis.sismember(
+                self._key_session(account_key), hash_token(token)):
             return None
         if account_key == self._admin_key:
             return self.get_admin()
@@ -440,7 +475,6 @@ class RedisUserManager(UserManager):
             },
             args={
                 "email": email.get(),
-                "reset_token": reset_token,
                 "expire_ms": int(self.reset_expire() * 1000.0),
                 "cooldown_ms": int(self.reset_cooldown() * 1000.0),
             })

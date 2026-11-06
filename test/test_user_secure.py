@@ -220,7 +220,7 @@ def test_logout_self(
     # logging out everywhere is allowed on one's own account
     sec_ctx.logout_user(second, ALICE)
     assert sec_ctx.get_email(second) is None
-    assert not list(user_mng.get_sessions_for_user(ALICE))
+    assert user_mng.count_sessions(ALICE) == 0
 
 
 def test_logout_other_needs_capability(

@@ -30,6 +30,7 @@ from swai_server.system.user.manager import (
     as_capability,
     derive_account_key,
     derive_user_id,
+    hash_token,
     HashPassword,
     random_account_key,
     random_user_id,
@@ -43,10 +44,10 @@ from swai_server.system.user.manager import (
 CAPABILITY_LENGTH = 40
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 """The version of the tables. 1 (no user_store_meta table): accounts had no
-stored ids, and sessions and worker tokens were keyed by email. 2: the
-tables below."""
+stored ids, and sessions and worker tokens were keyed by email. 2: session
+and reset tokens were stored as they are. 3: the tables below."""
 
 
 # NOTE: the tables are defined without a schema; the engine maps them to the
@@ -96,7 +97,8 @@ CAPABILITIES = sa.Table(
 RESET_TOKENS = sa.Table(
     "user_reset_tokens",
     METADATA,
-    sa.Column("token", sa.Text, primary_key=True),
+    # NOTE: the hash of the token (see hash_token)
+    sa.Column("token_hash", sa.Text, primary_key=True),
     sa.Column(
         "user_id",
         sa.BigInteger,
@@ -115,7 +117,8 @@ RESET_TOKENS = sa.Table(
 SESSIONS = sa.Table(
     "user_sessions",
     METADATA,
-    sa.Column("token", sa.Text, primary_key=True),
+    # NOTE: the hash of the token (see hash_token)
+    sa.Column("token_hash", sa.Text, primary_key=True),
     sa.Column("account_key", sa.Text, nullable=False),
     sa.Column(
         "created",
@@ -204,6 +207,8 @@ class DBUserManager(UserManager):
                     version = 1
                 if version < 2:
                     self._migrate_v1_to_v2(conn)
+                if version < 3:
+                    self._migrate_v2_to_v3(conn)
             METADATA.create_all(conn, checkfirst=True)
             conn.execute(
                 pg_insert(META)
@@ -273,6 +278,25 @@ class DBUserManager(UserManager):
         run(
             f"ALTER TABLE {workers} DROP COLUMN email, "
             "ALTER COLUMN user_id SET NOT NULL, ADD PRIMARY KEY (user_id)")
+
+    def _migrate_v2_to_v3(self, conn: sa.Connection) -> None:
+        """
+        Session and reset tokens were stored as they are; the tables have
+        their hashes now. The old entries could never match a hash (and
+        could be read from the tables), so they are removed: everybody logs
+        in again and outstanding reset links stop working, once.
+
+        Args:
+            conn (sa.Connection): The connection in the migration
+                transaction.
+        """
+        users = self._table(conn, USERS.name)
+        for table in (SESSIONS, RESET_TOKENS):
+            name = self._table(conn, table.name)
+            conn.execute(sa.text(f"DELETE FROM {name}"))
+            conn.execute(sa.text(
+                f"ALTER TABLE {name} RENAME COLUMN token TO token_hash"))
+        conn.execute(sa.text(f"UPDATE {users} SET reset_cooldown = NULL"))
 
     def close(self) -> None:
         """Closes all connections."""
@@ -377,7 +401,8 @@ class DBUserManager(UserManager):
         with self._engine.begin() as conn:
             if self.is_admin(email):
                 conn.execute(sa.insert(SESSIONS).values(
-                    token=token, account_key=self._admin_key))
+                    token_hash=hash_token(token),
+                    account_key=self._admin_key))
                 return token
             # NOTE: the row is locked so that a concurrent email change (which
             # ends all sessions) either comes first and nothing is inserted
@@ -385,27 +410,38 @@ class DBUserManager(UserManager):
             res = conn.execute(
                 sa.insert(SESSIONS)
                 .from_select(
-                    ["token", "account_key"],
-                    sa.select(sa.literal(token), USERS.c.account_key)
+                    ["token_hash", "account_key"],
+                    sa.select(
+                        sa.literal(hash_token(token)), USERS.c.account_key)
                     .where(USERS.c.email == email.get())
                     .with_for_update(read=True))
-                .returning(SESSIONS.c.token)).first()
+                .returning(SESSIONS.c.token_hash)).first()
         return None if res is None else token
 
     def logout(self, token: SessionToken) -> None:
         with self._engine.begin() as conn:
-            conn.execute(sa.delete(SESSIONS).where(SESSIONS.c.token == token))
+            conn.execute(
+                sa.delete(SESSIONS)
+                .where(SESSIONS.c.token_hash == hash_token(token)))
 
-    def get_sessions_for_user(self, email: UName) -> Iterable[SessionToken]:
+    def count_sessions(self, email: UName) -> int:
+        account_key = self._account_key(email)
+        if account_key is None:
+            return 0
+        with self._engine.connect() as conn:
+            return conn.execute(
+                sa.select(sa.func.count())  # pylint: disable=not-callable
+                .select_from(SESSIONS)
+                .where(SESSIONS.c.account_key == account_key)).scalar_one()
+
+    def logout_everywhere(self, email: UName) -> None:
         account_key = self._account_key(email)
         if account_key is None:
             return
-        with self._engine.connect() as conn:
-            tokens = conn.execute(
-                sa.select(SESSIONS.c.token)
-                .where(SESSIONS.c.account_key == account_key)
-                .order_by(SESSIONS.c.token)).scalars().all()
-        yield from tokens
+        with self._engine.begin() as conn:
+            conn.execute(
+                sa.delete(SESSIONS)
+                .where(SESSIONS.c.account_key == account_key))
 
     def get_email(self, token: SessionToken) -> UName | None:
         with self._engine.connect() as conn:
@@ -413,7 +449,7 @@ class DBUserManager(UserManager):
                 sa.select(SESSIONS.c.account_key, USERS.c.email)
                 .select_from(SESSIONS.outerjoin(
                     USERS, USERS.c.account_key == SESSIONS.c.account_key))
-                .where(SESSIONS.c.token == token)).first()
+                .where(SESSIONS.c.token_hash == hash_token(token))).first()
         if res is None:
             return None
         if res.account_key == self._admin_key:
@@ -447,7 +483,7 @@ class DBUserManager(UserManager):
             if user_id is None:
                 return None
             conn.execute(sa.insert(RESET_TOKENS).values(
-                token=reset_token,
+                token_hash=hash_token(reset_token),
                 user_id=user_id,
                 expires=_in_seconds(self.reset_expire())))
         return reset_token
@@ -459,7 +495,7 @@ class DBUserManager(UserManager):
                 sa.select(USERS.c.email)
                 .select_from(RESET_TOKENS.join(USERS))
                 .where(
-                    RESET_TOKENS.c.token == reset_token,
+                    RESET_TOKENS.c.token_hash == hash_token(reset_token),
                     RESET_TOKENS.c.expires > _now())).scalar_one_or_none()
         if res is None:
             return None
@@ -476,7 +512,7 @@ class DBUserManager(UserManager):
             user_id = conn.execute(
                 sa.delete(RESET_TOKENS)
                 .where(
-                    RESET_TOKENS.c.token == reset_token,
+                    RESET_TOKENS.c.token_hash == hash_token(reset_token),
                     RESET_TOKENS.c.expires > _now(),
                     RESET_TOKENS.c.user_id == _user_id_of(email))
                 .returning(RESET_TOKENS.c.user_id)).scalar_one_or_none()

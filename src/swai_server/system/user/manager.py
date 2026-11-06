@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import hashlib
 import hmac
 import uuid
 from collections.abc import Iterable
@@ -67,6 +68,23 @@ def check_password(password: RawPassword, hashpw: HashPassword | None) -> bool:
     return bcrypt.checkpw(
         get_text_hash(password).encode("utf-8"),
         hashpw.encode("utf-8"))
+
+
+def hash_token(token: str) -> str:
+    """
+    What the stores keep of a session or reset token: its SHA-256, so that
+    reading the store is not enough to log in or set a password. The tokens
+    are random (122 bits of a uuid4), so a plain fast hash is enough: salts
+    and slow key derivation protect secrets that can be guessed, like
+    passwords, and nobody can guess a token to test against its hash.
+
+    Args:
+        token (str): The token as the user presents it.
+
+    Returns:
+        str: The hex digest.
+    """
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def derive_user_id(email: UName) -> UserId:
@@ -193,7 +211,10 @@ class UserManager:
     def logout(self, token: SessionToken) -> None:
         raise NotImplementedError()
 
-    def get_sessions_for_user(self, email: UName) -> Iterable[SessionToken]:
+    def count_sessions(self, email: UName) -> int:
+        raise NotImplementedError()
+
+    def logout_everywhere(self, email: UName) -> None:
         raise NotImplementedError()
 
     def create_user(self, email: UName, display_name: str) -> bool:

@@ -124,11 +124,7 @@ class SecureContext:
         self.ensure_can_act(who, email=None, admin_capability=CAP_LIST_USERS)
         user_mng = self._user_mng
         for email in user_mng.list_users():
-            is_active = False
-            for _ in user_mng.get_sessions_for_user(email):
-                is_active = True
-                break
-            yield (email, is_active)
+            yield (email, user_mng.count_sessions(email) > 0)
 
     def create_user(
             self, who: SessionToken, email: UName, display_name: str) -> bool:
@@ -380,9 +376,7 @@ class SecureContext:
             raise PreventDefaultResponse(401, "invalid worker token")
 
     def force_logout_user(self, email: UName) -> None:
-        user_mng = self._user_mng
-        for session_token in user_mng.get_sessions_for_user(email):
-            user_mng.logout(session_token)
+        self._user_mng.logout_everywhere(email)
 
     def secure_email(
             self, who: SessionToken, email: UName | None) -> UName | None:

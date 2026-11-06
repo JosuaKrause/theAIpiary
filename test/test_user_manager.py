@@ -14,6 +14,7 @@
 """Tests for accounts, passwords, sessions, capabilities and worker tokens as
 kept by the user managers. Unless a test names a backend it runs against
 both the redis and the Postgres user manager."""
+import hashlib
 import threading
 import time
 import uuid
@@ -34,7 +35,12 @@ from swai_server.config import config_template, select_user_store
 from swai_server.system.db.db import create_db_engine
 from swai_server.system.user import manager as user_manager_module
 from swai_server.system.user import redis as user_redis_module
-from swai_server.system.user.db import DBUserManager, RESET_TOKENS, USERS
+from swai_server.system.user.db import (
+    DBUserManager,
+    RESET_TOKENS,
+    SESSIONS,
+    USERS,
+)
 from swai_server.system.user.loader import load_user_manager, UserManagerModule
 from swai_server.system.user.manager import (
     as_capability,
@@ -408,7 +414,7 @@ def test_password_change(user_mng: UserManager) -> None:
 
 def test_unknown_user_cannot_log_in(user_mng: UserManager) -> None:
     assert user_mng.login(BOB, "pw") is None
-    assert not list(user_mng.get_sessions_for_user(BOB))
+    assert user_mng.count_sessions(BOB) == 0
 
 
 def test_sessions(user_mng: UserManager) -> None:
@@ -420,12 +426,11 @@ def test_sessions(user_mng: UserManager) -> None:
     assert first != second
     assert user_mng.get_email(first) == ALICE
     assert user_mng.get_email(second) == ALICE
-    assert list(user_mng.get_sessions_for_user(ALICE)) == sorted(
-        [first, second])
+    assert user_mng.count_sessions(ALICE) == 2
     user_mng.logout(first)
     assert user_mng.get_email(first) is None
     assert user_mng.get_email(second) == ALICE
-    assert list(user_mng.get_sessions_for_user(ALICE)) == [second]
+    assert user_mng.count_sessions(ALICE) == 1
 
 
 def test_sessions_are_per_user(user_mng: UserManager) -> None:
@@ -636,7 +641,7 @@ def test_delete_user(user_mng: UserManager) -> None:
     assert user_mng.login(ALICE, "alice pw") is None
     assert user_mng.get_password_hash(ALICE) is None
     assert user_mng.get_email(alice_session) is None
-    assert not list(user_mng.get_sessions_for_user(ALICE))
+    assert user_mng.count_sessions(ALICE) == 0
     assert not user_mng.list_capabilities(ALICE)
     assert not user_mng.has_capability(ALICE, CAP_LIST_USERS)
     assert not user_mng.is_correct_worker_token(ALICE, alice_worker)
@@ -686,6 +691,123 @@ def test_delete_unknown_user(user_mng: UserManager) -> None:
     assert list(user_mng.list_users()) == [ADMIN_EMAIL]
 
 
+# *** stored tokens ***
+
+
+def stored_sessions(user_mng: UserManager, email: UName) -> list[str]:
+    """
+    The values the store keeps for the sessions of an account.
+
+    Args:
+        user_mng (UserManager): The user manager.
+        email (UName): The account.
+
+    Returns:
+        list[str]: The stored values.
+    """
+    account_key = user_mng.get_account_key(email)
+    assert account_key is not None
+    if isinstance(user_mng, RedisUserManager):
+        # pylint: disable=protected-access
+        return sorted(user_mng._redis.smembers(f"sess:{account_key}"))
+    assert isinstance(user_mng, DBUserManager)
+    # pylint: disable=protected-access
+    with user_mng._engine.connect() as conn:
+        return sorted(conn.execute(
+            sa.select(SESSIONS.c.token_hash)
+            .where(SESSIONS.c.account_key == account_key)).scalars())
+
+
+def stored_reset_tokens(user_mng: UserManager) -> list[str]:
+    """
+    The values the store keeps for the outstanding reset tokens.
+
+    Args:
+        user_mng (UserManager): The user manager.
+
+    Returns:
+        list[str]: The stored values.
+    """
+    if isinstance(user_mng, RedisUserManager):
+        # pylint: disable=protected-access
+        return sorted(
+            key.removeprefix("reset:")
+            for key in user_mng._redis.keys(match="reset:*", block=False))
+    assert isinstance(user_mng, DBUserManager)
+    # pylint: disable=protected-access
+    with user_mng._engine.connect() as conn:
+        return sorted(conn.execute(
+            sa.select(RESET_TOKENS.c.token_hash)).scalars())
+
+
+def sha256(text: str) -> str:
+    """
+    The SHA-256 of a text.
+
+    Args:
+        text (str): The text.
+
+    Returns:
+        str: The hex digest.
+    """
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+@pytest.mark.parametrize("email", [ALICE, ADMIN_EMAIL])
+def test_session_tokens_are_stored_hashed(
+        user_mng: UserManager, email: UName) -> None:
+    """The store only has the hash of a session token: reading the store
+    is not enough to log in."""
+    if email != ADMIN_EMAIL:
+        assert user_mng.create_user(email, "Alice")
+    token = user_mng.do_login(email)
+    assert token is not None
+    stored = stored_sessions(user_mng, email)
+    assert stored == [sha256(token)]
+    assert token not in stored
+    assert user_mng.get_email(token) == email
+    for value in stored:
+        assert user_mng.get_email(value) is None
+    assert user_mng.count_sessions(email) == 1
+    user_mng.logout(stored[0])
+    assert user_mng.get_email(token) == email
+    user_mng.logout(token)
+    assert user_mng.get_email(token) is None
+    assert not stored_sessions(user_mng, email)
+
+
+def test_reset_tokens_are_stored_hashed(user_mng: UserManager) -> None:
+    """The store only has the hash of a reset token: reading the store is
+    not enough to set a password."""
+    assert user_mng.create_user(ALICE, "Alice")
+    reset_token = user_mng.generate_reset_token(ALICE)
+    assert reset_token is not None
+    stored = stored_reset_tokens(user_mng)
+    assert stored == [sha256(reset_token)]
+    assert reset_token not in stored
+    assert user_mng.get_email_for_reset_token(stored[0]) is None
+    assert user_mng.set_password("pw", stored[0]) is None
+    assert user_mng.set_password("pw", reset_token) == ALICE
+    assert not stored_reset_tokens(user_mng)
+
+
+def test_logout_everywhere(user_mng: UserManager) -> None:
+    assert user_mng.create_user(ALICE, "Alice")
+    assert user_mng.create_user(BOB, "Bob")
+    tokens = [user_mng.do_login(ALICE) for _ in range(3)]
+    bob = user_mng.do_login(BOB)
+    assert user_mng.count_sessions(ALICE) == 3
+    user_mng.logout_everywhere(ALICE)
+    assert user_mng.count_sessions(ALICE) == 0
+    for token in tokens:
+        assert token is not None
+        assert user_mng.get_email(token) is None
+    assert bob is not None
+    assert user_mng.get_email(bob) == BOB
+    assert user_mng.count_sessions(NOBODY) == 0
+    user_mng.logout_everywhere(NOBODY)
+
+
 # *** changing the email ***
 
 
@@ -714,7 +836,7 @@ def test_change_email(user_mng: UserManager) -> None:
     }
     # logged out everywhere
     assert user_mng.get_email(session) is None
-    assert not list(user_mng.get_sessions_for_user(CAROL))
+    assert user_mng.count_sessions(CAROL) == 0
     # the password stays; only the new email logs in
     assert user_mng.login(ALICE, "alice pw") is None
     new_session = user_mng.login(CAROL, "alice pw")
@@ -943,25 +1065,35 @@ def test_migrate_redis(
         session_store: SessionStore) -> None:
     """Accounts from before the stored ids get, once on startup, the ids
     derived from their email: the ids their chats, worker token and workers
-    already have. Then they work like any other account."""
+    already have. Then they work like any other account. Sessions and reset
+    tokens from before the hashed tokens are dropped."""
     redis = memory_redis()
     monkeypatch.setattr(user_redis_module, "Redis", lambda *_a, **_kw: redis)
     hashpw = hash_password("alice pw")
     session, worker_token = legacy_redis_account(redis, ALICE, hashpw)
     legacy_redis_account(redis, BOB, hash_password("bob pw"))
+    plain_reset = uuid.uuid4().hex
+    redis.set_value(f"reset:{plain_reset}", ALICE.get())
+    redis.set_value(f"cooldown:{get_short_hash(ALICE.get())}", plain_reset)
     chat = session_store.create_new_session(
         UserId.create(ALICE), copy_from=None).get_session_id()
 
     user_mng = RedisUserManager(
         admin_email=ADMIN_EMAIL, admin_pw=admin_pw_hash, cfg=UNUSED_REDIS)
 
-    assert redis.get_value("meta:version") == "2"
+    assert redis.get_value("meta:version") == "3"
     assert user_mng.get_ids(ALICE) == {
         "user_id": UserId.create(ALICE),
         "account_key": get_short_hash(ALICE.get()),
     }
     assert list(user_mng.list_users()) == [ADMIN_EMAIL, ALICE, BOB]
-    assert user_mng.get_email(session) == ALICE
+    # the plain tokens are gone and do not work
+    assert user_mng.get_email(session) is None
+    assert user_mng.get_email_for_reset_token(plain_reset) is None
+    assert not redis.keys(match="sess:*", block=False)
+    assert not redis.keys(match="reset:*", block=False)
+    # no cooldown left from the dropped reset token
+    assert user_mng.generate_reset_token(ALICE) is not None
     assert user_mng.login(ALICE, "alice pw") is not None
     assert user_mng.list_capabilities(ALICE) == {CAP_LIST_USERS}
     assert user_mng.is_correct_worker_token(ALICE, worker_token)
@@ -1052,8 +1184,9 @@ def test_migrate_postgres(
         admin_pw_hash: str,
         session_store: SessionStore) -> None:
     """Tables from before the stored ids are brought up to date once on
-    startup; the accounts keep their chats, sessions and worker tokens, and
-    so does the admin."""
+    startup; the accounts keep their chats and worker tokens, and so does
+    the admin. Sessions and reset tokens from before the hashed tokens are
+    dropped."""
     engine = create_db_engine(postgres_url, schema=pg_schema)
     tables = LEGACY_METADATA.tables
     sessions = {
@@ -1064,6 +1197,8 @@ def test_migrate_postgres(
         ALICE: uuid.uuid4().hex,
         ADMIN_EMAIL: uuid.uuid4().hex,
     }
+    plain_reset = uuid.uuid4().hex
+    row_ids: dict[UName, int] = {}
     try:
         with engine.begin() as conn:
             conn.execute(sa.schema.CreateSchema(pg_schema))
@@ -1072,19 +1207,24 @@ def test_migrate_postgres(
                     (ALICE, "Alice", hash_password("alice pw")),
                     (BOB, "Bob", None),
                     ]:
-                row_id = conn.execute(
+                row_ids[email] = conn.execute(
                     sa.insert(tables["users"])
                     .values(
                         email=email.get(), display_name=name, hashpw=hashpw)
                     .returning(tables["users"].c.id)).scalar_one()
                 conn.execute(sa.insert(tables["user_capabilities"]).values(
-                    user_id=row_id, capability=CAP_LIST_USERS))
+                    user_id=row_ids[email], capability=CAP_LIST_USERS))
+            alice_row = row_ids[ALICE]
             for email, token in sessions.items():
                 conn.execute(sa.insert(tables["user_sessions"]).values(
                     token=token, email=email.get()))
             for email, token in worker_tokens.items():
                 conn.execute(sa.insert(tables["user_worker_tokens"]).values(
                     email=email.get(), token=token))
+            conn.execute(sa.insert(tables["user_reset_tokens"]).values(
+                token=plain_reset,
+                user_id=alice_row,
+                expires=sa.text("now() + interval '1 hour'")))
     finally:
         engine.dispose()
     chat = session_store.create_new_session(
@@ -1101,10 +1241,14 @@ def test_migrate_postgres(
             "account_key": get_short_hash(ALICE.get()),
         }
         assert list(user_mng.list_users()) == [ADMIN_EMAIL, ALICE, BOB]
+        # the plain tokens are gone and do not work
+        for email, token in sessions.items():
+            assert user_mng.get_email(token) is None
+            assert user_mng.count_sessions(email) == 0
+        assert user_mng.get_email_for_reset_token(plain_reset) is None
+        assert not stored_reset_tokens(user_mng)
         assert user_mng.login(ALICE, "alice pw") is not None
         assert user_mng.list_capabilities(BOB) == {CAP_LIST_USERS}
-        for email, token in sessions.items():
-            assert user_mng.get_email(token) == email
         for email, token in worker_tokens.items():
             assert user_mng.is_correct_worker_token(email, token)
         user_id = user_mng.get_user_id(ALICE)
@@ -1220,8 +1364,8 @@ def test_concurrent_reset_token_use_postgres(
             # NOTE: holds the token row the way the first use does until its
             # transaction ends
             conn.execute(
-                sa.select(RESET_TOKENS.c.token)
-                .where(RESET_TOKENS.c.token == reset_token)
+                sa.select(RESET_TOKENS.c.token_hash)
+                .where(RESET_TOKENS.c.token_hash == sha256(reset_token))
                 .with_for_update())
             second = threading.Thread(target=use_second, daemon=True)
             second.start()
@@ -1229,7 +1373,7 @@ def test_concurrent_reset_token_use_postgres(
             assert "second" not in results
             conn.execute(
                 sa.delete(RESET_TOKENS)
-                .where(RESET_TOKENS.c.token == reset_token))
+                .where(RESET_TOKENS.c.token_hash == sha256(reset_token)))
             conn.commit()
         second.join(SOME_TIME)
         assert not second.is_alive()

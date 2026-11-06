@@ -412,6 +412,14 @@ starts (both Redis and Postgres): every account gets the ids derived from
 its current email, which are the ids its chats, worker token and workers
 already have, so nothing else has to change.
 
+Session tokens (the login cookie) and password reset tokens are stored only
+as their SHA-256 hash, so a copy of the store (or of a backup) is not
+enough to log in or to set a password. Stores from before this keep the
+tokens as they are; the first start of the server drops them (both Redis
+and Postgres): **everybody has to log in again once, and outstanding
+password reset links stop working** (request a new one). Worker tokens are
+not affected.
+
 A fork should also change `src/swai_client/public/docs/contact.md`, which points
 to this repository's issues, and the footer of the welcome page
 (`src/swai_client/src/general/Welcome.tsx`).
