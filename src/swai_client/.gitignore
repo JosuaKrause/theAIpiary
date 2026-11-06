@@ -19,3 +19,6 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# left behind if vite stops while loading its config
+vite.config.*.timestamp-*
