@@ -12,23 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tests for accounts, passwords, sessions, capabilities and worker tokens as
-kept by the redis user manager."""
+kept by the user managers. Unless a test names a backend it runs against
+both the redis and the Postgres user manager."""
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from test.util import ADMIN_EMAIL, ADMIN_PW, memory_redis, UNUSED_REDIS
 from typing import Any, cast
 
 import pytest
+import sqlalchemy as sa
 from redipy import Redis
 from scattermind.system.base import UserId
 from scattermind.system.names import UName
 from scattermind.system.util import get_short_hash
 
 from swai.system.user import CAP_CREATE_USER, CAP_LIST_USERS, CAPABILITIES
+from swai_server.config import config_template, select_user_store
+from swai_server.system.db.db import create_db_engine
 from swai_server.system.user import manager as user_manager_module
 from swai_server.system.user import redis as user_redis_module
+from swai_server.system.user.db import DBUserManager, RESET_TOKENS, USERS
 from swai_server.system.user.loader import load_user_manager, UserManagerModule
 from swai_server.system.user.manager import (
     as_capability,
@@ -321,10 +326,11 @@ def test_no_reset_token_for_unknown_user(user_mng: UserManager) -> None:
 
 
 def test_reset_token_for_vanished_account(
-        user_mng: RedisUserManager) -> None:
+        redis_user_mng: RedisUserManager) -> None:
     """A reset token whose account does not exist (e.g., one issued for an
     unknown email before such tokens were refused) is refused cleanly and
     does not create the account."""
+    user_mng = redis_user_mng
     reset_token = uuid.uuid4().hex
     # pylint: disable=protected-access
     user_mng._redis.set_value(
@@ -457,11 +463,38 @@ def test_admin_has_every_capability(user_mng: UserManager) -> None:
     }
 
 
-def test_no_admin_without_password(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.fixture(name="no_admin_user_mng", params=["redis", "postgres"])
+def fixture_no_admin_user_mng(
+        request: pytest.FixtureRequest,
+        monkeypatch: pytest.MonkeyPatch) -> Iterator[UserManager]:
+    """
+    A user manager with an admin email but without an admin password, once
+    for each backend.
+
+    Yields:
+        UserManager: The user manager.
+    """
+    if request.param == "redis":
+        monkeypatch.setattr(user_redis_module, "Redis", memory_redis)
+        yield RedisUserManager(
+            admin_email=ADMIN_EMAIL, admin_pw=None, cfg=UNUSED_REDIS)
+        return
+    postgres_url = request.getfixturevalue("postgres_url")
+    pg_schema = request.getfixturevalue("pg_schema")
+    user_mng = DBUserManager(
+        admin_email=ADMIN_EMAIL,
+        admin_pw=None,
+        engine=create_db_engine(postgres_url, schema=pg_schema),
+        schema=pg_schema)
+    try:
+        yield user_mng
+    finally:
+        user_mng.close()
+
+
+def test_no_admin_without_password(no_admin_user_mng: UserManager) -> None:
     """Without `ADMIN_PW` the admin account does not exist."""
-    monkeypatch.setattr(user_redis_module, "Redis", memory_redis)
-    user_mng = RedisUserManager(
-        admin_email=ADMIN_EMAIL, admin_pw=None, cfg=UNUSED_REDIS)
+    user_mng = no_admin_user_mng
     assert user_mng.get_admin() is None
     assert not user_mng.is_admin(ADMIN_EMAIL)
     assert user_mng.login(ADMIN_EMAIL, "") is None
@@ -612,6 +645,160 @@ def test_delete_unknown_user(user_mng: UserManager) -> None:
     assert list(user_mng.list_users()) == [ADMIN_EMAIL]
 
 
+# *** Postgres ***
+
+
+def wait_for_lock_waiter(engine: sa.Engine) -> None:
+    """
+    Waits until a connection of the database waits for a lock.
+
+    Args:
+        engine (sa.Engine): Any engine of the database.
+    """
+    deadline = time.monotonic() + SOME_TIME
+    with engine.connect() as conn:
+        while time.monotonic() < deadline:
+            waiting = conn.execute(sa.text(
+                "SELECT count(*) FROM pg_stat_activity "
+                "WHERE wait_event_type = 'Lock' "
+                "AND datname = current_database()")).scalar_one()
+            if waiting:
+                return
+            time.sleep(0.01)
+    raise AssertionError("no connection is waiting for a lock")
+
+
+@pytest.mark.parametrize("first_commits", [True, False])
+def test_concurrent_create_user_postgres(
+        postgres_user_mng: DBUserManager,
+        postgres_url: str,
+        pg_schema: str,
+        first_commits: bool) -> None:
+    """A registration that is not committed yet makes a second registration
+    for the same email wait: it fails if the first one commits and succeeds
+    if the first one rolls back."""
+    user_mng = postgres_user_mng
+    engine = create_db_engine(postgres_url, schema=pg_schema)
+    results: dict[str, bool] = {}
+
+    def create_second() -> None:
+        results["second"] = user_mng.create_user(ALICE, "Second")
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(sa.insert(USERS).values(
+                email=ALICE.get(), display_name="First"))
+            second = threading.Thread(target=create_second, daemon=True)
+            second.start()
+            wait_for_lock_waiter(engine)
+            assert "second" not in results
+            if first_commits:
+                conn.commit()
+            else:
+                conn.rollback()
+        second.join(SOME_TIME)
+        assert not second.is_alive()
+    finally:
+        engine.dispose()
+    assert results["second"] is not first_commits
+    winner = "First" if first_commits else "Second"
+    assert user_mng.get_user_info(ALICE)["display_name"] == winner
+    assert list(user_mng.list_users()) == [ADMIN_EMAIL, ALICE]
+
+
+def test_concurrent_reset_token_use_postgres(
+        postgres_user_mng: DBUserManager,
+        postgres_url: str,
+        pg_schema: str) -> None:
+    """Of two uses of the same reset token at the same time only one sets
+    the password: the second waits for the first and then finds the token
+    gone."""
+    user_mng = postgres_user_mng
+    assert user_mng.create_user(ALICE, "Alice")
+    reset_token = user_mng.generate_reset_token(ALICE)
+    assert reset_token is not None
+    engine = create_db_engine(postgres_url, schema=pg_schema)
+    results: dict[str, bool] = {}
+
+    def use_second() -> None:
+        results["second"] = user_mng.set_password_hash(
+            ALICE, hash_password("second"), reset_token)
+
+    try:
+        with engine.connect() as conn:
+            # NOTE: holds the token row the way the first use does until its
+            # transaction ends
+            conn.execute(
+                sa.select(RESET_TOKENS.c.token)
+                .where(RESET_TOKENS.c.token == reset_token)
+                .with_for_update())
+            second = threading.Thread(target=use_second, daemon=True)
+            second.start()
+            wait_for_lock_waiter(engine)
+            assert "second" not in results
+            conn.execute(
+                sa.delete(RESET_TOKENS)
+                .where(RESET_TOKENS.c.token == reset_token))
+            conn.commit()
+        second.join(SOME_TIME)
+        assert not second.is_alive()
+    finally:
+        engine.dispose()
+    assert results == {"second": False}
+    assert user_mng.login(ALICE, "second") is None
+
+
+def test_concurrent_reset_token_requests_postgres(
+        postgres_user_mng: DBUserManager,
+        postgres_url: str,
+        pg_schema: str) -> None:
+    """A reset request that waits for another one of the same account sees
+    its cooldown afterwards."""
+    user_mng = postgres_user_mng
+    assert user_mng.create_user(ALICE, "Alice")
+    engine = create_db_engine(postgres_url, schema=pg_schema)
+    results: dict[str, str | None] = {}
+
+    def request_second() -> None:
+        results["second"] = user_mng.generate_reset_token(ALICE)
+
+    try:
+        with engine.connect() as conn:
+            # NOTE: what the first request does before its transaction ends
+            conn.execute(
+                sa.update(USERS)
+                .where(USERS.c.email == ALICE.get())
+                .values(reset_cooldown=sa.text("now() + interval '1 hour'")))
+            second = threading.Thread(target=request_second, daemon=True)
+            second.start()
+            wait_for_lock_waiter(engine)
+            conn.commit()
+        second.join(SOME_TIME)
+        assert not second.is_alive()
+    finally:
+        engine.dispose()
+    assert results == {"second": None}
+
+
+def test_postgres_schema_is_created_once(
+        postgres_user_mng: DBUserManager,
+        postgres_url: str,
+        pg_schema: str,
+        admin_pw_hash: str) -> None:
+    """Starting the server again keeps the existing tables and accounts."""
+    invite(postgres_user_mng, ALICE, "alice pw")
+    again = DBUserManager(
+        admin_email=ADMIN_EMAIL,
+        admin_pw=admin_pw_hash,
+        engine=create_db_engine(postgres_url, schema=pg_schema),
+        schema=pg_schema)
+    try:
+        assert list(again.list_users()) == [ADMIN_EMAIL, ALICE]
+        assert again.login(ALICE, "alice pw") is not None
+    finally:
+        again.close()
+
+
 # *** loader ***
 
 
@@ -625,6 +812,60 @@ def test_load_user_manager(
         admin_pw=admin_pw_hash)
     assert isinstance(user_mng, RedisUserManager)
     assert user_mng.get_admin() == ADMIN_EMAIL
+
+
+def test_load_postgres_user_manager(
+        monkeypatch: pytest.MonkeyPatch,
+        postgres_url: str,
+        pg_schema: str,
+        admin_pw_hash: str) -> None:
+    """The Postgres user manager reads its connection from the PG*
+    settings and creates its tables in the configured schema."""
+    url = sa.make_url(postgres_url)
+    monkeypatch.setenv("PGHOST", f"{url.host}")
+    monkeypatch.setenv("PGPORT", f"{url.port or 5432}")
+    monkeypatch.setenv("PGUSER", f"{url.username}")
+    monkeypatch.setenv("PGPASSWORD", f"{url.password or ''}")
+    monkeypatch.setenv("PGDATABASE", f"{url.database}")
+    user_mng = load_user_manager(
+        {"name": "postgres", "schema": pg_schema},
+        admin_email=ADMIN_EMAIL,
+        admin_pw=admin_pw_hash)
+    assert isinstance(user_mng, DBUserManager)
+    try:
+        assert user_mng.get_admin() == ADMIN_EMAIL
+        assert user_mng.create_user(ALICE, "Alice")
+        assert list(user_mng.list_users()) == [ADMIN_EMAIL, ALICE]
+    finally:
+        user_mng.close()
+    engine = sa.create_engine(postgres_url)
+    try:
+        assert set(sa.inspect(engine).get_table_names(schema=pg_schema)) == {
+            "users",
+            "user_capabilities",
+            "user_reset_tokens",
+            "user_sessions",
+            "user_worker_tokens",
+        }
+    finally:
+        engine.dispose()
+
+
+def test_select_user_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`USER_STORE` switches to Postgres without editing the config file."""
+    config = config_template()
+    monkeypatch.delenv("USER_STORE", raising=False)
+    assert select_user_store(config) == config
+    monkeypatch.setenv("USER_STORE", "redis")
+    assert select_user_store(config) == config
+    monkeypatch.setenv("USER_STORE", "postgres")
+    selected = select_user_store(config)
+    assert selected["user_mng"] == {"name": "postgres"}
+    assert selected["task_queue"] == config["task_queue"]
+    assert config["user_mng"]["name"] == "redis"
+    monkeypatch.setenv("USER_STORE", "ldap")
+    with pytest.raises(ValueError, match="not supported"):
+        select_user_store(config)
 
 
 def test_load_unknown_user_manager() -> None:

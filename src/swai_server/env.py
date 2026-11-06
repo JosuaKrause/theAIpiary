@@ -33,6 +33,10 @@ EnvStr = Literal[
     "MODEL_URL",
     "OWN_EMAIL",
     "OWN_URL",
+    "PGDATABASE",
+    "PGHOST",
+    "PGPASSWORD",
+    "PGUSER",
     "PROVIDER_REGISTRY",
     "REDIS_HOST",
     "REDIS_PREFIX",
@@ -40,8 +44,10 @@ EnvStr = Literal[
     "SMTP_HOST",
     "SMTP_PW",
     "SMTP_USER",
+    "USER_STORE",
 ]
 EnvInt = Literal[
+    "PGPORT",
     "PORT",
     "REDIS_PORT",
     "SMTP_PORT",

@@ -25,6 +25,9 @@
 #                        the tag of aipiary-server-rserver (required)
 #   AIPIARY_DOMAIN       the domain(s) Caddy gets certificates for (tls only)
 #   COMPOSE_PROFILES=tls starts the Caddy reverse proxy on ports 80 and 443
+#   COMPOSE_PROFILES=postgres starts Postgres for the accounts (both profiles:
+#                        tls,postgres); see server.compose.env.sample
+#   AIPIARY_PG_PASSWORD  the password of the Postgres user (postgres only)
 #
 # The server is a single stateful instance (Redis, session blobs on disk and
 # a cleaner thread inside the api process), so do not scale the api service.
@@ -50,6 +53,10 @@ services:
     depends_on:
       rserver:
         condition: service_healthy
+      # NOTE: only with the postgres profile
+      postgres:
+        condition: service_healthy
+        required: false
     ports:
       - '8080:8080'
     volumes:
@@ -73,6 +80,27 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+  postgres:
+    image: postgres:17
+    profiles:
+      - postgres
+    restart: unless-stopped
+    # reachable as postgres:5432 from the api only; not published on the host
+    expose:
+      - 5432
+    environment:
+      POSTGRES_USER: aipiary
+      POSTGRES_DB: aipiary
+      # NOTE: the container refuses to start without a password
+      POSTGRES_PASSWORD: ${AIPIARY_PG_PASSWORD:-}
+    volumes:
+      - ${AIPIARY_DATA:?set AIPIARY_DATA to the data directory}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'aipiary', '-d', 'aipiary']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
   caddy:
     image: caddy:2
     profiles:

@@ -100,6 +100,10 @@ ADMIN_EMAIL = UName("admin")
 """The admin account name (the name `make create-admin-pw` suggests)."""
 ADMIN_PW = "admin password"
 """The admin's raw password."""
+TEST_POSTGRES_URL = "TEST_POSTGRES_URL"
+"""The environment variable with the connection URL of the Postgres server
+for the tests of the Postgres user store. Every test uses a fresh schema
+that is dropped afterwards."""
 UNUSED_REDIS: RedisConfig = {
     "host": "localhost",
     "port": 1,

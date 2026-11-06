@@ -27,6 +27,8 @@ one model, a Llama 3.1 chat assistant that calls itself Beatrix Buzz.
   authenticate with a worker token. All state lives in Redis (accessed through
   [redipy](https://github.com/JosuaKrause/redipy)): users, chat sessions
   (scattermind's session store; large blobs go to disk), and the task queue.
+  The accounts can be kept in Postgres instead (see
+  [Keeping the accounts in Postgres](#keeping-the-accounts-in-postgres)).
 - **Auction queue** (`src/swai_server/auction/queue.py`). A chat prompt becomes a
   task in a Redis list per model namespace (currently `llama`). Workers bid for
   work by long-polling `POST /api/task/bid` with the namespaces they can serve;
@@ -47,14 +49,15 @@ one model, a Llama 3.1 chat assistant that calls itself Beatrix Buzz.
   llama-cpp-python.
 - **Client** (`src/swai_client`). A React TypeScript/Redux app, built with
   Vite, with the chat, login, password reset, FAQ and profile pages. The
-  profile page lists workers, creates worker tokens and, for users allowed to,
-  creates accounts.
+  profile page lists workers and creates worker tokens. For users allowed to
+  it also creates accounts and manages them: it can send a password reset,
+  log a user out everywhere, change their capabilities, or delete them.
 - **Shared code** (`src/swai`): the API response types, the authorization header
   format, and the Llama prompt and session handling used by both sides.
-- **Postgres**. `src/swai_server/system/db/` has SQLAlchemy tables and
-  `src/swai_server/system/user/db.py` a Postgres-backed user manager, but they are
-  not wired in yet: the user manager loader only supports Redis, so Postgres is
-  not needed to run anything.
+- **Postgres** (optional). `src/swai_server/system/user/db.py` is a user
+  manager that keeps the accounts, sessions, reset tokens, capabilities and
+  worker tokens in Postgres (SQLAlchemy). Chats and the task queue stay in
+  Redis either way.
 
 ## Prerequisites
 
@@ -155,6 +158,18 @@ make pytest PYTHON=python
 
 `make lint-type-check` (part of `lint-all`) reports the `llama_cpp` module as
 missing unless llama-cpp-python is installed in the same environment.
+
+The user manager tests run against Redis (in memory) and Postgres. The
+Postgres half needs a server and `TEST_POSTGRES_URL`; without it those tests
+are skipped locally (CI provides a server and fails without one). Each test
+works in a schema of its own and drops it afterwards. With Docker:
+
+```
+docker run -d --name swai-test-pg -e POSTGRES_PASSWORD=pw -p 5432:5432 postgres:17
+TEST_POSTGRES_URL=postgresql+psycopg2://postgres:pw@localhost:5432/postgres \
+    make pytest PYTHON=python
+docker rm -fv swai-test-pg
+```
 
 The client checks:
 
@@ -338,6 +353,47 @@ blobs live on its volume and the task cleaner runs inside the process, so a
 second pod would not see the first one's blobs and would run a second cleaner.
 Kubernetes buys you scheduling and restarts here, not scaling.
 
+### Keeping the accounts in Postgres
+
+By default the accounts live in Redis next to everything else. To keep them
+in Postgres instead, add to `server.env`:
+
+```
+USER_STORE=postgres
+PGHOST=postgres.example.com
+PGPORT=5432
+PGUSER=aipiary
+PGPASSWORD=...
+PGDATABASE=aipiary
+```
+
+(`USER_STORE` overrides the `user_mng` entry of the config file, which is
+built into the image; outside of Docker you can also set
+`"user_mng": {"name": "postgres"}` there, optionally with a `"schema"`.) The
+server creates its tables in the `public` schema when it starts if they do
+not exist yet (`users`, `user_capabilities`, `user_reset_tokens`,
+`user_sessions`, `user_worker_tokens`); there is no separate migration step.
+The database user needs to be allowed to create tables for the first start.
+Existing accounts are not copied over from Redis: switching stores starts with
+no users besides the admin.
+
+With Compose, the `postgres` profile starts a Postgres container next to the
+api (data in `data/postgres/`). Add `COMPOSE_PROFILES=postgres` (or
+`tls,postgres`) and `AIPIARY_PG_PASSWORD=...` to `.env`, and to `server.env`:
+
+```
+USER_STORE=postgres
+PGHOST=postgres
+PGUSER=aipiary
+PGPASSWORD=<the same as AIPIARY_PG_PASSWORD>
+PGDATABASE=aipiary
+```
+
+Back it up with the rest of the data directory (stop the stack first, as in
+step 8). On Kubernetes, put the same `PG*` lines and `USER_STORE=postgres`
+into `deploy/k8s/server.env` and point `PGHOST` at a Postgres you run in or
+next to the cluster.
+
 A fork should also change `src/swai_client/public/docs/contact.md`, which points
 to this repository's issues, and the footer of the welcome page
 (`src/swai_client/src/general/Welcome.tsx`).
@@ -346,8 +402,9 @@ to this repository's issues, and the footer of the welcome page
 
 Experimental. The deployment this was written for is offline and the community
 it served was invite-only. The pytest suite covers the auction queue, user
-management and permission checks without needing Redis or Postgres; the HTTP
-endpoints, the provider and the scattermind graphs are not tested. Known bugs
+management (on Redis and Postgres), permission checks and the user endpoints
+without needing Redis; the chat endpoints, the provider and the scattermind
+graphs are not tested. Known bugs
 are recorded as `xfail` tests and as GitHub issues. Expect rough edges, and read
 the code before relying on it.
 

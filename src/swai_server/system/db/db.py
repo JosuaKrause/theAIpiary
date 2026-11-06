@@ -11,28 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import contextlib
-import inspect
-import sys
-import threading
-import urllib
-from collections.abc import Iterator
-from typing import Any, cast, TYPE_CHECKING, TypedDict
+"""Connecting to Postgres."""
+from typing import TypedDict
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
+
+from swai_server.env import envload_int, envload_str
 
 
-if TYPE_CHECKING:
-    from swai_server.system.db.base import Base
-
-
-VERBOSE = False
+DEFAULT_SCHEMA = "public"
 
 
 DBConfig = TypedDict('DBConfig', {
-    "dialect": str,
     "host": str,
     "port": int,
     "user": str,
@@ -42,113 +32,58 @@ DBConfig = TypedDict('DBConfig', {
 })
 
 
-EngineKey = tuple[str, str, int, str, str, str]
+def db_config_from_env(*, schema: str | None = None) -> DBConfig:
+    """
+    Reads the connection settings from the standard libpq variables
+    `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, and `PGDATABASE`.
+
+    Args:
+        schema (str | None, optional): The schema that holds the tables.
+            Defaults to "public".
+
+    Returns:
+        DBConfig: The connection settings.
+    """
+    return {
+        "host": envload_str("PGHOST"),
+        "port": envload_int("PGPORT", default=5432),
+        "user": envload_str("PGUSER"),
+        "passwd": envload_str("PGPASSWORD", default=""),
+        "dbname": envload_str("PGDATABASE"),
+        "schema": DEFAULT_SCHEMA if not schema else schema,
+    }
 
 
-def get_engine_key(config: DBConfig) -> EngineKey:
-    return (
-        config["dialect"],
-        config["host"],
-        config["port"],
-        config["user"],
-        config["dbname"],
-        config["schema"],
-    )
+def get_db_url(config: DBConfig) -> sa.URL:
+    """
+    The connection URL for the given settings.
+
+    Args:
+        config (DBConfig): The connection settings.
+
+    Returns:
+        sa.URL: The URL.
+    """
+    return sa.URL.create(
+        "postgresql+psycopg2",
+        username=config["user"],
+        password=config["passwd"] or None,
+        host=config["host"],
+        port=config["port"],
+        database=config["dbname"])
 
 
-LOCK = threading.RLock()
-ENGINES: dict[EngineKey, sa.engine.Engine] = {}
+def create_db_engine(url: sa.URL | str, *, schema: str) -> sa.Engine:
+    """
+    Creates an engine whose tables (defined without a schema) live in the
+    given schema.
 
+    Args:
+        url (sa.URL | str): The connection URL.
+        schema (str): The schema.
 
-def get_engine(config: DBConfig) -> sa.engine.Engine:
-    key = get_engine_key(config)
-    res = ENGINES.get(key)
-    if res is not None:
-        return res
-    with LOCK:
-        res = ENGINES.get(key)
-        if res is not None:
-            return res
-        dialect = config["dialect"]
-        if dialect != "postgresql":
-            print(
-                "dialects other than 'postgresql' are not supported. "
-                "continue at your own risk", file=sys.stderr)
-        user = urllib.parse.quote_plus(config["user"])
-        passwd = urllib.parse.quote_plus(config["passwd"])
-        host = config["host"]
-        port = config["port"]
-        dbname = config["dbname"]
-        res = sa.create_engine(
-            f"{dialect}://{user}:{passwd}@{host}:{port}/{dbname}",
-            echo=VERBOSE)
-        res = res.execution_options(
-            schema_translate_map={None: config["schema"]})
-        ENGINES[key] = res
-    return res
-
-
-class DBConnector:
-    def __init__(self, config: DBConfig) -> None:
-        self._engine = get_engine(config)
-        self._namespaces: dict[str, int] = {}
-        self._modules: dict[str, int] = {}
-        self._schema = config["schema"]
-
-    def table_exists(self, table: type['Base']) -> bool:
-        return sa.inspect(self._engine).has_table(
-            table.__table__.name, schema=self._schema)
-
-    def create_tables(self, tables: list[type['Base']]) -> None:
-        # pylint: disable=import-outside-toplevel
-        from swai_server.system.db.base import Base
-
-        Base.metadata.create_all(
-            self._engine,
-            tables=[table.__table__ for table in tables],
-            checkfirst=True)
-
-    @staticmethod
-    def all_tables() -> list[type['Base']]:
-        # pylint: disable=import-outside-toplevel
-        from swai_server.system.db.base import Base
-
-        res: list[type[Base]] = []
-        for _, clz in inspect.getmembers(
-                sys.modules["system.db.base"], inspect.isclass):
-            if clz is not Base and issubclass(clz, Base):
-                res.append(cast(type[Base], clz))
-        return res
-
-    def is_init(self) -> bool:
-        return all((self.table_exists(clz) for clz in self.all_tables()))
-
-    def init_db(self) -> None:
-        if self.is_init():
-            return
-        self.create_tables(self.all_tables())
-
-    def get_engine(self) -> sa.engine.Engine:
-        return self._engine
-
-    @contextlib.contextmanager
-    def get_connection(self) -> Iterator[sa.engine.Connection]:
-        with self._engine.connect() as conn:
-            yield conn
-
-    @contextlib.contextmanager
-    def get_session(self, autocommit: bool = True) -> Iterator[Session]:
-        success = False
-        with Session(self._engine) as session:
-            try:
-                yield session
-                success = True
-            finally:
-                if autocommit:
-                    if success:
-                        session.commit()
-                    else:
-                        session.rollback()
-
-    def upsert(self, table: type['Base']) -> Any:
-        return pg_insert(table)
+    Returns:
+        sa.Engine: The engine.
+    """
+    engine = sa.create_engine(url, pool_pre_ping=True)
+    return engine.execution_options(schema_translate_map={None: schema})
