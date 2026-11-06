@@ -13,7 +13,9 @@ RUN apt-get update \
   gcc-11 \
   g++-11
 WORKDIR /usr/src/app
-ENV CUDA_VERSION_SHORT=cu125
+# llama-cpp-python has no cu125/cu126 wheels for Python 3.12; the CUDA 12.4 ones
+# work on the 12.6 base image (same major CUDA version)
+ENV CUDA_VERSION_SHORT=cu124
 RUN nvcc --version
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=all
@@ -40,7 +42,7 @@ ARG SMIND_CONFIG
 COPY "${SMIND_CONFIG}" smind-config.json
 COPY "${SMIND_GRAPHS}" graphs/
 ENV ENV_FILE=/swai/provider.env
-ENV LLAMA_CPP_LIB=/usr/local/lib/python3.12/dist-packages/llama_cpp/libllama.so
+ENV LLAMA_CPP_LIB=/usr/local/lib/python3.12/dist-packages/llama_cpp/lib/libllama.so
 HEALTHCHECK --interval=30s --timeout=30s --start-period=20s --retries=3 CMD ["/bin/bash", "-l", "-c", "python -u -m scattermind --env ${ENV_FILE} --config smind-config.json healthcheck"]
 ENTRYPOINT ["/bin/bash", "-l", "-c"]
 CMD ["python -u -m scattermind --env ${ENV_FILE} --boot --version-file ${VERSION_PATH} --config smind-config.json worker --graph graphs/ --max-task-retries 2"]

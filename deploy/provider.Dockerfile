@@ -10,7 +10,9 @@ RUN apt-get update \
   build-essential \
   make
 WORKDIR /usr/src/app
-ENV CUDA_VERSION_SHORT=cu125
+# llama-cpp-python has no cu125/cu126 wheels for Python 3.12; the CUDA 12.4 ones
+# work on the 12.6 base image (same major CUDA version)
+ENV CUDA_VERSION_SHORT=cu124
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=all
 # the base image ships Ubuntu's python 3.12 (PEP 668 marked as externally managed)

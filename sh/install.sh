@@ -27,8 +27,8 @@ fi
 MAJOR=$(${PYTHON} -c 'import sys; print(sys.version_info.major)')
 MINOR=$(${PYTHON} -c 'import sys; print(sys.version_info.minor)')
 echo "${PYTHON} v${MAJOR}.${MINOR}"
-if [ ${MAJOR} -eq 3 ] && [ ${MINOR} -lt 11 ] || [ ${MAJOR} -lt 3 ]; then
-    echo "${PYTHON} version must at least be 3.11" >&2
+if [ ${MAJOR} -eq 3 ] && [ ${MINOR} -lt 12 ] || [ ${MAJOR} -lt 3 ]; then
+    echo "${PYTHON} version must at least be 3.12" >&2
     exit 1
 fi
 
@@ -41,20 +41,21 @@ import torch
 def get_device() -> torch.device:
     if torch.backends.mps.is_available():
         return torch.device("mps")
-    # if torch.cuda.is_available():
-    if torch.backends.cudnn.enabled:
+    # a CUDA build of torch (also without a visible GPU, e.g., during
+    # docker build); cudnn.enabled is True for CPU-only builds as well
+    if torch.version.cuda is not None:
         return torch.device("cuda")
     return torch.device("cpu")
 
 options = []
 device_name = f"{get_device()}"
 if device_name == "mps":
-    options.append("-DLLAMA_METAL=on")
+    options.append("-DGGML_METAL=on")
 elif device_name == "cuda":
-    options.append("-DLLAMA_CUDA=on")
+    options.append("-DGGML_CUDA=on")
 elif device_name == "cpu":
-    options.append("-DLLAMA_BLAS=ON")
-    options.append("-DLLAMA_BLAS_VENDOR=OpenBLAS")
+    options.append("-DGGML_BLAS=ON")
+    options.append("-DGGML_BLAS_VENDOR=OpenBLAS")
 sys.stdout.write(" ".join(options))
 sys.stdout.flush()
 EOF
@@ -120,22 +121,22 @@ fi
 
 LLAMA_CMAKE_ARGS=$(${PYTHON} -c "${PY_TORCH_VERIFY}")
 if [ ! -z "${FORCE_CUDA}" ]; then
-    LLAMA_CMAKE_ARGS="-DLLAMA_CUDA=on"
+    LLAMA_CMAKE_ARGS="-DGGML_CUDA=on"
 elif [ ! -z "${FORCE_CPU}" ]; then
     LLAMA_CMAKE_ARGS=
 fi
 
-LLAMA_CPP_PY_VERSION="0.2.83"
+LLAMA_CPP_PY_VERSION="0.3.19"
 if grep -q "METAL" <<< "${LLAMA_CMAKE_ARGS}"; then
     ${PYTHON} -m pip install "llama-cpp-python==${LLAMA_CPP_PY_VERSION}" --extra-index-url "https://abetlen.github.io/llama-cpp-python/whl/metal"
 elif grep -q "CUDA" <<< "${LLAMA_CMAKE_ARGS}"; then
-    CUDA_VERSION_SHORT="${CUDA_VERSION_SHORT:-cu121}"
+    CUDA_VERSION_SHORT="${CUDA_VERSION_SHORT:-cu124}"
     if [ ! -z "${FORCE_BUILD_LLAMA}" ]; then
-        CUDACXX=nvcc CMAKE_ARGS="-DLLAMA_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=all-major" FORCE_CMAKE=1 \
+        CUDACXX=nvcc CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=all-major" FORCE_CMAKE=1 \
             ${PYTHON} -m pip install "llama-cpp-python==${LLAMA_CPP_PY_VERSION}" --no-cache-dir --force-reinstall --upgrade
     else
-        ${PYTHON} -m pip install llama-cpp-python --prefer-binary --no-cache-dir --extra-index-url "https://abetlen.github.io/llama-cpp-python/whl/${CUDA_VERSION_SHORT}"
-        # ${PYTHON} -m pip install llama-cpp-python --prefer-binary --no-cache-dir --extra-index-url "https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/AVX2/${CUDA_VERSION_SHORT}"
+        ${PYTHON} -m pip install "llama-cpp-python==${LLAMA_CPP_PY_VERSION}" --prefer-binary --no-cache-dir --extra-index-url "https://abetlen.github.io/llama-cpp-python/whl/${CUDA_VERSION_SHORT}"
+        # ${PYTHON} -m pip install "llama-cpp-python==${LLAMA_CPP_PY_VERSION}" --prefer-binary --no-cache-dir --extra-index-url "https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/AVX2/${CUDA_VERSION_SHORT}"
     fi
 else
     CMAKE_ARGS="${LLAMA_CMAKE_ARGS}" ${PYTHON} -m pip install --progress-bar off "llama-cpp-python==${LLAMA_CPP_PY_VERSION}"
