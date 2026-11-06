@@ -14,9 +14,11 @@
 """Utility functions for unit tests."""
 import os
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, TypeVar
+from typing import Any, TYPE_CHECKING, TypeVar
 
 import pytest
+from redipy import Redis, RedisConfig
+from scattermind.system.names import UName
 from scattermind.system.util import to_bool
 
 
@@ -92,3 +94,27 @@ def wait_for_tasks(
         yield task_id, response, expected_result
         seen.add(task_id)
     assert seen == set(task_ids)
+
+
+ADMIN_EMAIL = UName("admin")
+"""The admin account name (the name `make create-admin-pw` suggests)."""
+ADMIN_PW = "admin password"
+"""The admin's raw password."""
+UNUSED_REDIS: RedisConfig = {
+    "host": "localhost",
+    "port": 1,
+    "passwd": "",
+}
+"""A server config that is never connected to: the stores are constructed
+with it but their redis is replaced by a memory runtime."""
+
+
+def memory_redis(*_args: Any, **_kwargs: Any) -> Redis:
+    """
+    Stands in for `redipy.Redis` in the modules under test: whatever
+    connection parameters the module passes, it gets a fresh memory runtime.
+
+    Returns:
+        Redis: A new, empty in-memory redis.
+    """
+    return Redis("memory")
