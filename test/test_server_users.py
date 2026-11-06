@@ -20,7 +20,12 @@ import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from test.util import ADMIN_EMAIL, memory_redis, UNUSED_REDIS
+from test.util import (
+    ADMIN_EMAIL,
+    memory_redis,
+    strict_memory_redis,
+    UNUSED_REDIS,
+)
 from typing import Any, cast
 
 import pytest
@@ -121,8 +126,10 @@ def fixture_session_store(
     Returns:
         SessionStore: The session store.
     """
+    # NOTE: deleting without keys must fail as on a real redis: removing a
+    # chat without values does that
     for module in (blob_disk_module, kv_redis_module, session_user_module):
-        monkeypatch.setattr(module, "Redis", memory_redis)
+        monkeypatch.setattr(module, "Redis", strict_memory_redis)
     return load_session_store({
         "user": {"name": "redis", "cfg": UNUSED_REDIS},
         "key_value": {"name": "redis", "cfg": UNUSED_REDIS},

@@ -27,7 +27,7 @@ from scattermind.system.base import SessionId, TaskId, UserId
 from scattermind.system.io import open_readb, open_writeb, remove_file
 from scattermind.system.names import GNamespace, UName
 from scattermind.system.response import redis_to_response
-from scattermind.system.session.session import Session
+from scattermind.system.session.session import Session, SessionStore
 from scattermind.system.util import get_time_str, parse_time_str, to_bool
 
 from swai.auth import parse_authorization
@@ -112,6 +112,24 @@ VersionDict = TypedDict('VersionDict', {
     "deploy_time": str,
     "start_time": str,
 })
+
+
+def remove_chat(session_store: SessionStore, session_id: SessionId) -> None:
+    """
+    Removes a chat session with its values and blobs.
+
+    Args:
+        session_store (SessionStore): The session store.
+        session_id (SessionId): The chat session.
+    """
+    # NOTE: scattermind's redis stores remove the values and the blobs of a
+    # session with one DEL each, which fails on a real redis if there is
+    # nothing to delete (e.g., a chat without values yet). a value and a
+    # blob make sure there is something
+    session_store.push_value(session_id, "deleted", "1")
+    with session_store.open_blob_write(session_id, "deleted") as fout:
+        fout.write(b"")
+    session_store.remove(session_id)
 
 
 def get_version_strs() -> VersionDict:
@@ -577,7 +595,7 @@ def setup(
         user_id = sec_ctx.force_user_id(user_email)
         chats = 0
         for session in list(session_store.get_sessions(user_id)):
-            session_store.remove(session.get_session_id())
+            remove_chat(session_store, session.get_session_id())
             chats += 1
         return {
             "email": user_email.get(),
