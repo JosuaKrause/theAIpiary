@@ -13,7 +13,10 @@ RUN apt-get update \
   make \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /usr/src/app
-RUN pip install --progress-bar off --no-cache-dir 'torch==2.3.0' torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# NOTE: CPU-only torch matching the torch pin in requirements.server.txt; the
+# CPU index keeps pip from replacing it with the multi-GB CUDA build
+ENV PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu
+RUN pip install --progress-bar off --no-cache-dir 'torch==2.14.1' --index-url https://download.pytorch.org/whl/cpu
 COPY Makefile .
 ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
