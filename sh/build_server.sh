@@ -18,6 +18,10 @@ set -e
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
+source sh/docker_registry.sh
+
+load_system_env
+
 BUILDTMP="buildtmp_server"
 
 rm -rf "${BUILDTMP}"
@@ -123,7 +127,11 @@ if [ ! -z "${DEV}" ]; then
 else
     DOCKER_COMPOSE_OUT="docker-compose.server.yml"
     WEBAPP_STORAGE_HOME=
-    DOCKER_LOGIN_SERVER="aipiary.azurecr.io/"
+    DOCKER_LOGIN_SERVER="$(registry_prefix "${SERVER_REGISTRY}")"
+    if [ -z "${DOCKER_LOGIN_SERVER}" ]; then
+        echo "SERVER_REGISTRY is not set (see system.env.sample)." \
+            "the docker compose file will reference local image names"
+    fi
 fi
 
 make install-ts

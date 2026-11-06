@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-        <loc>https://www.theaipiary.com/</loc>
+        <loc>@@PUBLIC_URL@@/</loc>
     </url>
     <url>
-        <loc>https://www.theaipiary.com/login</loc>
+        <loc>@@PUBLIC_URL@@/login</loc>
     </url>
     <url>
-        <loc>https://www.theaipiary.com/faq</loc>
+        <loc>@@PUBLIC_URL@@/faq</loc>
     </url>
 </urlset>

@@ -1,5 +1,4 @@
 FROM pytorch/pytorch:2.14.1-cuda12.6-cudnn9-runtime
-# FROM continuumio/miniconda3:24.1.2-0
 RUN apt-get update \
   && apt-get -y upgrade \
   && apt-get install -y --no-install-recommends \
@@ -21,7 +20,6 @@ RUN conda update -y pip setuptools wheel conda filelock \
   && conda install -y python=3.11 \
   && conda clean --all
 # *****
-# RUN pip install --progress-bar off --no-cache-dir 'torch==2.3.0' torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 COPY Makefile .
 ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"

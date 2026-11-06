@@ -127,9 +127,6 @@ lint-all: \
 compose-server:
 	./sh/compose_server.sh
 
-compose-provider:
-	./sh/compose_provider.sh
-
 run-provider:
 	BASE=$(BASE) ./sh/run_provider.sh
 
@@ -138,9 +135,6 @@ run-server:
 
 run-ts:
 	yarn --cwd $(TS_ROOT) start
-
-azlogin:
-	./sh/azlogin.sh
 
 dockerpush-provider:
 	./sh/dockerpush_provider.sh
@@ -216,7 +210,7 @@ allapps:
 	| sed -e 's/^.\///' -e 's/\/__main__.py$$//' -e 's/.py$$//'
 
 create-admin-pw:
-	cd src && $(PYTHON) -m swai.system.user
+	cd src && $(PYTHON) -m swai_server.system.user
 
 deploy-server: \
 	build-server \

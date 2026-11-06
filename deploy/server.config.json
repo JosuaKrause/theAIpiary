@@ -1,16 +1,38 @@
 {
   "session_store": {
-    "cache_path": "/session/cache",
-    "cfg": {
-      "host": "rserver",
-      "passwd": "",
-      "path": "/swai/redis",
-      "port": 6379,
-      "prefix": "sessions"
+    "user": {
+      "name": "redis",
+      "cfg": {
+        "host": "rserver",
+        "passwd": "",
+        "path": "/swai/redis",
+        "port": 6379,
+        "prefix": "sessions"
+      }
     },
-    "disk_path": "/session/disk",
-    "is_shared": false,
-    "name": "redis"
+    "key_value": {
+      "name": "redis",
+      "cfg": {
+        "host": "rserver",
+        "passwd": "",
+        "path": "/swai/redis",
+        "port": 6379,
+        "prefix": "sessions"
+      }
+    },
+    "blob": {
+      "name": "disk",
+      "cfg": {
+        "host": "rserver",
+        "passwd": "",
+        "path": "/swai/redis",
+        "port": 6379,
+        "prefix": "sessions"
+      },
+      "disk_path": "/session/disk"
+    },
+    "cache_path": "/session/cache",
+    "is_shared": false
   },
   "task_queue": {
     "host": "rserver",

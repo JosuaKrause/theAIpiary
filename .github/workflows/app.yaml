@@ -140,34 +140,52 @@ jobs:
   build_pipeline:
     name: Build
     needs: [lints_pipeline, ts_pipeline]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # runs for version tags only and pushes to the registries configured as
+    # repository variables PROVIDER_REGISTRY and SERVER_REGISTRY (see
+    # system.env.sample); without either variable the job is skipped
+    if: >-
+      startsWith(github.ref, 'refs/tags/v')
+      && (vars.PROVIDER_REGISTRY != '' || vars.SERVER_REGISTRY != '')
     runs-on: ubuntu-latest
+    env:
+      PROVIDER_REGISTRY: ${{ vars.PROVIDER_REGISTRY }}
+      SERVER_REGISTRY: ${{ vars.SERVER_REGISTRY }}
+      DOCKER_USER: ${{ secrets.DOCKER_USER }}
+      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # the image tag is derived from the git tags
+          fetch-depth: 0
 
-      - name: Build provider docker image
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install node
+        if: vars.SERVER_REGISTRY != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build provider docker images
+        if: vars.PROVIDER_REGISTRY != ''
         run: |
           make -s build-provider
 
-      - name: Push provider docker image
+      - name: Push provider docker images
+        if: vars.PROVIDER_REGISTRY != ''
         run: |
           make -s dockerpush-provider
-        env:
-          DOCKER_USER: ${{ secrets.DOCKER_USER }}
-          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: AZ Docker login
-        uses: azure/docker-login@v1
-        with:
-          login-server: acclabdocker.azurecr.io
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-
-      - name: Build server docker image
+      - name: Build server docker images
+        if: vars.SERVER_REGISTRY != ''
         run: |
           make -s build-server
 
-      - name: Push server docker image
+      - name: Push server docker images
+        if: vars.SERVER_REGISTRY != ''
         run: |
           make -s dockerpush-server

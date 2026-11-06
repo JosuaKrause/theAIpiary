@@ -1,10 +1,10 @@
 [project]
     name = "AIpiary"
-    description = "TODO."
+    description = "A swarm-based inverse cloud for running machine learning models on volunteers' GPUs."
     readme = "README.md"
     version = "0.0.0"
     authors = [
-        {name = "Josua Krause", email = "josua.krause@gmail.com"},
+        {name = "Josua Krause"},
     ]
     keywords = [
         "distributed",
@@ -23,7 +23,7 @@
     dynamic = ["dependencies", "optional-dependencies"]
 
 [project.urls]
-    repository = "https://github.com/JosuaKrause/swai"
+    repository = "https://github.com/JosuaKrause/theAIpiary"
 
 [build-system]
     requires = ["setuptools>=61.2"]
@@ -31,7 +31,7 @@
 
 [tool.setuptools.packages.find]
     where = ["src"]
-    exclude = ["test", "study"]
+    exclude = ["test"]
 
 [tool.setuptools.dynamic]
     dependencies = {file = ["requirements.txt"]}

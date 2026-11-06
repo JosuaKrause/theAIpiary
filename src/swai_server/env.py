@@ -14,6 +14,8 @@
 import os
 from typing import Literal
 
+from scattermind.system.util import to_bool
+
 
 EnvPath = Literal[
     "CONFIG_PATH",
@@ -28,8 +30,10 @@ EnvStr = Literal[
     "ADMIN_PW",
     "DISCORD_URL",
     "HOST",
+    "MODEL_URL",
     "OWN_EMAIL",
     "OWN_URL",
+    "PROVIDER_REGISTRY",
     "REDIS_HOST",
     "REDIS_PREFIX",
     "REDIS_PW",
@@ -41,6 +45,9 @@ EnvInt = Literal[
     "PORT",
     "REDIS_PORT",
     "SMTP_PORT",
+]
+EnvBool = Literal[
+    "CROSS_ORIGIN",
 ]
 
 
@@ -63,3 +70,7 @@ def envload_path(key: EnvPath, *, default: str | None = None) -> str:
 
 def envload_int(key: EnvInt, *, default: int | None = None) -> int:
     return int(_envload(key, f"{default}"))
+
+
+def envload_bool(key: EnvBool, *, default: bool | None = None) -> bool:
+    return to_bool(_envload(key, None if default is None else f"{default}"))

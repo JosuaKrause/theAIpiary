@@ -1,6 +1,4 @@
-accelerate==1.15.0
 bcrypt~=4.1.0
-diffusers==0.41.0
 mypy>=1.10.0
 numpy==1.26.4
 psycopg2==2.9.9

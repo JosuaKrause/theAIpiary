@@ -11,4 +11,4 @@ Disallow: /docs/
 Disallow: /scripts/
 Disallow: /api/
 
-Sitemap: https://www.theaipiary.com/sitemap.xml
+Sitemap: @@PUBLIC_URL@@/sitemap.xml

@@ -1,5 +1,4 @@
 FROM pytorch/pytorch:2.14.1-cuda12.6-cudnn9-devel
-# FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 RUN apt-get update \
   && apt-get -y upgrade \
   && apt-get install -y --no-install-recommends \
@@ -15,20 +14,7 @@ RUN apt-get update \
   g++-11
 WORKDIR /usr/src/app
 ENV CUDA_VERSION_SHORT=cu125
-# ENV PATH="/root/miniconda3/bin:${PATH}"
-# ARG PATH="/root/miniconda3/bin:${PATH}"
-# RUN wget -nv \
-#   https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
-#   && mkdir /root/.conda \
-#   && bash Miniconda3-latest-Linux-x86_64.sh -b \
-#   && rm -f Miniconda3-latest-Linux-x86_64.sh
-# RUN conda --version
 # FIXME remove with 311 image *****
-# RUN apt-get update \
-#   && apt-get install -y software-properties-common wget \
-#   && wget -nv https://developer.download.nvidia.com/compute/cuda/12.1.0/local_installers/cuda_12.1.0_530.30.02_linux.run \
-#   && /bin/bash cuda_12.1.0_530.30.02_linux.run
-# ENV PATH="/usr/local/nvidia/bin:${PATH}"
 RUN nvcc --version
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=all
