@@ -66,6 +66,7 @@ from swai_server.app.email import (
     send_create_user,
     send_password_reset,
 )
+from swai_server.app.public_files import setup_public_files, setup_www_redirect
 from swai_server.auction.queue import TaskQueue, WorkerInfo
 from swai_server.config import get_config
 from swai_server.env import (
@@ -185,8 +186,9 @@ def setup(
     discord: str | None = envload_str("DISCORD_URL", default="")
     if not discord:
         discord = None
+    public_url = envload_str("OWN_URL", default="").removesuffix("/")
     email_config: EmailConfig = {
-        "own_url": envload_str("OWN_URL", default="").removesuffix("/"),
+        "own_url": public_url,
         "own_email": envload_str("OWN_EMAIL", default=""),
         "smtp_host": envload_str("SMTP_HOST", default=""),
         "smtp_port": envload_int("SMTP_PORT", default=587),
@@ -210,6 +212,12 @@ def setup(
 
     public_path = envload_path("UI_PATH", default="build/")
     server.bind_path("/", public_path)
+    setup_public_files(
+        server,
+        public_path=public_path,
+        public_url=public_url,
+        provider_registry=envload_str("PROVIDER_REGISTRY", default=""),
+        model_url=envload_str("MODEL_URL", default=""))
 
     def file_fallback(_: str) -> str:
         return os.path.join(public_path, "index.html")
@@ -230,19 +238,7 @@ def setup(
         cookie["user_session"]["expires"] = "Thu, 01 Jan 1970 00:00:00 GMT"
         req.send_cookie(cookie)
 
-    def redirect_to_www(
-            req: QSRH, path: str, _cookie: SimpleCookie | None) -> None:
-        _proto, orig_host = req.get_original_host()
-        orig_host = orig_host.removesuffix("/")
-        if not orig_host.endswith("theaipiary.com"):
-            return
-        if orig_host != "theaipiary.com":
-            return
-        orig_host = f"www.{orig_host}"
-        req.send_header("Location", f"https://{orig_host}{path}")
-        raise PreventDefaultResponse(301, "Use www subdomain.")
-
-    server.add_pre_middleware(redirect_to_www)
+    setup_www_redirect(server, public_url)
 
     def maybe_user_session(
             _req: QSRH, rargs: ReqArgs, okay: ReqNext) -> Response | ReqNext:

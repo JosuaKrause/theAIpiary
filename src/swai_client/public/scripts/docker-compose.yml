@@ -1,7 +1,7 @@
 services:
   rmain:
     container_name: rmain
-    image: aipiary/aipiary-rmain:latest
+    image: ${PROVIDER_REGISTRY:?set PROVIDER_REGISTRY in .env}/aipiary-rmain:latest
     restart: always
     pull_policy: always
     expose:
@@ -10,7 +10,7 @@ services:
       - ./userdata/rmain:/data
   rdata:
     container_name: rdata
-    image: aipiary/aipiary-rdata:latest
+    image: ${PROVIDER_REGISTRY:?set PROVIDER_REGISTRY in .env}/aipiary-rdata:latest
     restart: always
     pull_policy: always
     expose:
@@ -19,7 +19,7 @@ services:
       - ./userdata/rdata:/data
   rcache:
     container_name: rcache
-    image: aipiary/aipiary-rcache:latest
+    image: ${PROVIDER_REGISTRY:?set PROVIDER_REGISTRY in .env}/aipiary-rcache:latest
     restart: always
     pull_policy: always
     expose:
@@ -28,7 +28,7 @@ services:
       - ./userdata/rcache:/data
   rbody:
     container_name: rbody
-    image: aipiary/aipiary-rbody:latest
+    image: ${PROVIDER_REGISTRY:?set PROVIDER_REGISTRY in .env}/aipiary-rbody:latest
     restart: always
     pull_policy: always
     expose:
@@ -36,7 +36,7 @@ services:
     volumes:
       - ./userdata/rbody:/data
   worker:
-    image: aipiary/aipiary-worker:latest
+    image: ${PROVIDER_REGISTRY:?set PROVIDER_REGISTRY in .env}/aipiary-worker:latest
     restart: always
     pull_policy: always
     expose:
@@ -54,7 +54,7 @@ services:
               count: 1
               capabilities: [gpu]
   api:
-    image: aipiary/aipiary-api:latest
+    image: ${PROVIDER_REGISTRY:?set PROVIDER_REGISTRY in .env}/aipiary-api:latest
     restart: always
     pull_policy: always
     volumes:

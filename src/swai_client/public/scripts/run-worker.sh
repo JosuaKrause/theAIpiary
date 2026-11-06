@@ -36,6 +36,25 @@ if [ -z "${HAS_CUDA}" ] || [ -z "${HAS_DOCKER}" ]; then
     exit 1
 fi
 
+# The server that serves this script fills in the values below from its
+# server.env (OWN_URL, PROVIDER_REGISTRY, MODEL_URL). Each can be overridden
+# through the environment, e.g., AIPIARY_URL=https://example.com/ ./run-worker.sh
+AIPIARY_URL="${AIPIARY_URL:-@@PUBLIC_URL@@}"
+PROVIDER_REGISTRY="${PROVIDER_REGISTRY:-@@PROVIDER_REGISTRY@@}"
+MODEL_URL="${MODEL_URL:-@@MODEL_URL@@}"
+
+# true if the value is empty or was not filled in by the server
+not_set() {
+    [ -z "$1" ] || [[ "$1" == @@*@@ ]]
+}
+
+if not_set "${AIPIARY_URL}"; then
+    echo "the server URL is not configured."
+    echo "run the script as AIPIARY_URL=<server URL> ./run-worker.sh"
+    exit 1
+fi
+AIPIARY_URL="${AIPIARY_URL%/}/"
+
 BASE=aipiary
 mkdir -p "${BASE}"
 cd "${BASE}"
@@ -43,33 +62,52 @@ cd "${BASE}"
 DOCKER_COMPOSE="docker-compose.yml"
 if [ ! -f "${DOCKER_COMPOSE}" ]; then
     echo "downloading ${DOCKER_COMPOSE}"
-    curl https://www.theaipiary.com/scripts/docker-compose.yml -o "${DOCKER_COMPOSE}"
+    curl -fL "${AIPIARY_URL}scripts/docker-compose.yml" -o "${DOCKER_COMPOSE}"
 fi
 
-MODEL_FILE="userdata/models/Meta-Llama-3-8B-Instruct-IQ3_XS.gguf"
-MODEL_URL='https://aipiary.blob.core.windows.net/models/Meta-Llama-3-8B-Instruct-IQ3_XS.gguf'
+# docker compose reads the image registry from this file
+COMPOSE_ENV=".env"
+if [ ! -f "${COMPOSE_ENV}" ]; then
+    if not_set "${PROVIDER_REGISTRY}"; then
+        echo "the image registry is not configured."
+        echo "run the script as PROVIDER_REGISTRY=<registry> ./run-worker.sh"
+        exit 1
+    fi
+    echo "PROVIDER_REGISTRY='${PROVIDER_REGISTRY%/}'" > "${COMPOSE_ENV}"
+fi
 
-model_notice() {
-    echo "could not download model automatically."
-    echo "download the model from"
-    echo "${MODEL_URL}"
-    echo "and place it in the model folder and rename it accordingly:"
-    echo "${MODEL_FILE}"
-    exit 1
-}
-
-if [ ! -f "${MODEL_FILE}" ]; then
-    mkdir -p $(dirname "${MODEL_FILE}")
-    echo "downloading ${MODEL_FILE}"
-    curl "${MODEL_URL}" -o "${MODEL_FILE}" || model_notice
+MODEL_DIR="userdata/models"
+mkdir -p "${MODEL_DIR}"
+if not_set "${MODEL_URL}"; then
+    if ! compgen -G "${MODEL_DIR}/*.gguf" > /dev/null; then
+        echo "this server does not provide a model download."
+        echo "place the GGUF model file that the worker image expects in"
+        echo "$(pwd)/${MODEL_DIR}/ and run again."
+        exit 1
+    fi
+else
+    MODEL_NAME="${MODEL_URL%%\?*}"
+    MODEL_FILE="${MODEL_DIR}/${MODEL_NAME##*/}"
+    if [ ! -f "${MODEL_FILE}" ]; then
+        echo "downloading ${MODEL_FILE}"
+        if ! curl -fL "${MODEL_URL}" -o "${MODEL_FILE}"; then
+            rm -f -- "${MODEL_FILE}"
+            echo "could not download model automatically."
+            echo "download the model from"
+            echo "${MODEL_URL}"
+            echo "and place it here:"
+            echo "$(pwd)/${MODEL_FILE}"
+            exit 1
+        fi
+    fi
 fi
 
 AIPIARY_ENV="userdata/swai/provider.env"
 if [ ! -f "${AIPIARY_ENV}" ]; then
-    mkdir -p $(dirname "${AIPIARY_ENV}")
-    read -p "AIpiary user name (email): " AIPIARY_USER
-    read -p "AIpiary worker token: " AIPIARY_WORKER_TOKEN
-    echo "AIPIARY_API_URL='https://www.theaipiary.com/'" > "${AIPIARY_ENV}"
+    mkdir -p "$(dirname "${AIPIARY_ENV}")"
+    read -r -p "AIpiary user name (email): " AIPIARY_USER
+    read -r -p "AIpiary worker token: " AIPIARY_WORKER_TOKEN
+    echo "AIPIARY_API_URL='${AIPIARY_URL}'" > "${AIPIARY_ENV}"
     echo "AIPIARY_USER='${AIPIARY_USER}'" >> "${AIPIARY_ENV}"
     echo "AIPIARY_WORKER_TOKEN='${AIPIARY_WORKER_TOKEN}'" >> "${AIPIARY_ENV}"
 fi
