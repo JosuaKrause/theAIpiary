@@ -82,9 +82,15 @@ class RemoteSessionKeyValue(SessionKeyValue):
         obj["key"] = key
         obj["index"] = index
         obj["value"] = value
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/value"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        # NOTE: setting at index == length appends, but a repeat finds the
+        # value at that index and overwrites it with the same value
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/value"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         res: WorkerValueResponse = resp.json()
         assert res["success"]
 
@@ -94,9 +100,14 @@ class RemoteSessionKeyValue(SessionKeyValue):
         obj["op"] = "push"
         obj["key"] = key
         obj["value"] = value
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/value"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        # NOTE: not idempotent: a repeat would append the value twice
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/value"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=False)
         res: WorkerValueResponse = resp.json()
         assert res["success"]
 
@@ -105,9 +116,14 @@ class RemoteSessionKeyValue(SessionKeyValue):
         obj["session"] = session_id.to_parseable()
         obj["op"] = "pop"
         obj["key"] = key
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/value"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        # NOTE: not idempotent: a repeat would pop (and lose) a second value
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/value"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=False)
         res: WorkerValueResponse = resp.json()
         assert res["success"]
         return res["value"]
@@ -119,9 +135,13 @@ class RemoteSessionKeyValue(SessionKeyValue):
         obj["op"] = "get"
         obj["key"] = key
         obj["index"] = index
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/value"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/value"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         res: WorkerValueResponse = resp.json()
         assert res["success"]
         return res["value"]
@@ -131,9 +151,13 @@ class RemoteSessionKeyValue(SessionKeyValue):
         obj["session"] = session_id.to_parseable()
         obj["op"] = "length"
         obj["key"] = key
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/value"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/value"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         res: WorkerValueResponse = resp.json()
         assert res["success"]
         return res["length"]
@@ -141,9 +165,13 @@ class RemoteSessionKeyValue(SessionKeyValue):
     def get_keys(self, session_id: SessionId) -> list[str]:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/keys"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/keys"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         res: WorkerKeysResponse = resp.json()
         return res["keys"]
 
@@ -151,9 +179,15 @@ class RemoteSessionKeyValue(SessionKeyValue):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         obj["key"] = key
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/signal"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        # NOTE: a repeated signal only wakes waiters that check their
+        # condition again
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/signal"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         res: WorkerSignalResponse = resp.json()
         assert res["signal"]
 
@@ -167,6 +201,7 @@ class RemoteSessionKeyValue(SessionKeyValue):
                 json=obj,
                 headers=self._headers(),
                 timeout=long_poll_timeout(wait)),
+            idempotent=True,
             retries=0,
             unify=SignalWaitFailed)
 

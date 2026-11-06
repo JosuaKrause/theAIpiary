@@ -18,6 +18,11 @@ from typing import cast, get_args, Literal, TypeAlias, TypedDict
 import requests
 from scattermind.system.names import UName
 from scattermind.system.util import get_short_hash, get_time_str
+from urllib3.exceptions import (
+    ConnectTimeoutError,
+    MaxRetryError,
+    NewConnectionError,
+)
 
 
 WorkerId: TypeAlias = str
@@ -93,22 +98,55 @@ def long_poll_timeout(wait: float) -> tuple[float, float]:
     return (CONNECT_TIMEOUT, max(wait, 0.0) + LONG_POLL_GRACE)
 
 
+def is_unsent(exc: BaseException) -> bool:
+    """
+    Whether a request failed before it was sent, i.e., the server cannot have
+    seen it. This is the case if no connection could be established (refused,
+    unresolvable host, connect timeout). A read timeout or a connection that
+    breaks after it was established might have reached the server.
+
+    Args:
+        exc (BaseException): The error of the request.
+
+    Returns:
+        bool: True, if the request was certainly not sent.
+    """
+    if isinstance(exc, (requests.ConnectTimeout, ConnectionRefusedError)):
+        return True
+    if not isinstance(exc, requests.ConnectionError) or not exc.args:
+        return False
+    reason = exc.args[0]
+    if isinstance(reason, MaxRetryError):
+        reason = reason.reason
+    # NOTE: NameResolutionError is a NewConnectionError
+    return isinstance(reason, (NewConnectionError, ConnectTimeoutError))
+
+
 def retry_on_disconnect(
         cb: Callable[[], requests.Response],
         *,
+        idempotent: bool = False,
         retries: int | None = None,
         wait_before_retry: float = DEFAULT_WAIT,
         unify: type[BaseException] | None = None,
         include_general_http_errors: bool = False,
         on_retry: Callable[[], None] | None = None) -> requests.Response:
     """
-    Calls `cb` and retries if the server could not be reached. Connection
-    errors, timeouts, and responses with a status in `CONNECTION_CODES` are
-    retried. Other HTTP errors are only retried if
-    `include_general_http_errors` is set.
+    Calls `cb` and retries if the server could not be reached.
+
+    A request that was certainly not sent (see `is_unsent`) is always retried.
+    A request that might have reached the server (read timeouts, connections
+    breaking after they were established, responses with a status in
+    `CONNECTION_CODES`) is only retried if it is `idempotent`, i.e., repeating
+    it has the same effect as sending it once. Other HTTP errors are only
+    retried if `include_general_http_errors` is set (which requires
+    `idempotent`). Errors that are not retried are raised as is.
 
     Args:
         cb (Callable[[], requests.Response]): Performs the request.
+        idempotent (bool, optional): Whether the request can be repeated
+            safely if it might have reached the server already. Defaults to
+            False.
         retries (int | None, optional): The number of retries after the first
             attempt. If None, the request is retried until it succeeds.
             Defaults to None.
@@ -126,6 +164,9 @@ def retry_on_disconnect(
     Returns:
         requests.Response: The successful response.
     """
+    if include_general_http_errors and not idempotent:
+        raise ValueError(
+            "retrying general HTTP errors requires an idempotent request")
     cur_retries = 1 if retries is None else retries
 
     def log_retry() -> None:
@@ -147,17 +188,23 @@ def retry_on_disconnect(
             resp = cb()
             resp.raise_for_status()
             return resp
-        except ConnectionRefusedError as exc:
-            handle(exc)
         except requests.exceptions.HTTPError as exc:
+            # NOTE: the server (or a gateway in front of it) got the request
+            if not idempotent:
+                raise exc
             if resp is not None and resp.status_code in CONNECTION_CODES:
                 handle(exc)
             elif include_general_http_errors:
                 handle(exc)
             else:
                 raise exc
-        except (requests.ConnectionError, requests.Timeout) as exc:
+        except (
+                ConnectionRefusedError,
+                requests.ConnectionError,
+                requests.Timeout) as exc:
             # NOTE: ConnectTimeout is both a ConnectionError and a Timeout
+            if not idempotent and not is_unsent(exc):
+                raise exc
             handle(exc)
         if wait_before_retry > 0.0:
             time.sleep(wait_before_retry)

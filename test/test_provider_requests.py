@@ -22,6 +22,7 @@ from types import SimpleNamespace
 from typing import NamedTuple
 
 import pytest
+import requests
 from scattermind.system.base import SessionId, UserId
 from scattermind.system.names import UName
 
@@ -38,6 +39,8 @@ from swai_provider.smind.remote_session_kv import RemoteSessionKeyValue
 
 SHORT_READ = 0.3
 """The read timeout used in the tests."""
+SHORT_CONNECT = 0.5
+"""The connect timeout used in the tests."""
 SLOW = 2.0
 """Delay of a response that is too slow for `SHORT_READ`."""
 
@@ -113,8 +116,14 @@ class FakeServer:
             def log_message(self, *args: object) -> None:
                 pass
 
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        # NOTE: the port is bound right away but until `start` is called
+        # connections to it fail: they are refused (Linux) or time out
+        # (macOS drops the connection attempt)
+        self._server = ThreadingHTTPServer(
+            ("127.0.0.1", 0), Handler, bind_and_activate=False)
         self._server.daemon_threads = True
+        self._server.server_bind()
+        self._started = False
         self._thread = threading.Thread(
             target=self._server.serve_forever,
             kwargs={"poll_interval": 0.05},
@@ -164,32 +173,37 @@ class FakeServer:
             return [req.path for req in self.received]
 
     def start(self) -> None:
-        """Starts the server."""
+        """Starts accepting connections."""
+        self._server.server_activate()
         self._thread.start()
+        self._started = True
 
     def stop(self) -> None:
         """Stops the server and releases pending slow replies."""
         self._release.set()
-        self._server.shutdown()
+        if self._started:
+            self._server.shutdown()
+            self._thread.join()
         self._server.server_close()
-        self._thread.join()
 
 
-@pytest.fixture(name="server")
-def fixture_server(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeServer]:
+@pytest.fixture(name="unstarted_server")
+def fixture_unstarted_server(
+        monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeServer]:
     """
-    A local server with the provider configured to talk to it, short read
-    timeouts, and no waiting between retries.
+    A local server, which fails connections until it is started, with the
+    provider configured to talk to it, short read timeouts, and no waiting
+    between retries.
 
     Yields:
         FakeServer: The server.
     """
     server = FakeServer()
-    server.start()
     monkeypatch.setenv("AIPIARY_API_URL", server.url())
     monkeypatch.setenv("AIPIARY_USER", "provider@example.com")
     monkeypatch.setenv("AIPIARY_WORKER_TOKEN", "token")
-    timeout = (base_module.CONNECT_TIMEOUT, SHORT_READ)
+    monkeypatch.setattr(base_module, "CONNECT_TIMEOUT", SHORT_CONNECT)
+    timeout = (SHORT_CONNECT, SHORT_READ)
     monkeypatch.setattr(kv_module, "REQUEST_TIMEOUT", timeout)
     monkeypatch.setattr(blob_module, "REQUEST_TIMEOUT", timeout)
     monkeypatch.setattr(task_hnd_module, "REQUEST_TIMEOUT", timeout)
@@ -205,6 +219,18 @@ def fixture_server(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeServer]:
         yield server
     finally:
         server.stop()
+
+
+@pytest.fixture(name="server")
+def fixture_server(unstarted_server: FakeServer) -> FakeServer:
+    """
+    Like `unstarted_server` but accepting connections.
+
+    Returns:
+        FakeServer: The server.
+    """
+    unstarted_server.start()
+    return unstarted_server
 
 
 def test_slow_request_times_out_and_is_retried(server: FakeServer) -> None:
@@ -249,8 +275,9 @@ def test_bid_read_timeout_exceeds_bid_wait(
     assert received["timeout"] == wait
 
 
-def test_bid_times_out_eventually(server: FakeServer) -> None:
-    """A bid that the server holds longer than the bid wait is retried."""
+def test_bid_read_timeout_is_not_retried(server: FakeServer) -> None:
+    """A bid that the server holds longer than the bid wait plus grace times
+    out and is not repeated: it might have assigned a task already."""
     wait = SHORT_READ
     server.replies["/api/task/bid"] = [
         ok({"ns": None, "task_id": None, "input_data": None}, delay=SLOW),
@@ -258,9 +285,68 @@ def test_bid_times_out_eventually(server: FakeServer) -> None:
     ]
     task_hnd = TaskHandler("worker")
     start = time.monotonic()
-    assert task_hnd.task_bid([], timeout=wait) is None
+    with pytest.raises(requests.ReadTimeout):
+        task_hnd.task_bid([], timeout=wait)
     assert time.monotonic() - start < SLOW
-    assert server.paths() == ["/api/task/bid", "/api/task/bid"]
+    assert server.paths() == ["/api/task/bid"]
+
+
+def test_bid_gateway_timeout_is_not_retried(server: FakeServer) -> None:
+    """A bid that a gateway answers with 504 might have reached the server
+    and is not repeated."""
+    server.replies["/api/task/bid"] = [
+        Reply(504, b""),
+        ok({"ns": None, "task_id": None, "input_data": None}),
+    ]
+    task_hnd = TaskHandler("worker")
+    with pytest.raises(requests.HTTPError):
+        task_hnd.task_bid([], timeout=SHORT_READ)
+    assert server.paths() == ["/api/task/bid"]
+
+
+@pytest.mark.parametrize("op", ["push", "pop"])
+def test_non_idempotent_read_timeout_is_not_retried(
+        server: FakeServer, op: str) -> None:
+    """Pushing or popping a value is not repeated after a read timeout: the
+    server might have pushed or popped already."""
+    server.replies["/api/smind/value"] = [
+        ok({"value": "late", "success": True}, delay=SLOW),
+        ok({"value": "fine", "success": True}),
+    ]
+    kv = RemoteSessionKeyValue()
+    start = time.monotonic()
+    with pytest.raises(requests.ReadTimeout):
+        if op == "push":
+            kv.push_value(session_id(), "key", "value")
+        else:
+            kv.pop_value(session_id(), "key")
+    assert time.monotonic() - start < SLOW
+    assert server.paths() == ["/api/smind/value"]
+    assert json.loads(server.received[0].body)["op"] == op
+
+
+def test_non_idempotent_unsent_is_retried(
+        unstarted_server: FakeServer,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A request that could not connect (refused or connect timeout,
+    depending on the OS) never reached the server, so even a push is
+    retried."""
+    server = unstarted_server
+    server.replies["/api/smind/value"] = [ok({"success": True})]
+    sleeps: list[float] = []
+
+    def start_on_sleep(secs: float) -> None:
+        sleeps.append(secs)
+        if len(sleeps) == 1:
+            server.start()
+
+    monkeypatch.setattr(
+        base_module, "time", SimpleNamespace(sleep=start_on_sleep))
+    kv = RemoteSessionKeyValue()
+    kv.push_value(session_id(), "key", "value")
+    assert len(sleeps) == 1
+    assert server.paths() == ["/api/smind/value"]
+    assert json.loads(server.received[0].body)["op"] == "push"
 
 
 def test_wait_for_signal_waits_on_server(server: FakeServer) -> None:
@@ -340,6 +426,23 @@ def test_blob_upload_retry_resends_chunk(server: FakeServer) -> None:
     for req in server.received:
         assert req.method == "PUT"
         assert data in req.body
+
+
+def test_blob_completing_chunk_is_not_retried(server: FakeServer) -> None:
+    """The completing chunk of a multi chunk blob assembles the blob and is
+    not repeated; earlier chunks are."""
+    server.replies["/api/smind/blob"] = [
+        Reply(504, b""),
+        ok({"done": True, "missing": []}),
+        Reply(504, b""),
+        ok({"done": True, "missing": []}),
+    ]
+    blob = RemoteSessionBlob()
+    data = b"x" * (1024 * 10 + 1)  # NOTE: two chunks
+    with pytest.raises(requests.HTTPError):
+        with blob.open_blob_write(session_id(), "name") as fout:
+            fout.write(data)
+    assert len(server.received) == 3
 
 
 def test_heartbeat_loop_survives_failures(server: FakeServer) -> None:

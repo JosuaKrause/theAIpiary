@@ -92,7 +92,12 @@ class RemoteSessionBlob(SessionBlob):
                     headers=self._headers(),
                     timeout=REQUEST_TIMEOUT)
 
-            resp = retry_on_disconnect(put)
+            # NOTE: a chunk is addressed by its fragment index so sending it
+            # again overwrites it. the completing chunk of a multi chunk blob
+            # is the exception: it assembles the blob and deletes the
+            # fragments, so a repeat reports the earlier fragments as missing
+            resp = retry_on_disconnect(
+                put, idempotent=not complete or chunk_ix == 0)
             res: WorkerUploadResponse = resp.json()
             assert res["done"]
             assert not res["missing"]
@@ -119,9 +124,13 @@ class RemoteSessionBlob(SessionBlob):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         obj["blob"] = name
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/blob"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/blob"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         bout = io.BytesIO(resp.content)
         try:
             yield bout
@@ -135,18 +144,26 @@ class RemoteSessionBlob(SessionBlob):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         obj["blobs"] = sorted(set(names))
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/hash"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/hash"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         res: WorkerBlobHashResponse = resp.json()
         return res["blob_hashes"]
 
     def blob_list(self, session_id: SessionId) -> list[str]:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/list"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/list"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         res: WorkerBlobListResponse = resp.json()
         return res["blobs"]
 
@@ -154,9 +171,13 @@ class RemoteSessionBlob(SessionBlob):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         obj["blobs"] = sorted(set(names))
-        resp = retry_on_disconnect(lambda: self._api.delete(
-            self._url("/blob"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        resp = retry_on_disconnect(
+            lambda: self._api.delete(
+                self._url("/blob"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         res: WorkerUploadResponse = resp.json()
         assert res["done"]
 

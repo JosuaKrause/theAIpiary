@@ -62,9 +62,13 @@ class RemoteSessionUser(SessionUser):
         obj = self._json()
         obj["user_id"] = user_id.to_parseable()
         obj["session"] = session_id.to_parseable()
-        resp = retry_on_disconnect(lambda: self._api.put(
-            self._url("/session"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        resp = retry_on_disconnect(
+            lambda: self._api.put(
+                self._url("/session"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         res: WorkerSessionResponse = resp.json()
         assert res["ok"]
 
@@ -74,9 +78,13 @@ class RemoteSessionUser(SessionUser):
             user_id: UserId) -> Iterable[Session]:
         obj = self._json()
         obj["user_id"] = user_id.to_parseable()
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/session"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/session"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         res: WorkerSessionListResponse = resp.json()
         yield from (
             sessions.get_session(SessionId.parse(session))
@@ -86,9 +94,13 @@ class RemoteSessionUser(SessionUser):
     def get_user(self, session_id: SessionId) -> UserId | None:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/user"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/user"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         res: WorkerUserResponse = resp.json()
         user_id_str = res["user_id"]
         if user_id_str is None:
@@ -98,8 +110,14 @@ class RemoteSessionUser(SessionUser):
     def remove(self, session_id: SessionId) -> None:
         obj = self._json()
         obj["session"] = session_id.to_parseable()
-        resp = retry_on_disconnect(lambda: self._api.delete(
-            self._url("/session"), json=obj, headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        # NOTE: if the first attempt went through, a repeat fails with a
+        # server error (the session's user is gone), which is raised
+        resp = retry_on_disconnect(
+            lambda: self._api.delete(
+                self._url("/session"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         res: WorkerSessionResponse = resp.json()
         assert res["ok"]

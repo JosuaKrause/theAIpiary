@@ -70,6 +70,7 @@ class TaskHandler:
                     json=obj,
                     headers=self._headers(),
                     timeout=REQUEST_TIMEOUT),
+                idempotent=True,
                 retries=retries,
                 wait_before_retry=wait_before_retry,
                 include_general_http_errors=True,
@@ -96,12 +97,21 @@ class TaskHandler:
         obj["worker_name"] = self._worker_name
         obj["nss"] = [ns.get() for ns in graph_ns.keys()]
         obj["timeout"] = timeout
-        # NOTE: the server holds the bid open for up to `timeout` seconds
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/bid"),
-            json=obj,
-            headers=self._headers(),
-            timeout=long_poll_timeout(timeout)))
+        # NOTE: the server holds the bid open for up to `timeout` seconds.
+        # the bid is not idempotent: a bid that reached the server may have
+        # assigned a task to this worker; if the response is lost (read
+        # timeout, broken connection) that task stays assigned to this worker,
+        # which never received it, and is not requeued while the worker keeps
+        # sending heartbeats. a repeated bid would pop yet another task.
+        # making the bid idempotent on the server (a re-bid returns the task
+        # already assigned to the worker) would allow retrying it
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/bid"),
+                json=obj,
+                headers=self._headers(),
+                timeout=long_poll_timeout(timeout)),
+            idempotent=False)
         res: TaskBidResponse = resp.json()
         out_ns = res["ns"]
         out_task_id = res["task_id"]
@@ -123,11 +133,15 @@ class TaskHandler:
         obj["worker_name"] = self._worker_name
         obj["task_id"] = task_id.to_parseable()
         obj["response"] = response_to_redis(response)
-        resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/finish"),
-            json=obj,
-            headers=self._headers(),
-            timeout=REQUEST_TIMEOUT))
+        # NOTE: the server ignores results of a task that is no longer
+        # assigned to this worker, which includes a repeated finish
+        resp = retry_on_disconnect(
+            lambda: self._api.post(
+                self._url("/finish"),
+                json=obj,
+                headers=self._headers(),
+                timeout=REQUEST_TIMEOUT),
+            idempotent=True)
         resp.raise_for_status()
         res: TaskFinishResponse = resp.json()
         assert res["well_done"]
