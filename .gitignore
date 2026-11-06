@@ -29,3 +29,6 @@ venv
 /version.provider.txt
 /docker-compose.server.dev.yml
 /docker-compose.server.yml
+/.coverage
+/coverage/
+/test-results/

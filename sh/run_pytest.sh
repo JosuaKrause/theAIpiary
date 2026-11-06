@@ -65,7 +65,7 @@ else
         IDX=$((IDX+1))
     done
 fi
-${PYTHON} -m test merge_results --dir test-results --out-fname ${RESULT_FNAME}
+${PYTHON} -m test merge --dir test-results --out-fname ${RESULT_FNAME}
 rm -r test-results/parts
 
 coverage xml -o coverage/reports/xml_report.xml
