@@ -28,7 +28,7 @@ from swai.server_response_types import (
     WorkerBlobListResponse,
     WorkerUploadResponse,
 )
-from swai.system.base import retry_on_disconnect
+from swai.system.base import REQUEST_TIMEOUT, retry_on_disconnect
 from swai.system.user import WorkerToken
 from swai_provider.env import envload_str
 
@@ -38,7 +38,6 @@ T = TypeVar('T')
 
 class RemoteSessionBlob(SessionBlob):
     def __init__(self) -> None:
-        # FIXME: use timeouts
         self._name = UName(envload_str("AIPIARY_USER"))
         self._worker_token: WorkerToken = envload_str("AIPIARY_WORKER_TOKEN")
         self._api_url = envload_str("AIPIARY_API_URL").removesuffix("/")
@@ -76,18 +75,24 @@ class RemoteSessionBlob(SessionBlob):
             obj["upload_id"] = upload_id
             obj["fragment"] = chunk_ix
             obj["complete"] = complete
-            bchunk.seek(0, io.SEEK_SET)
-            resp = retry_on_disconnect(lambda: self._api.put(
-                self._url("/blob"),
-                data=obj,
-                files={
-                    "blob": (
-                        "blob",
-                        bchunk,
-                        "application/octet-stream",
-                    ),
-                },
-                headers=self._headers()))
+
+            def put() -> requests.Response:
+                # NOTE: a retry has to send the whole chunk again
+                bchunk.seek(0, io.SEEK_SET)
+                return self._api.put(
+                    self._url("/blob"),
+                    data=obj,
+                    files={
+                        "blob": (
+                            "blob",
+                            bchunk,
+                            "application/octet-stream",
+                        ),
+                    },
+                    headers=self._headers(),
+                    timeout=REQUEST_TIMEOUT)
+
+            resp = retry_on_disconnect(put)
             res: WorkerUploadResponse = resp.json()
             assert res["done"]
             assert not res["missing"]
@@ -115,7 +120,8 @@ class RemoteSessionBlob(SessionBlob):
         obj["session"] = session_id.to_parseable()
         obj["blob"] = name
         resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/blob"), json=obj, headers=self._headers()))
+            self._url("/blob"), json=obj, headers=self._headers(),
+            timeout=REQUEST_TIMEOUT))
         bout = io.BytesIO(resp.content)
         try:
             yield bout
@@ -130,7 +136,8 @@ class RemoteSessionBlob(SessionBlob):
         obj["session"] = session_id.to_parseable()
         obj["blobs"] = sorted(set(names))
         resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/hash"), json=obj, headers=self._headers()))
+            self._url("/hash"), json=obj, headers=self._headers(),
+            timeout=REQUEST_TIMEOUT))
         res: WorkerBlobHashResponse = resp.json()
         return res["blob_hashes"]
 
@@ -138,7 +145,8 @@ class RemoteSessionBlob(SessionBlob):
         obj = self._json()
         obj["session"] = session_id.to_parseable()
         resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/list"), json=obj, headers=self._headers()))
+            self._url("/list"), json=obj, headers=self._headers(),
+            timeout=REQUEST_TIMEOUT))
         res: WorkerBlobListResponse = resp.json()
         return res["blobs"]
 
@@ -147,7 +155,8 @@ class RemoteSessionBlob(SessionBlob):
         obj["session"] = session_id.to_parseable()
         obj["blobs"] = sorted(set(names))
         resp = retry_on_disconnect(lambda: self._api.delete(
-            self._url("/blob"), json=obj, headers=self._headers()))
+            self._url("/blob"), json=obj, headers=self._headers(),
+            timeout=REQUEST_TIMEOUT))
         res: WorkerUploadResponse = resp.json()
         assert res["done"]
 

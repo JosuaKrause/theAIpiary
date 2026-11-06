@@ -16,6 +16,7 @@ from scattermind.api.api import InputTypes, redis_to_task_input
 from scattermind.system.base import TaskId
 from scattermind.system.names import GNamespace, UName
 from scattermind.system.response import response_to_redis, ResponseObject
+from scattermind.system.util import get_time_str
 
 from swai.auth import get_authorization
 from swai.server_response_types import (
@@ -23,7 +24,12 @@ from swai.server_response_types import (
     TaskBidResponse,
     TaskFinishResponse,
 )
-from swai.system.base import retry_on_disconnect, WorkerStatus
+from swai.system.base import (
+    long_poll_timeout,
+    REQUEST_TIMEOUT,
+    retry_on_disconnect,
+    WorkerStatus,
+)
 from swai.system.user import WorkerToken
 from swai_provider.env import envload_str
 from swai_provider.smind.worker_api import GraphProfile
@@ -62,12 +68,16 @@ class TaskHandler:
                 lambda: self._api.post(
                     self._url("/heartbeat"),
                     json=obj,
-                    headers=self._headers()),
+                    headers=self._headers(),
+                    timeout=REQUEST_TIMEOUT),
                 retries=retries,
                 wait_before_retry=wait_before_retry,
                 include_general_http_errors=True,
                 unify=ValueError)
-        except ValueError:
+        except ValueError as exc:
+            print(
+                f"{get_time_str()} heartbeat failed ({exc.__cause__!r}). "
+                f"next attempt in {wait_before_retry}s")
             return wait_before_retry
         res: HeartbeatResponse = resp.json()
         return res["timeout"]
@@ -86,8 +96,12 @@ class TaskHandler:
         obj["worker_name"] = self._worker_name
         obj["nss"] = [ns.get() for ns in graph_ns.keys()]
         obj["timeout"] = timeout
+        # NOTE: the server holds the bid open for up to `timeout` seconds
         resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/bid"), json=obj, headers=self._headers()))
+            self._url("/bid"),
+            json=obj,
+            headers=self._headers(),
+            timeout=long_poll_timeout(timeout)))
         res: TaskBidResponse = resp.json()
         out_ns = res["ns"]
         out_task_id = res["task_id"]
@@ -110,7 +124,10 @@ class TaskHandler:
         obj["task_id"] = task_id.to_parseable()
         obj["response"] = response_to_redis(response)
         resp = retry_on_disconnect(lambda: self._api.post(
-            self._url("/finish"), json=obj, headers=self._headers()))
+            self._url("/finish"),
+            json=obj,
+            headers=self._headers(),
+            timeout=REQUEST_TIMEOUT))
         resp.raise_for_status()
         res: TaskFinishResponse = resp.json()
         assert res["well_done"]

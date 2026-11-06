@@ -15,6 +15,7 @@ import sys
 import threading
 import traceback
 import uuid
+from collections.abc import Callable
 from typing import TypedDict
 
 from quick_server import add_shutdown_hook
@@ -38,6 +39,9 @@ from swai_provider.version import get_version
 
 
 DEFAULT_TIMEOUT = 60.0  # 1min
+"""How long the server holds a bid open while waiting for a task."""
+HEARTBEAT_RETRY_WAIT = DEFAULT_WAIT
+"""Wait before the next heartbeat if a heartbeat failed."""
 
 
 VersionDict = TypedDict('VersionDict', {
@@ -72,6 +76,88 @@ def get_worker_name(env_file: str) -> str:
             print(f"DEVICE_ID='{device_id}'", file=fout)
     arch = get_arch()
     return f"{device_id}-{arch}"
+
+
+def send_heartbeat(
+        task_hnd: TaskHandler,
+        get_status: Callable[[], WorkerStatus],
+        *,
+        retries: int | None,
+        wait_before_retry: float) -> float | None:
+    """
+    Sends a heartbeat to the server. Failures are logged, not raised.
+
+    Args:
+        task_hnd (TaskHandler): The task handler.
+        get_status (Callable[[], WorkerStatus]): The status to report.
+        retries (int | None): Retries if the server cannot be reached. None
+            retries until the server can be reached.
+        wait_before_retry (float): The wait between retries.
+
+    Returns:
+        float | None: The time until the next heartbeat is due or None if the
+            heartbeat failed with an unexpected error.
+    """
+    try:
+        return task_hnd.task_heartbeat(
+            worker_status=get_status(),
+            retries=retries,
+            wait_before_retry=wait_before_retry)
+    except Exception:  # pylint: disable=broad-exception-caught
+        print(f"{get_time_str()} heartbeat failed:\n{traceback.format_exc()}")
+        return None
+
+
+def heartbeat_loop(
+        task_hnd: TaskHandler,
+        *,
+        get_status: Callable[[], WorkerStatus],
+        is_done: Callable[[], bool],
+        cond: threading.Condition,
+        retry_wait: float = HEARTBEAT_RETRY_WAIT) -> None:
+    """
+    Sends heartbeats until `is_done` returns True. A failed heartbeat is
+    logged and sent again after `retry_wait` seconds. When done, a final
+    heartbeat is sent. Notifying `cond` wakes the loop up early.
+
+    Args:
+        task_hnd (TaskHandler): The task handler.
+        get_status (Callable[[], WorkerStatus]): The status to report.
+        is_done (Callable[[], bool]): Whether the provider is shutting down.
+        cond (threading.Condition): Notified on shutdown.
+        retry_wait (float, optional): The wait after a failed heartbeat.
+            Defaults to HEARTBEAT_RETRY_WAIT.
+    """
+    # NOTE: the local scattermind worker's health is not part of the
+    # heartbeat. scattermind's only cheap check is its healthcheck endpoint
+    # (`perform_healthcheck` / `ScattermindAPI.get_healthcheck`), but the
+    # configured `address_in` is `localhost` (deploy/smind-config.json) which,
+    # from the provider (`api`) container of
+    # src/swai_client/public/scripts/docker-compose.yml, is not the `worker`
+    # container, and local/smind-config.json (`make run-provider`) configures
+    # no healthcheck at all. the executor heartbeats in redis are only
+    # reachable through an ExecutorManager, which the provider does not load
+    # (`load_api` skips it). the server's heartbeat endpoint also has no field
+    # for it; only the WorkerStatus is sent
+    while not is_done():
+        # NOTE: no retries inside the request: a failed heartbeat is sent
+        # again on the next interval so the loop can still see a shutdown
+        hb_sleep = send_heartbeat(
+            task_hnd,
+            get_status,
+            retries=0,
+            wait_before_retry=retry_wait)
+        if hb_sleep is None:
+            hb_sleep = retry_wait
+        if hb_sleep > 0.0:
+            with cond:
+                if not is_done():
+                    cond.wait(hb_sleep)
+    send_heartbeat(
+        task_hnd,
+        get_status,
+        retries=3,
+        wait_before_retry=0.1)
 
 
 def task_loop(env_file: str) -> None:
@@ -110,8 +196,9 @@ def task_loop(env_file: str) -> None:
         task_hnd.task_finish(task_id, response)
         print(f"{get_time_str()} done")
         is_busy = False
-        task_hnd.task_heartbeat(
-            worker_status=get_status(),
+        send_heartbeat(
+            task_hnd,
+            get_status,
             retries=None,
             wait_before_retry=DEFAULT_WAIT)
 
@@ -124,21 +211,12 @@ def task_loop(env_file: str) -> None:
 
     add_shutdown_hook(hook)
 
+    def is_done() -> bool:
+        return done
+
     def heartbeat() -> None:
-        # FIXME: ping the worker as well
-        while not done:
-            hb_sleep = task_hnd.task_heartbeat(
-                worker_status=get_status(),
-                retries=None,
-                wait_before_retry=DEFAULT_WAIT)
-            if hb_sleep > 0.0:
-                with cond:
-                    cond.wait(hb_sleep)
-        task_hnd.task_heartbeat(
-            worker_status=get_status(),
-            retries=3,
-            wait_before_retry=0.1)
-        # FIXME: what to do if the heartbeat fails / errors out?
+        heartbeat_loop(
+            task_hnd, get_status=get_status, is_done=is_done, cond=cond)
 
     th = threading.Thread(target=heartbeat, daemon=True)
     th.start()
@@ -155,7 +233,8 @@ def task_loop(env_file: str) -> None:
         done = True
         with cond:
             cond.notify_all()
-        task_hnd.task_heartbeat(
-            worker_status=get_status(),
+        send_heartbeat(
+            task_hnd,
+            get_status,
             retries=3,
             wait_before_retry=0.1)
