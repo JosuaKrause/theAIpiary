@@ -1,6 +1,6 @@
-# Debian trixie with Python 3.11, the version the server runs on (the pinned
-# numpy 1.26 has no wheels past 3.12)
-FROM python:3.11-slim-trixie
+# Debian trixie with the newest Python all server dependencies support (the
+# GPU images are stuck on the pytorch base image's Python 3.12)
+FROM python:3.15-slim-trixie
 RUN apt-get update \
   && apt-get -y upgrade \
   && apt-get install -y --no-install-recommends \
@@ -16,7 +16,7 @@ WORKDIR /usr/src/app
 # NOTE: CPU-only torch matching the torch pin in requirements.server.txt; the
 # CPU index keeps pip from replacing it with the multi-GB CUDA build
 ENV PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu
-RUN pip install --progress-bar off --no-cache-dir 'torch==2.14.1' --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --progress-bar off --no-cache-dir 'torch==2.15.0' --index-url https://download.pytorch.org/whl/cpu
 COPY Makefile .
 ARG REQUIREMENTS_PATH
 COPY "${REQUIREMENTS_PATH}" "requirements.docker.txt"
