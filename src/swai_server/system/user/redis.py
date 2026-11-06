@@ -16,6 +16,7 @@ from collections.abc import Iterable
 from typing import cast, TypeAlias, TypedDict
 
 from redipy import Redis, RedisConfig
+from redipy.script import ExecFunction, FnContext, RedisHash
 from scattermind.system.base import UserId
 from scattermind.system.names import UName
 from scattermind.system.util import get_short_hash, short_hash_size
@@ -56,6 +57,23 @@ class RedisUserManager(UserManager):
         self._redis = Redis("redis", cfg=cfg, redis_module="users")
         self._admin_hash = (
             None if admin_email is None else self._userhash(admin_email))
+        self._create_user = self._create_user_script()
+
+    def _create_user_script(self) -> ExecFunction:
+        ctx = FnContext()
+        info = RedisHash(ctx.add_key("info"))
+        email = ctx.add_arg("email")
+        display_name = ctx.add_arg("display_name")
+        res = ctx.add_local(False)
+        b_then, _ = ctx.if_(info.exists().eq_(0))
+        b_then.add(info.hset({
+            "email": email,
+            "display_name": display_name,
+            "hashpw": "",
+        }))
+        b_then.add(res.assign(True))
+        ctx.set_return_value(res)
+        return self._redis.register_script(ctx)
 
     @staticmethod
     def _userhash(email: UName) -> UserHash:
@@ -105,14 +123,6 @@ class RedisUserManager(UserManager):
     def _extract_userhash(token: SessionToken) -> UserHash:
         return token[:short_hash_size()]
 
-    @staticmethod
-    def _new_user_info(email: UName, display_name: str) -> UserInfoRedis:
-        return {
-            "email": email.get(),
-            "display_name": display_name,
-            "hashpw": "",
-        }
-
     def _get_user_info(self, email: UName) -> UserInfoRedis:
         if self.is_admin(email):
             raise ValueError("cannot read info for admin")
@@ -142,12 +152,19 @@ class RedisUserManager(UserManager):
         yield from sorted(self._redis.smembers(self._key_user_session(email)))
 
     def do_create_user(self, email: UName, display_name: str) -> bool:
-        # FIXME: make script to avoid race condition
-        key = self._key_user_info(email)
-        if self._redis.exists(key):
-            return False
-        self._set_user_info(self._new_user_info(email, display_name))
-        return True
+        if self.is_admin(email):
+            raise ValueError("cannot set info for admin")
+        # NOTE: checking for and writing the user in one step so that of two
+        # concurrent registrations for the same email only one succeeds
+        res = self._create_user(
+            keys={
+                "info": self._key_user_info(email),
+            },
+            args={
+                "email": email.get(),
+                "display_name": display_name,
+            })
+        return bool(res)
 
     def do_generate_reset_token(self, email: UName) -> ResetToken | None:
         redis = self._redis

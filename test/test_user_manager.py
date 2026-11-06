@@ -13,12 +13,15 @@
 # limitations under the License.
 """Tests for accounts, passwords, sessions, capabilities and worker tokens as
 kept by the redis user manager."""
+import threading
 import time
 import uuid
+from collections.abc import Callable
 from test.util import ADMIN_EMAIL, ADMIN_PW, memory_redis, UNUSED_REDIS
-from typing import cast
+from typing import Any, cast
 
 import pytest
+from redipy import Redis
 from scattermind.system.base import UserId
 from scattermind.system.names import UName
 from scattermind.system.util import get_short_hash
@@ -37,6 +40,7 @@ from swai_server.system.user.redis import RedisUserManager
 
 ALICE = UName("alice@example.com")
 BOB = UName("bob@example.com")
+SOME_TIME = 5.0
 
 
 def invite(user_mng: RedisUserManager, email: UName, password: str) -> None:
@@ -119,6 +123,88 @@ def test_create_user_rejects_admin_and_empty_name(
     assert not user_mng.create_user(ADMIN_EMAIL, "Mallory")
     assert not user_mng.create_user(ALICE, "")
     assert set(user_mng.list_users()) == {ADMIN_EMAIL}
+
+
+class PausingRedis:
+    """
+    Wraps a redis so that every call made from the paused thread, including
+    calls of registered scripts, is followed by a pause until the test lets
+    the thread continue. This opens a window between any two redis calls of
+    the paused thread for another thread to act in.
+    """
+    def __init__(self, inner: Redis) -> None:
+        self._inner = inner
+        self._paused_thread: int | None = None
+        self._in_pause = threading.Event()
+        self._resume = threading.Event()
+
+    def pause_current_thread(self) -> None:
+        """Pauses the calling thread after each of its redis calls."""
+        self._paused_thread = threading.get_ident()
+
+    def wait_for_pause(self) -> bool:
+        """
+        Waits until the paused thread is stopped after a redis call.
+
+        Returns:
+            bool: Whether the thread got stopped in time.
+        """
+        return self._in_pause.wait(SOME_TIME)
+
+    def resume(self) -> None:
+        """Lets the paused thread continue without further pauses."""
+        self._resume.set()
+
+    def _pause(self) -> None:
+        if threading.get_ident() != self._paused_thread:
+            return
+        self._in_pause.set()
+        assert self._resume.wait(SOME_TIME)
+
+    def _wrap(self, fun: Callable[..., Any]) -> Callable[..., Any]:
+        def wrapped(*args: Any, **kwargs: Any) -> Any:
+            res = fun(*args, **kwargs)
+            if callable(res):
+                # a registered script
+                return self._wrap(res)
+            self._pause()
+            return res
+
+        return wrapped
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._inner, name)
+        if not callable(attr):
+            return attr
+        return self._wrap(attr)
+
+
+def test_concurrent_create_user(
+        monkeypatch: pytest.MonkeyPatch, admin_pw_hash: str) -> None:
+    """Two registrations for the same email at the same time: exactly one
+    succeeds and its info is kept, no matter where the other one gets in."""
+    redis = PausingRedis(memory_redis())
+    monkeypatch.setattr(user_redis_module, "Redis", lambda *_a, **_kw: redis)
+    user_mng = RedisUserManager(
+        admin_email=ADMIN_EMAIL, admin_pw=admin_pw_hash, cfg=UNUSED_REDIS)
+    results: dict[str, bool] = {}
+
+    def create_first() -> None:
+        redis.pause_current_thread()
+        results["first"] = user_mng.create_user(ALICE, "First")
+
+    first = threading.Thread(target=create_first, daemon=True)
+    first.start()
+    # the first creation is stopped right after its first redis call
+    assert redis.wait_for_pause()
+    results["second"] = user_mng.create_user(ALICE, "Second")
+    redis.resume()
+    first.join(SOME_TIME)
+    assert not first.is_alive()
+    assert sorted(results.values()) == [False, True]
+    winner = "First" if results["first"] else "Second"
+    assert user_mng.get_user_info(ALICE)["display_name"] == winner
+    assert list(user_mng.list_users()) == [ADMIN_EMAIL, ALICE]
 
 
 def test_list_users(user_mng: RedisUserManager) -> None:
