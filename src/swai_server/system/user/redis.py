@@ -16,7 +16,7 @@ from collections.abc import Iterable
 from typing import cast, TypeAlias, TypedDict
 
 from redipy import Redis, RedisConfig
-from redipy.script import ExecFunction, FnContext, RedisHash
+from redipy.script import ExecFunction, FnContext, RedisHash, RedisVar
 from scattermind.system.base import UserId
 from scattermind.system.names import UName
 from scattermind.system.util import get_short_hash, short_hash_size
@@ -58,6 +58,7 @@ class RedisUserManager(UserManager):
         self._admin_hash = (
             None if admin_email is None else self._userhash(admin_email))
         self._create_user = self._create_user_script()
+        self._generate_reset_token = self._generate_reset_token_script()
 
     def _create_user_script(self) -> ExecFunction:
         ctx = FnContext()
@@ -71,6 +72,26 @@ class RedisUserManager(UserManager):
             "display_name": display_name,
             "hashpw": "",
         }))
+        b_then.add(res.assign(True))
+        ctx.set_return_value(res)
+        return self._redis.register_script(ctx)
+
+    def _generate_reset_token_script(self) -> ExecFunction:
+        ctx = FnContext()
+        info = RedisHash(ctx.add_key("info"))
+        cooldown = RedisVar(ctx.add_key("cooldown"))
+        reset = RedisVar(ctx.add_key("reset"))
+        email = ctx.add_arg("email")
+        reset_token = ctx.add_arg("reset_token")
+        expire_ms = ctx.add_arg("expire_ms")
+        cooldown_ms = ctx.add_arg("cooldown_ms")
+        res = ctx.add_local(False)
+        b_then, _ = ctx.if_(
+            info.exists().eq_(1).and_(cooldown.exists().eq_(0)))
+        # NOTE: RedisVar.set_value only takes a constant expiration so the
+        # set calls are spelled out to read the expiration from the arguments
+        b_then.add(reset.redis_fn("set", email, "PX", expire_ms))
+        b_then.add(cooldown.redis_fn("set", reset_token, "PX", cooldown_ms))
         b_then.add(res.assign(True))
         ctx.set_return_value(res)
         return self._redis.register_script(ctx)
@@ -167,18 +188,23 @@ class RedisUserManager(UserManager):
         return bool(res)
 
     def do_generate_reset_token(self, email: UName) -> ResetToken | None:
-        redis = self._redis
-        cooldown_key = self._key_pw_cooldown(email)
-        if redis.get_value(cooldown_key) is not None:
-            return None
         reset_token: ResetToken = uuid.uuid4().hex
-        with redis.pipeline() as pipe:
-            pipe.set_value(
-                self._key_pw_reset(reset_token),
-                email.get(),
-                expire_in=PW_RESET_EXPIRE)
-            pipe.set_value(
-                cooldown_key, reset_token, expire_in=PW_RESET_COOLDOWN)
+        # NOTE: one script call whether or not the account exists: no token
+        # for unknown emails and no difference in how long the check takes
+        res = self._generate_reset_token(
+            keys={
+                "info": self._key_user_info(email),
+                "cooldown": self._key_pw_cooldown(email),
+                "reset": self._key_pw_reset(reset_token),
+            },
+            args={
+                "email": email.get(),
+                "reset_token": reset_token,
+                "expire_ms": int(PW_RESET_EXPIRE * 1000.0),
+                "cooldown_ms": int(PW_RESET_COOLDOWN * 1000.0),
+            })
+        if not res:
+            return None
         return reset_token
 
     def get_email_for_reset_token(
@@ -193,15 +219,20 @@ class RedisUserManager(UserManager):
             self,
             email: UName,
             hashpw: HashPassword,
-            reset_token: ResetToken) -> None:
+            reset_token: ResetToken) -> bool:
         cooldown_key = self._key_pw_cooldown(email)
         reset_key = self._key_pw_reset(reset_token)
         with self._redis.pipeline() as pipe:
             pipe.delete(cooldown_key)
             pipe.delete(reset_key)
+        if not self._redis.exists(self._key_user_info(email)):
+            # NOTE: a token for an email without an account (tokens like this
+            # used to be issued) must not create the account
+            return False
         info = self._get_user_info(email)
         info["hashpw"] = hashpw
         self._set_user_info(info)
+        return True
 
     def get_password_hash(self, email: UName) -> HashPassword | None:
         return self._redis.hget(self._key_user_info(email), "hashpw")

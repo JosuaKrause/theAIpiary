@@ -240,14 +240,18 @@ export default class ResetPassword extends PureComponent<
       },
       () => {
         userActions.resetPassword(name, (email) => {
+          // NOTE: the server answers the same whether or not the account
+          // exists or an email was sent (e.g., during the cooldown)
           if (email) {
             this.setState({
-              message: `Instructions sent to ${email}!`,
+              message:
+                `If ${email} has an account, instructions were sent to it. ` +
+                'No email? Check the address or try again in a few minutes.',
             });
             nameInput.value = '';
           } else {
             this.setState({
-              message: `Incorrect email or try again in a few minutes!`,
+              message: 'Something went wrong, try again in a few minutes!',
             });
           }
           this.setState({

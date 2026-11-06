@@ -140,14 +140,16 @@ class UserManager:
         email = self.get_email_for_reset_token(reset_token)
         if email is None:
             return None
-        self.set_password_hash(email, hash_password(password), reset_token)
+        if not self.set_password_hash(
+                email, hash_password(password), reset_token):
+            return None
         return email
 
     def set_password_hash(
             self,
             email: UName,
             hashpw: HashPassword,
-            reset_token: ResetToken) -> None:
+            reset_token: ResetToken) -> bool:
         raise NotImplementedError()
 
     def get_password_hash(self, email: UName) -> HashPassword | None:

@@ -307,15 +307,30 @@ def test_no_reset_token_for_admin(user_mng: RedisUserManager) -> None:
     assert user_mng.generate_reset_token(ADMIN_EMAIL) is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "generate_reset_token issues tokens for emails without an account; "
-        "the unauthenticated /user/reset_password_token endpoint then fails "
-        "with a KeyError in force_user_info, and set_password with such a "
-        "token raises KeyError as well"))
 def test_no_reset_token_for_unknown_user(user_mng: RedisUserManager) -> None:
-    assert user_mng.generate_reset_token(UName("nobody@example.com")) is None
+    assert user_mng.generate_reset_token(BOB) is None
+    # asking for an unknown account leaves no cooldown behind: once the
+    # account exists the first request gets a token right away
+    assert user_mng.create_user(BOB, "Bob")
+    reset_token = user_mng.generate_reset_token(BOB)
+    assert reset_token is not None
+    assert user_mng.set_password("bob pw", reset_token) == BOB
+    assert user_mng.login(BOB, "bob pw") is not None
+
+
+def test_reset_token_for_vanished_account(user_mng: RedisUserManager) -> None:
+    """A reset token whose account does not exist (e.g., one issued for an
+    unknown email before such tokens were refused) is refused cleanly and
+    does not create the account."""
+    reset_token = uuid.uuid4().hex
+    # pylint: disable=protected-access
+    user_mng._redis.set_value(
+        user_mng._key_pw_reset(reset_token), BOB.get())
+    assert user_mng.get_email_for_reset_token(reset_token) == BOB
+    assert user_mng.set_password("pw", reset_token) is None
+    assert user_mng.get_email_for_reset_token(reset_token) is None
+    assert user_mng.login(BOB, "pw") is None
+    assert list(user_mng.list_users()) == [ADMIN_EMAIL]
 
 
 def test_password_change(user_mng: RedisUserManager) -> None:
