@@ -18,21 +18,15 @@ set -e
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-ENV_FILE="system.env"
+source sh/docker_registry.sh
 
-if [ ! -f "${ENV_FILE}" ]; then
-    cp "system.env.sample" "${ENV_FILE}"
-    echo "created env file at ${ENV_FILE} please fill in all values and run again"
-    exit 1
-else
-    source "${ENV_FILE}"
-fi
-
-echo "${DOCKER_TOKEN}" | docker login --username "${DOCKER_USER}" --password-stdin
+load_system_env
+require_registry PROVIDER_REGISTRY
+docker_login_for "${PROVIDER_REGISTRY}"
 
 IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
 IMAGE_BASE="aipiary"
-DOCKER_LOGIN_SERVER="aipiary/"
+DOCKER_LOGIN_SERVER="$(registry_prefix "${PROVIDER_REGISTRY}")"
 
 DEVMODE_CONF_FILE="deploy/devmode.conf"
 REDIS_VERSION_FILE="deploy/redis.version"

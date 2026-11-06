@@ -18,10 +18,16 @@ set -e
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
+source sh/docker_registry.sh
+
+load_system_env
+require_registry SERVER_REGISTRY
+docker_login_for "${SERVER_REGISTRY}"
+
 IMAGE_TAG="${IMAGE_TAG:-$(make -s name)}"
 IMAGE_BASE="aipiary-server"
 
-DOCKER_LOGIN_SERVER="aipiary.azurecr.io/"
+DOCKER_LOGIN_SERVER="$(registry_prefix "${SERVER_REGISTRY}")"
 
 DEVMODE_CONF_FILE="deploy/devmode.conf"
 REDIS_VERSION_FILE="deploy/redis.version"
