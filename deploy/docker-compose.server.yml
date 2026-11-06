@@ -1,18 +1,92 @@
+#
+# Copyright (C) 2024 Josua Krause
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# The AIpiary server on a single host. See "Deploying your own swarm" in the
+# README. The variables come from a .env file next to this file (see
+# deploy/server.compose.env.sample) or from the environment:
+#
+#   AIPIARY_DATA         the data directory on the host (required)
+#   SERVER_REGISTRY      the image prefix the server images were pushed to,
+#                        without a trailing slash; empty for local images
+#   AIPIARY_VERSION      the tag of aipiary-server-api (required)
+#   AIPIARY_REDIS_VERSION
+#                        the tag of aipiary-server-rserver (required)
+#   AIPIARY_DOMAIN       the domain(s) Caddy gets certificates for (tls only)
+#   COMPOSE_PROFILES=tls starts the Caddy reverse proxy on ports 80 and 443
+#
+# The server is a single stateful instance (Redis, session blobs on disk and
+# a cleaner thread inside the api process), so do not scale the api service.
+name: aipiary
 services:
   rserver:
-    container_name: rserver
-    image: $DOCKER_RSERVER
-    restart: always
+    image: ${SERVER_REGISTRY:+${SERVER_REGISTRY}/}${AIPIARY_IMAGE_BASE:-aipiary-server}-rserver:${AIPIARY_REDIS_VERSION:?set AIPIARY_REDIS_VERSION to the rserver image tag}
+    restart: unless-stopped
+    # reachable as rserver:6379 from the api only; not published on the host
     expose:
       - 6379
     volumes:
-      - ${WEBAPP_STORAGE_HOME}/rserver:/data
+      - ${AIPIARY_DATA:?set AIPIARY_DATA to the data directory}/rserver:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
   api:
-    image: $DOCKER_SERVER
-    restart: always
+    image: ${SERVER_REGISTRY:+${SERVER_REGISTRY}/}${AIPIARY_IMAGE_BASE:-aipiary-server}-api:${AIPIARY_VERSION:?set AIPIARY_VERSION to the api image tag}
+    restart: unless-stopped
+    depends_on:
+      rserver:
+        condition: service_healthy
     ports:
       - '8080:8080'
     volumes:
-      - ${WEBAPP_STORAGE_HOME}/swai:/swai
-      - ${WEBAPP_STORAGE_HOME}/session:/session
-# eof
+      # server.env is read from /swai/server.env
+      - ${AIPIARY_DATA:?set AIPIARY_DATA to the data directory}/swai:/swai
+      - ${AIPIARY_DATA:?set AIPIARY_DATA to the data directory}/session:/session
+    healthcheck:
+      # /api/version also answers when the server could not start and fell
+      # back to a minimal server that only reports the error; then its
+      # "error" field is set
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import json, urllib.request;
+          res = json.load(urllib.request.urlopen(
+          "http://127.0.0.1:8080/api/version", timeout=5));
+          assert res.get("error") is None, res.get("error")
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+  caddy:
+    image: caddy:2
+    profiles:
+      - tls
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      AIPIARY_DOMAIN: ${AIPIARY_DOMAIN:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # certificates and ACME account
+      - ${AIPIARY_DATA:?set AIPIARY_DATA to the data directory}/caddy/data:/data
+      - ${AIPIARY_DATA:?set AIPIARY_DATA to the data directory}/caddy/config:/config

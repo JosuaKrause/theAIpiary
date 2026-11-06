@@ -121,16 +121,14 @@ if [ ! -z "${DEVMODE}" ]; then
 fi
 
 if [ ! -z "${DEV}" ]; then
-    DOCKER_COMPOSE_OUT="docker-compose.server.dev.yml"
-    WEBAPP_STORAGE_HOME="./userdata/server"
-    DOCKER_LOGIN_SERVER=
+    IMAGE_ENV_FILE="deploy/default.server.dev.env"
+    IMAGE_REGISTRY=
 else
-    DOCKER_COMPOSE_OUT="docker-compose.server.yml"
-    WEBAPP_STORAGE_HOME=
-    DOCKER_LOGIN_SERVER="$(registry_prefix "${SERVER_REGISTRY}")"
-    if [ -z "${DOCKER_LOGIN_SERVER}" ]; then
+    IMAGE_ENV_FILE="deploy/default.server.env"
+    IMAGE_REGISTRY="${SERVER_REGISTRY%/}"
+    if [ -z "${IMAGE_REGISTRY}" ]; then
         echo "SERVER_REGISTRY is not set (see system.env.sample)." \
-            "the docker compose file will reference local image names"
+            "the image settings will reference local image names"
     fi
 fi
 
@@ -179,54 +177,24 @@ docker_build \
     -f deploy/redis.Dockerfile \
     .
 
-DEFAULT_ENV_FILE=deploy/default.server.env
-echo "# created by sh/build_server.sh" > "${DEFAULT_ENV_FILE}"
-echo "DOCKER_SERVER=${IMAGE_BASE}-api:${IMAGE_TAG}" >> "${DEFAULT_ENV_FILE}"
-echo "DOCKER_RSERVER=${IMAGE_BASE}-rserver:${REDIS_DOCKER_VERSION}" >> "${DEFAULT_ENV_FILE}"
-if [ ! -z "${WEBAPP_STORAGE_HOME}" ]; then
-    echo "{WEBAPP_STORAGE_HOME}=${WEBAPP_STORAGE_HOME}" >> "${DEFAULT_ENV_FILE}"
-fi
+# the image settings deploy/docker-compose.server.yml needs, in the format of
+# its .env file (see deploy/server.compose.env.sample)
+{
+    echo "# written by sh/build_server.sh"
+    echo "SERVER_REGISTRY=${IMAGE_REGISTRY}"
+    echo "AIPIARY_VERSION=${IMAGE_TAG}"
+    echo "AIPIARY_REDIS_VERSION=${REDIS_DOCKER_VERSION}"
+    if [ ! -z "${DEV}" ]; then
+        echo "AIPIARY_IMAGE_BASE=${IMAGE_BASE}"
+    fi
+} > "${IMAGE_ENV_FILE}"
 
-! read -r -d '' PY_COMPOSE <<'EOF'
-import os
-import sys
-
-prefix = sys.argv[1]
-dcompose = sys.argv[2]
-denv = sys.argv[3]
-dout = sys.argv[4]
-substitute = {}
-with open(denv, "r", encoding="utf-8") as fin:
-    for line in fin:
-        line = line.rstrip().split("#", 1)[0].strip()
-        if not line:
-            continue
-        variable, value = line.split("=", 1)
-        variable = f"${variable}".strip()
-        value = f"{value.strip()}"
-        if variable.startswith("$DOCKER_"):
-            value = f"{prefix}{value}"
-        if value.startswith("@"):
-            with open(value[1:], "r", encoding="utf-8") as tin:
-                value = tin.read()
-        substitute[variable] = value
-with open(dcompose, "r", encoding="utf-8") as din:
-    content = din.read()
-for variable, value in sorted(
-        substitute.items(), key=lambda e: len(e[0]), reverse=True):
-    content = content.replace(variable, value)
-with open(dout, "w", encoding="utf-8") as fout:
-    fout.write(content)
-EOF
-
-${PYTHON} -c "${PY_COMPOSE}" "${DOCKER_LOGIN_SERVER}" "deploy/docker-compose.server.yml" "${DEFAULT_ENV_FILE}" "${DOCKER_COMPOSE_OUT}"
-
-echo "docker compose is ready at ${DOCKER_COMPOSE_OUT}"
-echo "make sure to call make dockerpush-server before updating"
+echo "the image settings for deploy/docker-compose.server.yml" \
+    "are in ${IMAGE_ENV_FILE}:"
+grep -v '^#' "${IMAGE_ENV_FILE}"
 if [ ! -z "${DEV}" ]; then
     echo "run 'make compose-server' next to start the app on http://localhost:8080/login/"
-elif [ -z "${CI}" ]; then
-    DOCKER_COMPOSE_OUT="${DOCKER_COMPOSE_OUT}" make -s show-server-yml
 else
-    echo "run 'make build-server' locally (without dockerpush) to get the docker compose file"
+    echo "run 'make dockerpush-server' to push the images, then copy the" \
+        "settings above into the .env file next to the compose file on the host"
 fi
