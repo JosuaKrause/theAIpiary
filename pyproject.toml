@@ -1,6 +1,6 @@
 [project]
     name = "AIpiary"
-    description = "TODO."
+    description = "A swarm-based inverse cloud for running machine learning models on volunteers' GPUs."
     readme = "README.md"
     version = "0.0.0"
     authors = [
