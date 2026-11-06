@@ -18,6 +18,7 @@ help:
 	@echo "build-provider-dev	build the provider docker image for local usage"
 	@echo "build-server	build the server docker image"
 	@echo "build-server-dev	build the server docker image for local usage"
+	@echo "show-server-env	print the image settings for the server's compose .env file"
 	@echo "pre-commit 	sort python package imports using isort"
 	@echo "name	generate a unique permanent name for the current commit"
 	@echo "commit	print precise commit hash (with a * if the working copy is dirty)"
@@ -34,15 +35,12 @@ export LANG=C
 
 PYTHON?=python
 TS_ROOT?=src/swai_client/
-DOCKER_COMPOSE_OUT?=docker-compose.server.yml
 
 build-provider:
 	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) ./sh/build_provider.sh
 
-show-server-yml:
-	@echo "================================================="
-	@grep -Ev '^\s*$|^\s*\#' "$(DOCKER_COMPOSE_OUT)"
-	@echo "# eof"
+show-server-env:
+	@grep -v '^#' deploy/default.server.env
 
 build-provider-dev:
 	VERBOSE=$(VERBOSE) NO_CACHE=$(NO_CACHE) DEV=1 ./sh/build_provider.sh
@@ -215,7 +213,7 @@ create-admin-pw:
 deploy-server: \
 	build-server \
 	dockerpush-server \
-	show-server-yml
+	show-server-env
 
 deploy-provider: \
 	build-provider \

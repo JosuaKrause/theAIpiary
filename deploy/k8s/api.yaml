@@ -1,0 +1,103 @@
+#
+# Copyright (C) 2024 Josua Krause
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# The AIpiary server: the client, the /api endpoints and the auction queue.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  # Keep this at 1. The server is a single stateful instance: chat blobs are
+  # files on the /session volume, the task cleaner (which hands a task back
+  # to the queue when the worker that took it goes away) is a thread inside
+  # the process, and the session store is configured with is_shared false.
+  # A second replica would not see the first one's blobs and would run a
+  # second cleaner. For the same reason the update strategy is Recreate: the
+  # old pod stops before the new one starts, and the ReadWriteOnce volumes
+  # are never mounted twice.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+    spec:
+      containers:
+        - name: api
+          image: aipiary-server-api
+          ports:
+            - name: http
+              containerPort: 8080
+          # the image reads /swai/server.env if it exists; here the same
+          # settings come from the Secret instead
+          envFrom:
+            - secretRef:
+                name: aipiary-server-env
+          volumeMounts:
+            - name: swai
+              mountPath: /swai
+            - name: session
+              mountPath: /session
+          # /api/version also answers when the server could not start and
+          # fell back to a minimal server that only reports the error; then
+          # its "error" field is set. Ready means it started properly, alive
+          # means it answers at all.
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - >-
+                  import json, urllib.request;
+                  res = json.load(urllib.request.urlopen(
+                  "http://127.0.0.1:8080/api/version", timeout=5));
+                  assert res.get("error") is None, res.get("error")
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/version
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+      volumes:
+        - name: swai
+          persistentVolumeClaim:
+            claimName: api-swai
+        - name: session
+          persistentVolumeClaim:
+            claimName: api-session
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  selector:
+    app.kubernetes.io/name: api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

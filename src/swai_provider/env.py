@@ -57,7 +57,13 @@ def envload_path(key: EnvPath, *, default: str | None = None) -> str:
 
 
 def envload_int(key: EnvInt, *, default: int | None = None) -> int:
-    return int(_envload(key, f"{default}"))
+    # NOTE: an empty value (e.g. "SMTP_PORT=" copied from a sample) is unset
+    res = os.environ.get(key, "").strip()
+    if res:
+        return int(res)
+    if default is not None:
+        return default
+    raise ValueError(f"env {key} must be set!")
 
 
 def envload_bool(key: EnvBool, *, default: bool | None = None) -> bool:

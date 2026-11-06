@@ -18,7 +18,16 @@ set -e
 
 cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/../" &> /dev/null
 
-ENV_FILE=userdata/server/swai/server.env
+# runs the images of make build-server-dev with deploy/docker-compose.server.yml
+# and userdata/server as the data directory
+IMAGE_ENV_FILE=deploy/default.server.dev.env
+if [ ! -f "${IMAGE_ENV_FILE}" ]; then
+    echo "${IMAGE_ENV_FILE} not found. run 'make build-server-dev' first"
+    exit 1
+fi
+
+AIPIARY_DATA="$(pwd)/userdata/server"
+ENV_FILE="${AIPIARY_DATA}/swai/server.env"
 if [ ! -f "${ENV_FILE}" ]; then
     mkdir -p "$(dirname -- ${ENV_FILE})"
     cp "server.env.sample" "${ENV_FILE}"
@@ -26,4 +35,7 @@ if [ ! -f "${ENV_FILE}" ]; then
     exit 1
 fi
 
-docker compose -f "docker-compose.server.dev.yml" up || echo "done $?"
+AIPIARY_DATA="${AIPIARY_DATA}" docker compose \
+    -f deploy/docker-compose.server.yml \
+    --env-file "${IMAGE_ENV_FILE}" \
+    up || echo "done $?"

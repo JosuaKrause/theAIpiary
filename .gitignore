@@ -23,11 +23,12 @@ venv
 /buildtmp_server/
 /deploy/default.provider.env
 /deploy/default.server.env
+/deploy/default.server.dev.env
+/deploy/.env
+/deploy/k8s/server.env
 /version.txt
 /version.server.txt
 /version.provider.txt
-/docker-compose.server.dev.yml
-/docker-compose.server.yml
 /.coverage
 /coverage/
 /test-results/

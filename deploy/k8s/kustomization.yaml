@@ -1,0 +1,50 @@
+#
+# Copyright (C) 2024 Josua Krause
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# An example of the AIpiary server on Kubernetes, for clusters you already
+# run. The primary deployment path is deploy/docker-compose.server.yml; see
+# the README. Before applying:
+#
+#   1. cp server.env.sample deploy/k8s/server.env (git-ignored) and fill it in
+#   2. set the image names and tags below (make build-server prints the tags)
+#   3. replace aipiary.example.com in ingress.yaml
+#
+# then: kubectl apply -k deploy/k8s
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: aipiary
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: aipiary
+resources:
+  - namespace.yaml
+  - pvc.yaml
+  - rserver.yaml
+  - api.yaml
+  - ingress.yaml
+# the server's settings become environment variables of the api container
+# (see api.yaml). kustomize adds a hash of the content to the name, so a
+# changed server.env restarts the api
+secretGenerator:
+  - name: aipiary-server-env
+    envs:
+      - server.env
+images:
+  - name: aipiary-server-api
+    newName: ghcr.io/example/aipiary-server-api
+    newTag: v0.0.0
+  - name: aipiary-server-rserver
+    newName: ghcr.io/example/aipiary-server-rserver
+    newTag: v0.0.1-devmode

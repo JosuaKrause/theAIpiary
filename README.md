@@ -131,9 +131,11 @@ one model, a Llama 3 chat assistant that calls itself Beatrix Buzz.
    http://localhost:3000 are answered by it.
 
 The server also runs in Docker locally: `make build-server-dev` builds the
-images and writes `docker-compose.server.dev.yml`, and `make compose-server`
-starts it on http://localhost:8080 with the same
-`userdata/server/swai/server.env`.
+images for your machine's architecture and writes their names to
+`deploy/default.server.dev.env`, and `make compose-server` starts them with
+`deploy/docker-compose.server.yml` on http://localhost:8080, with
+`userdata/server` as the data directory (and so the same
+`userdata/server/swai/server.env`).
 
 ## Checks
 
@@ -158,16 +160,22 @@ make install-ts lint-ts test-ts ts-build ts-unused
 A deployment has two halves: the server images, which you run on a host of your
 own, and the provider images, which volunteers pull from a public registry.
 
+The server is a single stateful instance: Redis, the chat blobs on disk and the
+task cleaner thread inside the server process belong together, so it does not
+scale horizontally. The supported way to run it is Docker Compose on one host
+with `deploy/docker-compose.server.yml`; [Kubernetes](#kubernetes) has a short
+example for people who already run a cluster.
+
 1. **Choose the registries.** Copy `system.env.sample` to `system.env` and set
    `PROVIDER_REGISTRY` (public, e.g. your Docker Hub user or `ghcr.io/you`) and
-   `SERVER_REGISTRY`, plus `DOCKER_USER` and `DOCKER_TOKEN` unless you are
-   already logged in (`docker login`, or `az acr login --name <registry>` on
-   Azure). Values in the environment take precedence over the file.
+   `SERVER_REGISTRY` (can be private), plus `DOCKER_USER` and `DOCKER_TOKEN`
+   unless you are already logged in with `docker login`. Values in the
+   environment take precedence over the file.
 
 2. **Choose the model.** The worker image runs `deploy/graphs/graph_llama.json`,
    which loads `/models/` plus the file name in its `model_path`. Volunteers'
    `userdata/models/` folder is mounted there, and `run-worker.sh` downloads the
-   model into it from `MODEL_URL` (step 4), so the file name at the end of
+   model into it from `MODEL_URL` (step 5), so the file name at the end of
    `MODEL_URL` has to match `model_path`. Host the GGUF file somewhere
    volunteers can download it from, or leave `MODEL_URL` empty and tell them
    which file to place there.
@@ -176,49 +184,148 @@ own, and the provider images, which volunteers pull from a public registry.
 
    ```
    make deploy-provider   # build-provider + dockerpush-provider
-   make deploy-server     # build-server + dockerpush-server, then prints the compose file
+   make deploy-server     # build-server + dockerpush-server + show-server-env
    ```
 
    Provider images are pushed as `<PROVIDER_REGISTRY>/aipiary-<name>` with the
    version tag and `latest`; server images as
-   `<SERVER_REGISTRY>/aipiary-server-<name>`. `make build-server` writes
-   `docker-compose.server.yml` (git-ignored) with your registry in the image
-   names. The image tag comes from `git describe --tags`, so the checkout
-   needs the repository's version tags.
+   `<SERVER_REGISTRY>/aipiary-server-api` and
+   `<SERVER_REGISTRY>/aipiary-server-rserver` with their own tags. The images
+   are built for `linux/amd64`. The api's tag comes from `git describe --tags`,
+   so the checkout needs the repository's version tags; the rserver tag is
+   `REDIS_DOCKER_VERSION` in `deploy/redis.version` (with `-devmode` while
+   `deploy/devmode.conf` sets `DEVMODE`). `make build-server` writes
+   `SERVER_REGISTRY` and both tags to `deploy/default.server.env`
+   (git-ignored), and `make show-server-env` prints them: these are the lines
+   the host's `.env` needs in step 4.
 
-4. **Run the server.** On the host, create a directory for the server's data,
-   put the server's settings in `<that directory>/swai/server.env` (see
-   `server.env.sample`), and start it:
+   To skip the registry, run `make build-server` with an empty
+   `SERVER_REGISTRY` on the host itself (it needs this checkout, Docker with
+   buildx, Python and Node 22 with yarn) and leave `SERVER_REGISTRY` empty in
+   the host's `.env` too; the compose file then uses the local image names.
+
+4. **Prepare the host.** Any Linux host with Docker Engine and the compose
+   plugin will do; the server needs no GPU. Make a directory for the
+   deployment, copy two files from `deploy/` into it, and create the data
+   directory:
 
    ```
-   WEBAPP_STORAGE_HOME=/srv/aipiary docker compose -f docker-compose.server.yml up -d
+   /srv/aipiary/
+   ├── docker-compose.yml   # deploy/docker-compose.server.yml
+   ├── Caddyfile            # deploy/Caddyfile (only for the TLS profile)
+   ├── .env                 # from deploy/server.compose.env.sample
+   └── data/                # AIPIARY_DATA
+       ├── swai/server.env  # the server's settings (step 5)
+       ├── session/         # chat blobs and session cache
+       ├── rserver/         # Redis snapshot (users, chats, task queue)
+       └── caddy/           # certificates (only with the TLS profile)
    ```
 
-   The server listens on port 8080; put a TLS-terminating reverse proxy in front
-   of it. (Azure App Service sets `WEBAPP_STORAGE_HOME` by itself.) Besides the
-   admin and email settings, set:
+   In `.env`, set `AIPIARY_DATA` to the data directory and paste the lines
+   from `make show-server-env` (`SERVER_REGISTRY`, `AIPIARY_VERSION`,
+   `AIPIARY_REDIS_VERSION`). Docker Compose reads `.env` from the directory of
+   the compose file. If `SERVER_REGISTRY` is private, run `docker login` for
+   it on the host. Only `swai/server.env` has to exist before the first
+   start; Docker creates the other directories.
 
-   - `OWN_URL`: the public URL, used in emails, `robots.txt`, `sitemap.xml` and
-     the worker script. If it is on a `www.` subdomain, the bare domain
-     redirects to it.
+5. **Configure the server.** Copy `server.env.sample` to
+   `data/swai/server.env`; the server reads it from `/swai/server.env` in the
+   container. Every variable is explained in the sample. Besides the admin
+   account (`make create-admin-pw` prints the two lines) and the email
+   settings, set:
+
+   - `OWN_URL`: the public URL, e.g. `https://chat.example.com`, used in
+     emails, `robots.txt`, `sitemap.xml` and the worker script. If it is on a
+     `www.` subdomain, the bare domain redirects to it.
    - `PROVIDER_REGISTRY`: the same value as in `system.env`, so that
      volunteers pull your worker images.
    - `MODEL_URL`: where volunteers download the model from (step 2).
 
    The server fills these into `/robots.txt`, `/sitemap.xml` and
    `/scripts/run-worker.sh` when they are requested (`@@NAME@@` placeholders in
-   `src/swai_client/public/`). Volunteers follow the instructions on the profile
-   page: on Linux or WSL with Docker, CUDA and the NVIDIA container toolkit,
-   they download `run-worker.sh`, which asks for their email address and worker
-   token, downloads the compose file and the model, and starts the provider and
-   worker containers.
+   `src/swai_client/public/`). The file is read at startup, so restart the
+   api (`docker compose restart api`) after changing it.
 
-5. **Or let CI build the images.** The `build_pipeline` job in
-   `.github/workflows/app.yaml` runs on `v*` tags. Set the repository variables
-   `PROVIDER_REGISTRY` and/or `SERVER_REGISTRY` and the secrets `DOCKER_USER`
-   and `DOCKER_TOKEN`; each half runs only when its registry is set, and the
-   job is skipped when neither is. `make publish` tags the next minor version
-   on a clean `main` and pushes the tag.
+6. **Start it.** In the deployment directory:
+
+   ```
+   docker compose up -d
+   docker compose ps                         # wait for api to be healthy
+   curl http://localhost:8080/api/version    # "error": null
+   docker compose logs -f api
+   ```
+
+   The api listens on port 8080 of the host; Redis is only reachable from the
+   api. Both restart unless you stop them. The api's health check fails when
+   the server could not start (for example because of a broken setting) and
+   fell back to a minimal server that only reports the error; the reason is in
+   the `error` field of `/api/version` and in the log.
+   Log in at `/login/` as the admin and create the first users from the
+   profile page.
+
+7. **Put TLS in front of it.** Either start the bundled Caddy reverse proxy
+   or use your own:
+
+   - **Caddy.** Point the domain's DNS at the host, open ports 80 and 443, and
+     add `COMPOSE_PROFILES=tls` and `AIPIARY_DOMAIN=chat.example.com` to
+     `.env` (for a `www.` `OWN_URL`, `AIPIARY_DOMAIN=www.example.com,
+     example.com`). `docker compose up -d` then also starts Caddy, which gets
+     and renews a Let's Encrypt certificate by itself and keeps it in
+     `data/caddy/`.
+   - **Your own proxy.** Forward to `http://<host>:8080`, allow request bodies
+     of 120 MiB (the server's upload limit) and a read timeout above 60
+     seconds (workers long-poll `/api/task/bid` for a minute).
+
+   Either way port 8080 stays published, so block it from the internet in
+   your provider's firewall. Ports that Docker publishes bypass host firewalls
+   such as ufw.
+
+8. **Upgrade and back up.** To upgrade, build and push the new version, set
+   `AIPIARY_VERSION` (and `AIPIARY_REDIS_VERSION` if `make show-server-env`
+   prints a new one) in `.env`, and run `docker compose pull` and
+   `docker compose up -d`. All state is in the data directory, so a backup is
+   a copy of it taken while the stack is stopped:
+
+   ```
+   docker compose stop
+   tar -czf aipiary-$(date +%F).tar.gz -C /srv/aipiary data
+   docker compose start
+   ```
+
+   Restore by unpacking the archive in place of `data/` before
+   `docker compose up -d`. Redis writes its snapshot
+   (`data/rserver/dump.rdb`) when it is stopped and on its own in between: an
+   hour after a change at the latest, every few minutes when it is busy.
+
+9. **Volunteers run the workers.** They follow the instructions on the
+   profile page: on Linux or WSL with Docker, CUDA and the NVIDIA container
+   toolkit, they download `run-worker.sh` from your server, which asks for
+   their email address and worker token, downloads the compose file and the
+   model, and starts the provider and worker containers. To add a GPU of your
+   own to the swarm, do the same on that machine with an account of your own.
+
+10. **Or let CI build the images.** The `build_pipeline` job in
+    `.github/workflows/app.yaml` runs on `v*` tags. Set the repository
+    variables `PROVIDER_REGISTRY` and/or `SERVER_REGISTRY` and the secrets
+    `DOCKER_USER` and `DOCKER_TOKEN`; each half runs only when its registry is
+    set, and the job is skipped when neither is. `make publish` tags the next
+    minor version on a clean `main` and pushes the tag. The image tags are the
+    git tag and `REDIS_DOCKER_VERSION` as above.
+
+### Kubernetes
+
+`deploy/k8s/` is a kustomize example for running the server in a cluster you
+already have: a namespace, the rserver Redis and the api as Deployments with
+persistent volumes, a Secret generated from `server.env`, Services and an
+Ingress (with optional cert-manager TLS). Copy `server.env.sample` to
+`deploy/k8s/server.env`, set the image names and tags in
+`deploy/k8s/kustomization.yaml` and the host in `deploy/k8s/ingress.yaml`,
+then run `kubectl apply -k deploy/k8s`.
+
+The api has to stay at `replicas: 1` with the `Recreate` strategy: the chat
+blobs live on its volume and the task cleaner runs inside the process, so a
+second pod would not see the first one's blobs and would run a second cleaner.
+Kubernetes buys you scheduling and restarts here, not scaling.
 
 A fork should also change `src/swai_client/public/docs/contact.md`, which points
 to this repository's issues, and the footer of the welcome page
