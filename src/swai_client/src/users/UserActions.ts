@@ -18,6 +18,7 @@ import {
   ApiUserCapability,
   DeleteUserResult,
   DisplayName,
+  EmailChangeToken,
   LoginInfo,
   Password,
   ResetToken,
@@ -110,10 +111,23 @@ export default class UserActions {
   async changeEmail(
     email: Readonly<UserEmail>,
     newEmail: Readonly<UserEmail>,
-    onDone: (changed: boolean) => void,
+    onDone: (sent: boolean) => void,
   ) {
-    const changed = await this.api.changeEmail(email, newEmail);
-    onDone(changed);
+    const sent = await this.api.changeEmail(email, newEmail);
+    onDone(sent);
+  }
+
+  async confirmEmailChange(
+    token: Readonly<EmailChangeToken>,
+    onDone: (
+      confirmed: boolean,
+      email: Readonly<UserEmail> | null,
+      message: string,
+    ) => void,
+  ) {
+    const { confirmed, email, message } =
+      await this.api.confirmEmailChange(token);
+    onDone(confirmed, email, message);
   }
 
   async deleteUser(

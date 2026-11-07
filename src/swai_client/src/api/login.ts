@@ -18,6 +18,7 @@ import {
   ApiChangeCapability,
   ApiChangeEmailResponse,
   ApiChatSessionsResponse,
+  ApiConfirmEmailChangeResponse,
   ApiDeleteUserResponse,
   ApiLoginResponse,
   ApiPasswordResetTokenResponse,
@@ -28,6 +29,7 @@ import {
   ApiWorkerTokenResponse,
   DeleteUserResult,
   DisplayName,
+  EmailChangeToken,
   LoginInfo,
   Password,
   ResetToken,
@@ -72,6 +74,9 @@ export type LoginApiProvider = {
     name: Readonly<UserEmail>,
     newEmail: Readonly<UserEmail>,
   ) => Promise<boolean>;
+  confirmEmailChange: (
+    token: Readonly<EmailChangeToken>,
+  ) => Promise<Readonly<ApiConfirmEmailChangeResponse>>;
   logout: () => Promise<Readonly<User> | Readonly<LoginInfo>>;
   getWorkerToken: () => Promise<Readonly<WorkerToken>>;
   listUsers: () => Promise<UserInfo[]>;
@@ -237,9 +242,30 @@ export const DEFAULT_LOGIN_API: LoginApiProvider = {
         new_email: newEmail,
       }),
     });
+    if (res.status === 503) {
+      // NOTE: the change needs a confirmation link sent to the new address
+      throw new Error(
+        'email is not configured on the server, so the confirmation link ' +
+          'cannot be sent',
+      );
+    }
     checkResponse(res);
-    const { changed } = (await res.json()) as ApiChangeEmailResponse;
-    return changed;
+    const { sent } = (await res.json()) as ApiChangeEmailResponse;
+    return sent;
+  },
+  confirmEmailChange: async (token) => {
+    const res = await fetch(`${URL_PREFIX}/user/confirm_email_change`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token,
+      }),
+    });
+    checkResponse(res);
+    return (await res.json()) as ApiConfirmEmailChangeResponse;
   },
   logout: async () => {
     const res = await fetch(`${URL_PREFIX}/user/logout`, {
