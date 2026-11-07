@@ -192,7 +192,7 @@ def fixture_session_store(
     # NOTE: deleting without keys must fail as on a real redis: removing a
     # chat without values does that
     for module in (blob_disk_module, kv_redis_module, session_user_module):
-        monkeypatch.setattr(module, "Redis", strict_memory_redis)
+        monkeypatch.setattr(module, "create_redis", strict_memory_redis)
     return load_session_store({
         "user": {"name": "redis", "cfg": UNUSED_REDIS},
         "key_value": {"name": "redis", "cfg": UNUSED_REDIS},
