@@ -113,7 +113,9 @@ one model, a Llama 3.1 chat assistant that calls itself Beatrix Buzz.
      at the dev server.
    - The `SMTP_*` and `OWN_EMAIL` variables can stay empty. The server then
      prints every email, including the link to set a new account's password,
-     to its log instead of sending it.
+     to its log instead of sending it. Only changing a user's email needs
+     them: without email the server refuses it (see
+     [Accounts, ids and email changes](#accounts-ids-and-email-changes)).
 
    `userdata/` is git-ignored and holds all local state.
 
@@ -373,8 +375,9 @@ PGDATABASE=aipiary
 built into the image; outside of Docker you can also set
 `"user_mng": {"name": "postgres"}` there, optionally with a `"schema"`.) The
 server creates its tables in the `public` schema when it starts if they do
-not exist yet (`users`, `user_capabilities`, `user_reset_tokens`,
-`user_sessions`, `user_worker_tokens`); there is no separate migration step.
+not exist yet (`users`, `user_capabilities`, `user_email_changes`,
+`user_reset_tokens`, `user_sessions`, `user_worker_tokens`, `user_store_meta`);
+there is no separate migration step.
 The database user needs to be allowed to create tables for the first start.
 Existing accounts are not copied over from Redis: switching stores starts with
 no users besides the admin.
@@ -402,10 +405,31 @@ Every account has two ids that are stored with it: the user id its chats
 and worker token belong to, and the account key its workers' ids start
 with. Both are derived from the email when the account is created and stay
 when the email changes, so an admin with the `change_email` capability can
-change a user's email on the profile page without losing anything. The
-user is logged out everywhere, outstanding password reset links stop
-working, and their worker bees keep their worker token but have to log in
-with the new email (`AIPIARY_USER` in `provider.env`) from then on.
+change a user's email on the profile page without losing anything.
+
+Changing an email takes a confirmation from the new address:
+
+1. **The admin asks for the change** ("Change Email" on the profile page).
+   Nothing changes yet. The new address gets a confirmation link
+   (`/confirm-email?token=...`, valid for 24 hours) and the old address a
+   notice that the admin asked for the change, with the admin's email to
+   object to. The profile page says where the link went. The new email must
+   not belong to an account (or to the admin) at that point.
+2. **The user opens the link and presses "Confirm".** Only then the email
+   changes. The user is logged out everywhere, outstanding password reset
+   links stop working, and their worker bees keep their worker token but
+   have to log in with the new email (`AIPIARY_USER` in `provider.env`) from
+   then on. The old address gets a last email that the change happened.
+
+The link works once. It is refused if it expired, if the admin asked for
+another change of the same account since (the newer request replaces the
+older one), if the account was deleted or its email changed otherwise, or
+if the new email was taken in the meantime. The store keeps only the hash of
+its token, like for session and reset tokens. Since the link has to be
+sent, the server refuses email changes (HTTP 503) when email is not
+configured (`OWN_URL`, `OWN_EMAIL`, `SMTP_HOST` and `SMTP_USER`, see
+`server.env.sample`).
+
 An account created later with the old email gets new ids of its own.
 
 Stores from before the ids were stored are migrated once when the server

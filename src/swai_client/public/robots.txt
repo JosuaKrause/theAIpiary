@@ -6,6 +6,7 @@ Allow: /faq
 Disallow: /chat
 Disallow: /profile
 Disallow: /reset-password
+Disallow: /confirm-email
 
 Disallow: /docs/
 Disallow: /scripts/

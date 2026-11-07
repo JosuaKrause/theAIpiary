@@ -24,6 +24,7 @@ import { setSession } from './chat/ChatStateSlice';
 import Welcome from './general/Welcome';
 import { StaticMarkdown } from './misc/Markdown';
 import { RootState } from './store';
+import ConfirmEmail from './users/ConfirmEmail';
 import Login from './users/Login';
 import Profile from './users/Profile';
 import ResetPassword from './users/ResetPassword';
@@ -176,6 +177,10 @@ class App extends PureComponent<AppProps, AppState> {
               <Route
                 path="/reset-password"
                 element={<ResetPassword userActions={this.userActions} />}
+              />
+              <Route
+                path="/confirm-email"
+                element={<ConfirmEmail userActions={this.userActions} />}
               />
               <Route
                 path="/profile"
