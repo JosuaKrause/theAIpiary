@@ -14,7 +14,7 @@
 """Tests for the permission checks every server endpoint goes through."""
 import uuid
 from collections.abc import Callable
-from test.util import ADMIN_EMAIL
+from test.util import ADMIN_EMAIL, stored_email_changes
 
 import pytest
 from quick_server import PreventDefaultResponse
@@ -411,41 +411,65 @@ def test_delete_user_spares_self_and_admin(
 CAROL = UName("carol@example.com")
 
 
-def test_change_email_needs_capability(
+def test_email_change_needs_capability(
         sec_ctx: SecureContext, user_mng: UserManager) -> None:
     alice = session_for(user_mng, ALICE)
     bob = session_for(user_mng, BOB)
-    assert_refused(403, lambda: sec_ctx.change_email(alice, BOB, CAROL))
+    for call in (
+            lambda: sec_ctx.request_email_change(alice, BOB, CAROL),
+            lambda: sec_ctx.ensure_can_change_email(alice, BOB),
+            ):
+        assert_refused(403, call)
     assert_refused(
-        401, lambda: sec_ctx.change_email(NOT_A_SESSION, BOB, CAROL))
+        401, lambda: sec_ctx.request_email_change(NOT_A_SESSION, BOB, CAROL))
     # other capabilities to manage accounts are not enough
     for cap in CAPABILITIES:
         if cap != CAP_CHANGE_EMAIL:
             user_mng.set_capability(ALICE, cap, has=True)
-    assert_refused(403, lambda: sec_ctx.change_email(alice, BOB, CAROL))
-    assert sec_ctx.get_email(bob) == BOB
+    assert_refused(
+        403, lambda: sec_ctx.request_email_change(alice, BOB, CAROL))
+    assert not stored_email_changes(user_mng)
     user_mng.set_capability(ALICE, CAP_CHANGE_EMAIL, has=True)
-    assert sec_ctx.change_email(alice, BOB, CAROL)
+    sec_ctx.ensure_can_change_email(alice, BOB)
+    token = sec_ctx.request_email_change(alice, BOB, CAROL)
+    assert token is not None
+    # nothing changes before the confirmation
+    assert sec_ctx.get_email(bob) == BOB
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE, BOB}
+    # taken by the acting user
+    assert sec_ctx.request_email_change(alice, BOB, ALICE) is None
+    # whoever has the token confirms it, without a session
+    assert sec_ctx.confirm_email_change(token) == {
+        "email": BOB,
+        "new_email": CAROL,
+        "changed": True,
+    }
     assert sec_ctx.get_email(bob) is None
     assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE, CAROL}
-    # taken by the acting user
-    assert not sec_ctx.change_email(alice, CAROL, ALICE)
+    assert sec_ctx.confirm_email_change(token) is None
 
 
-def test_change_email_spares_self_and_admin(
+def test_email_change_spares_self_and_admin(
         sec_ctx: SecureContext, user_mng: UserManager) -> None:
     admin = session_for(user_mng, ADMIN_EMAIL)
     alice = session_for(user_mng, ALICE, CAP_CHANGE_EMAIL)
-    assert_refused(403, lambda: sec_ctx.change_email(alice, ALICE, CAROL))
-    assert_refused(
-        403, lambda: sec_ctx.change_email(alice, ADMIN_EMAIL, CAROL))
-    assert_refused(
-        403, lambda: sec_ctx.change_email(admin, ADMIN_EMAIL, CAROL))
+    for who, email in [
+            (alice, ALICE),
+            (alice, ADMIN_EMAIL),
+            (admin, ADMIN_EMAIL),
+            ]:
+        with pytest.raises(PreventDefaultResponse) as exc_info:
+            sec_ctx.request_email_change(who, email, CAROL)
+        assert exc_info.value.code == 403
+        with pytest.raises(PreventDefaultResponse) as exc_info:
+            sec_ctx.ensure_can_change_email(who, email)
+        assert exc_info.value.code == 403
     # nobody can take the admin's email
-    assert not sec_ctx.change_email(admin, ALICE, ADMIN_EMAIL)
+    assert sec_ctx.request_email_change(admin, ALICE, ADMIN_EMAIL) is None
+    assert not stored_email_changes(user_mng)
     assert sec_ctx.get_email(alice) == ALICE
     assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE}
-    assert sec_ctx.change_email(admin, ALICE, CAROL)
+    assert sec_ctx.request_email_change(admin, ALICE, CAROL) is not None
 
 
 # *** invitations through the context ***

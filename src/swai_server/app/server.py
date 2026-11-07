@@ -17,6 +17,7 @@ import shutil
 import sys
 import threading
 import traceback
+from collections.abc import Callable
 from http.cookies import SimpleCookie
 from typing import TypedDict
 
@@ -40,6 +41,7 @@ from swai.server_response_types import (
     ChatPromptResponse,
     ChatRecoverResponse,
     ChatTextResponse,
+    ConfirmEmailChangeResponse,
     DeleteUserResponse,
     HeartbeatResponse,
     LoginResponse,
@@ -73,6 +75,9 @@ from swai_server.app.email import (
     EmailConfig,
     is_valid_email_config,
     send_create_user,
+    send_email_change_confirm,
+    send_email_change_notice,
+    send_email_changed,
     send_password_reset,
 )
 from swai_server.app.public_files import setup_public_files, setup_www_redirect
@@ -97,10 +102,12 @@ from swai_server.system.user.loader import load_user_manager
 from swai_server.system.user.manager import (
     as_capability,
     DEFAULT_CAPABILITIES,
+    EmailChangeToken,
     HashPassword,
     RawPassword,
     ResetToken,
     SessionToken,
+    UserManager,
 )
 from swai_server.system.user.secure import SecureContext
 from swai_server.version import get_version
@@ -277,6 +284,17 @@ def setup(
             print(
                 "error sending password reset email:\n"
                 f"{traceback.format_exc()}")
+
+    def send_in_background(what: str, send: Callable[[], None]) -> None:
+        # NOTE: sending an email is slow; the response does not wait for it
+
+        def run() -> None:
+            try:
+                send()
+            except Exception:  # pylint: disable=broad-except
+                print(f"error sending {what} email:\n{traceback.format_exc()}")
+
+        threading.Thread(target=run, daemon=True).start()
 
     setup_www_redirect(server, public_url)
 
@@ -629,14 +647,87 @@ def setup(
         if not new_email_str:
             raise PreventDefaultResponse(400, "the new email is empty")
         new_email = UName(new_email_str)
-        # NOTE: the account keeps its chats, worker token and workers. its
-        # workers have to be told the new email (AIPIARY_USER) since that is
-        # how they log in
-        changed = sec_ctx.change_email(user_session, user_email, new_email)
+        sec_ctx.ensure_can_change_email(user_session, user_email)
+        if not is_valid_email_config(email_config):
+            # NOTE: the change needs the confirmation sent to the new address
+            raise PreventDefaultResponse(
+                503,
+                "email is not configured on this server: the confirmation "
+                "link cannot be sent, so the email cannot be changed")
+        # NOTE: nothing changes until the link sent to the new address is
+        # used (see confirm_email_change); the old address is told about it
+        token = sec_ctx.request_email_change(
+            user_session, user_email, new_email)
+        if token is not None:
+            requester = sec_ctx.force_user_info(rargs["meta"]["user_email"])
+            confirm_token: EmailChangeToken = token
+
+            def send_confirm() -> None:
+                send_email_change_confirm(
+                    email_config,
+                    user=sec_ctx.force_user_info(user_email),
+                    new_email=new_email,
+                    requester=requester,
+                    token=confirm_token,
+                    expires_in=UserManager.email_change_expire())
+
+            def send_notice() -> None:
+                send_email_change_notice(
+                    email_config,
+                    user=sec_ctx.force_user_info(user_email),
+                    new_email=new_email,
+                    requester=requester)
+
+            send_in_background("email change confirmation", send_confirm)
+            send_in_background("email change notice", send_notice)
         return {
             "email": user_email.get(),
             "new_email": new_email.get(),
-            "changed": changed,
+            "sent": token is not None,
+        }
+
+    @server.json_post(f"{prefix}/user/confirm_email_change")
+    def _post_user_confirm_email_change(
+            req: QSRH, rargs: ReqArgs) -> ConfirmEmailChangeResponse:
+        args = rargs["post"]
+        token: EmailChangeToken = f"{args['token']}"
+        res = sec_ctx.confirm_email_change(token)
+        if res is None:
+            return {
+                "confirmed": False,
+                "email": None,
+                "message": (
+                    "This link is invalid: it expired, was used already, or "
+                    "a newer one was sent. Ask for a new one."),
+            }
+        old_email = res["email"]
+        new_email = res["new_email"]
+        if not res["changed"]:
+            return {
+                "confirmed": False,
+                "email": None,
+                "message": (
+                    f"{new_email.get()} belongs to another account by now: "
+                    "the email was not changed."),
+            }
+        # NOTE: the account keeps its chats, worker token and workers, and is
+        # logged out everywhere. its workers have to be told the new email
+        # (AIPIARY_USER) since that is how they log in
+        send_logout_cookie(req)
+
+        def send_changed() -> None:
+            send_email_changed(
+                email_config,
+                user=sec_ctx.force_user_info(new_email),
+                old_email=old_email)
+
+        send_in_background("email changed", send_changed)
+        return {
+            "confirmed": True,
+            "email": new_email.get(),
+            "message": (
+                f"The email was changed to {new_email.get()}. Log in with it "
+                "and your password."),
         }
 
     # *** worker API ***
