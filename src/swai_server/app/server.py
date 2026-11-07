@@ -135,13 +135,6 @@ def remove_chat(session_store: SessionStore, session_id: SessionId) -> None:
         session_store (SessionStore): The session store.
         session_id (SessionId): The chat session.
     """
-    # NOTE: scattermind's redis stores remove the values and the blobs of a
-    # session with one DEL each, which fails on a real redis if there is
-    # nothing to delete (e.g., a chat without values yet). a value and a
-    # blob make sure there is something
-    session_store.push_value(session_id, "deleted", "1")
-    with session_store.open_blob_write(session_id, "deleted") as fout:
-        fout.write(b"")
     session_store.remove(session_id)
 
 

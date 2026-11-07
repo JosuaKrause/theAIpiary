@@ -3,7 +3,7 @@ mypy>=2.4.1
 numpy==2.5.4
 python-dotenv==1.2.4
 quick-server>=0.10.0
-redipy>=0.7.1
+redipy>=0.8.0
 requests==2.34.2
-scattermind>=0.5.1
+scattermind>=0.6.0
 torch==2.14.1
