@@ -89,7 +89,7 @@ def fixture_stores(
         return redis
 
     for module in (blob_disk, kv_redis, user_redis):
-        monkeypatch.setattr(module, "Redis", shared_redis)
+        monkeypatch.setattr(module, "create_redis", shared_redis)
     blob_path = os.path.join(tmp_path, "blobs")
     yield (
         make_store(
