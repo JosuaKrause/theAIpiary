@@ -30,6 +30,8 @@ from swai_server.system.user.manager import (
     as_capability,
     derive_account_key,
     derive_user_id,
+    EmailChange,
+    EmailChangeToken,
     hash_token,
     HashPassword,
     random_account_key,
@@ -107,6 +109,26 @@ RESET_TOKENS = sa.Table(
     sa.Column("expires", sa.DateTime(timezone=True), nullable=False),
     sa.Index("user_reset_tokens_user_id_idx", "user_id"),
     sa.Index("user_reset_tokens_expires_idx", "expires"),
+)
+
+
+# NOTE: at most one pending email change per account; a new request replaces
+# it. changing the email or deleting the account removes it
+EMAIL_CHANGES = sa.Table(
+    "user_email_changes",
+    METADATA,
+    sa.Column(
+        "user_id",
+        sa.BigInteger,
+        sa.ForeignKey(USERS.c.id, ondelete="CASCADE"),
+        primary_key=True),
+    # NOTE: the hash of the token (see hash_token)
+    sa.Column("token_hash", sa.Text, nullable=False),
+    sa.Column("new_email", sa.Text, nullable=False),
+    sa.Column("expires", sa.DateTime(timezone=True), nullable=False),
+    sa.UniqueConstraint(
+        "token_hash", name="user_email_changes_token_hash_key"),
+    sa.Index("user_email_changes_expires_idx", "expires"),
 )
 
 
@@ -355,7 +377,8 @@ class DBUserManager(UserManager):
 
     def do_delete_user(self, email: UName) -> bool:
         with self._engine.begin() as conn:
-            # NOTE: capabilities and reset tokens are removed by the cascade
+            # NOTE: capabilities, reset tokens and a pending email change are
+            # removed by the cascade
             res = conn.execute(
                 sa.delete(USERS)
                 .where(USERS.c.email == email.get())
@@ -392,7 +415,73 @@ class DBUserManager(UserManager):
             conn.execute(
                 sa.delete(RESET_TOKENS)
                 .where(RESET_TOKENS.c.user_id == res.id))
+            # NOTE: a pending change was requested for the old email
+            conn.execute(
+                sa.delete(EMAIL_CHANGES)
+                .where(EMAIL_CHANGES.c.user_id == res.id))
         return True
+
+    def do_request_email_change(
+            self, email: UName, new_email: UName) -> EmailChangeToken | None:
+        token: EmailChangeToken = uuid.uuid4().hex
+        with self._engine.begin() as conn:
+            conn.execute(
+                sa.delete(EMAIL_CHANGES)
+                .where(EMAIL_CHANGES.c.expires <= _now()))
+            # NOTE: the row lock orders the request with a concurrent email
+            # change or deletion of the account (which remove the pending
+            # change): a pending change always belongs to the account's
+            # current email. the new email is checked again when the change
+            # is confirmed
+            user_id = conn.execute(
+                sa.select(USERS.c.id)
+                .where(USERS.c.email == email.get())
+                .with_for_update()).scalar_one_or_none()
+            if user_id is None:
+                return None
+            if conn.execute(
+                    sa.select(USERS.c.id)
+                    .where(USERS.c.email == new_email.get())).first():
+                return None
+            stmt = pg_insert(EMAIL_CHANGES).values(
+                user_id=user_id,
+                token_hash=hash_token(token),
+                new_email=new_email.get(),
+                expires=_in_seconds(self.email_change_expire()))
+            # NOTE: a new request replaces the pending change (and its token)
+            conn.execute(stmt.on_conflict_do_update(
+                index_elements=[EMAIL_CHANGES.c.user_id],
+                set_={
+                    "token_hash": stmt.excluded.token_hash,
+                    "new_email": stmt.excluded.new_email,
+                    "expires": stmt.excluded.expires,
+                }))
+        return token
+
+    def take_email_change(self, token: EmailChangeToken) -> EmailChange | None:
+        with self._engine.begin() as conn:
+            # NOTE: deleting the row is what makes the token single use: of
+            # two concurrent uses only one gets the row back
+            res = conn.execute(
+                sa.delete(EMAIL_CHANGES)
+                .where(
+                    EMAIL_CHANGES.c.token_hash == hash_token(token),
+                    EMAIL_CHANGES.c.expires > _now())
+                .returning(
+                    EMAIL_CHANGES.c.user_id,
+                    EMAIL_CHANGES.c.new_email)).first()
+            if res is None:
+                return None
+            email = conn.execute(
+                sa.select(USERS.c.email)
+                .where(USERS.c.id == res.user_id)).scalar_one_or_none()
+        if email is None:
+            # NOTE: the account was deleted in the meantime
+            return None
+        return {
+            "email": UName(email),
+            "new_email": UName(res.new_email),
+        }
 
     # *** sessions ***
 

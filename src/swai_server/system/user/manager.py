@@ -32,6 +32,7 @@ from swai.system.user import (
 
 SessionToken: TypeAlias = str
 ResetToken: TypeAlias = str
+EmailChangeToken: TypeAlias = str
 AccountKey: TypeAlias = str
 RawPassword: TypeAlias = str
 HashPassword: TypeAlias = str
@@ -48,6 +49,7 @@ DEFAULT_CAPABILITIES: set[CapabilityName] = {
 
 PW_RESET_EXPIRE = 24.0 * 60.0 * 60.0  # 24h
 PW_RESET_COOLDOWN = 1.0 * 60.0  # 1min
+EMAIL_CHANGE_EXPIRE = 24.0 * 60.0 * 60.0  # 24h
 
 
 def as_capability(capability: str) -> CapabilityName:
@@ -146,6 +148,19 @@ AccountIds = TypedDict('AccountIds', {
 })
 
 
+EmailChange = TypedDict('EmailChange', {
+    "email": UName,
+    "new_email": UName,
+})
+
+
+ConfirmedEmailChange = TypedDict('ConfirmedEmailChange', {
+    "email": UName,
+    "new_email": UName,
+    "changed": bool,
+})
+
+
 UserInfo = TypedDict('UserInfo', {
     "email": UName,
     "display_name": str,
@@ -190,6 +205,16 @@ class UserManager:
             float: The time in seconds.
         """
         return PW_RESET_COOLDOWN
+
+    @staticmethod
+    def email_change_expire() -> float:
+        """
+        How long the confirmation link of an email change stays valid.
+
+        Returns:
+            float: The time in seconds.
+        """
+        return EMAIL_CHANGE_EXPIRE
 
     def is_admin_login(self, email: UName, password: RawPassword) -> bool:
         if not self.is_admin(email):
@@ -329,8 +354,10 @@ class UserManager:
         """
         Changes the email of an account in one step. The account keeps its
         ids (and so its chats, worker token and workers), all its sessions
-        end, and outstanding reset tokens and the reset cooldown are
-        dropped. The admin's email cannot be changed and cannot be taken.
+        end, and outstanding reset tokens, the reset cooldown, and a pending
+        email change are dropped. The admin's email cannot be changed and
+        cannot be taken. Users go through `request_email_change` and
+        `confirm_email_change`, which end here.
 
         Args:
             email (UName): The current email.
@@ -348,6 +375,76 @@ class UserManager:
 
     def do_change_email(self, email: UName, new_email: UName) -> bool:
         raise NotImplementedError()
+
+    def request_email_change(
+            self, email: UName, new_email: UName) -> EmailChangeToken | None:
+        """
+        Creates a pending email change for an account. Nothing changes until
+        the change is confirmed with the returned token (see
+        `confirm_email_change`), which is sent to the new address. The token
+        is single use and expires (see `email_change_expire`). A new request
+        for the same account replaces the pending change (its token stops
+        working). Deleting the account or changing its email drops the
+        pending change. The store only keeps the hash of the token.
+
+        Args:
+            email (UName): The current email.
+            new_email (UName): The new email.
+
+        Returns:
+            EmailChangeToken | None: The token or None if the account does not
+                exist, is the admin, or the new email belongs to an account or
+                the admin (or is the current email).
+        """
+        if self.is_admin(email) or self.is_admin(new_email):
+            return None
+        if email == new_email:
+            return None
+        return self.do_request_email_change(email, new_email)
+
+    def do_request_email_change(
+            self, email: UName, new_email: UName) -> EmailChangeToken | None:
+        raise NotImplementedError()
+
+    def take_email_change(self, token: EmailChangeToken) -> EmailChange | None:
+        """
+        Removes the pending email change of a token, in one step: of two
+        uses of the same token only one gets the change.
+
+        Args:
+            token (EmailChangeToken): The token as the user presents it.
+
+        Returns:
+            EmailChange | None: The account's current email and the new email,
+                or None if the token is unknown, expired, used, or replaced by
+                a newer request.
+        """
+        raise NotImplementedError()
+
+    def confirm_email_change(
+            self, token: EmailChangeToken) -> ConfirmedEmailChange | None:
+        """
+        Applies a pending email change (see `request_email_change`) with
+        `change_email`, which checks again that the new email is free (and
+        not the admin's): it can have been taken since the request. The token
+        is used up either way.
+
+        Args:
+            token (EmailChangeToken): The token from the confirmation link.
+
+        Returns:
+            ConfirmedEmailChange | None: None if the token is unknown, expired,
+                used, or replaced. Otherwise the change and whether it
+                happened.
+        """
+        change = self.take_email_change(token)
+        if change is None:
+            return None
+        return {
+            "email": change["email"],
+            "new_email": change["new_email"],
+            "changed": self.change_email(change["email"], change["new_email"]),
+        }
 
     def has_capability(self, email: UName, capability: CapabilityName) -> bool:
         if self.is_admin(email):

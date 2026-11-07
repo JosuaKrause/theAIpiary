@@ -32,6 +32,8 @@ from swai.system.user import (
 )
 from swai_server.system.user.manager import (
     AccountKey,
+    ConfirmedEmailChange,
+    EmailChangeToken,
     RawPassword,
     ResetToken,
     SessionToken,
@@ -207,12 +209,29 @@ class SecureContext:
                 remove_chats(user_id)
         return self._user_mng.delete_user(email)
 
-    def change_email(
-            self, who: SessionToken, email: UName, new_email: UName) -> bool:
+    def ensure_can_change_email(self, who: SessionToken, email: UName) -> None:
         """
-        Changes the email of an account (see `UserManager.change_email`).
-        Requires the change email capability. Neither the own email nor the
-        admin's can be changed this way.
+        Refuses (403) unless the acting user may change the email of the
+        account: it needs the change email capability, and neither the own
+        email nor the admin's can be changed.
+
+        Args:
+            who (SessionToken): The session of the acting user.
+            email (UName): The current email of the account.
+        """
+        self._ensure_can_manage(
+            who, email, CAP_CHANGE_EMAIL, "change the email of")
+
+    def request_email_change(
+            self,
+            who: SessionToken,
+            email: UName,
+            new_email: UName) -> EmailChangeToken | None:
+        """
+        Requests an email change for an account (see
+        `UserManager.request_email_change`): nothing changes until the token
+        (sent to the new address) confirms it. Requires the change email
+        capability (see `ensure_can_change_email`).
 
         Args:
             who (SessionToken): The session of the acting user.
@@ -220,12 +239,27 @@ class SecureContext:
             new_email (UName): The new email.
 
         Returns:
-            bool: Whether the email was changed. It is not if the account does
-                not exist or the new email is taken.
+            EmailChangeToken | None: The token or None if the account does not
+                exist or the new email is taken.
         """
-        self._ensure_can_manage(
-            who, email, CAP_CHANGE_EMAIL, "change the email of")
-        return self._user_mng.change_email(email, new_email)
+        self.ensure_can_change_email(who, email)
+        return self._user_mng.request_email_change(email, new_email)
+
+    def confirm_email_change(
+            self, token: EmailChangeToken) -> ConfirmedEmailChange | None:
+        """
+        Applies a pending email change (see
+        `UserManager.confirm_email_change`). Whoever has the token (sent to
+        the new address) may confirm it.
+
+        Args:
+            token (EmailChangeToken): The token from the confirmation link.
+
+        Returns:
+            ConfirmedEmailChange | None: None if the token is not valid,
+                otherwise the change and whether it happened.
+        """
+        return self._user_mng.confirm_email_change(token)
 
     def set_password(
             self,

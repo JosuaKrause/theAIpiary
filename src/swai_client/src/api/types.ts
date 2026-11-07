@@ -21,6 +21,7 @@ export type Password = string & { _password: void };
 export type SessionId = string & { _sessionId: void };
 export type TaskId = string & { _taskId: void };
 export type ResetToken = string & { _resetToken: void };
+export type EmailChangeToken = string & { _emailChangeToken: void };
 export type WorkerToken = string & { _workerToken: void };
 type WorkerId = string & { _workerId: void };
 
@@ -165,7 +166,13 @@ export type ApiSendResetResponse = {
 export type ApiChangeEmailResponse = {
   email: Readonly<UserEmail>;
   new_email: Readonly<UserEmail>;
-  changed: boolean;
+  sent: boolean;
+};
+
+export type ApiConfirmEmailChangeResponse = {
+  confirmed: boolean;
+  email: Readonly<UserEmail> | null;
+  message: string;
 };
 
 export type ApiDeleteUserResponse = {

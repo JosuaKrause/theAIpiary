@@ -19,7 +19,13 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Iterator
-from test.util import ADMIN_EMAIL, ADMIN_PW, memory_redis, UNUSED_REDIS
+from test.util import (
+    ADMIN_EMAIL,
+    ADMIN_PW,
+    memory_redis,
+    stored_email_changes,
+    UNUSED_REDIS,
+)
 from typing import Any, cast
 
 import pytest
@@ -37,6 +43,7 @@ from swai_server.system.user import manager as user_manager_module
 from swai_server.system.user import redis as user_redis_module
 from swai_server.system.user.db import (
     DBUserManager,
+    EMAIL_CHANGES,
     RESET_TOKENS,
     SESSIONS,
     USERS,
@@ -168,11 +175,19 @@ class PausingRedis:
     def __init__(self, inner: Redis) -> None:
         self._inner = inner
         self._paused_thread: int | None = None
+        self._skip = 0
         self._in_pause = threading.Event()
         self._resume = threading.Event()
 
-    def pause_current_thread(self) -> None:
-        """Pauses the calling thread after each of its redis calls."""
+    def pause_current_thread(self, *, skip: int = 0) -> None:
+        """
+        Pauses the calling thread after each of its redis calls.
+
+        Args:
+            skip (int, optional): How many calls of the thread pass before
+                the first pause. Defaults to 0.
+        """
+        self._skip = skip
         self._paused_thread = threading.get_ident()
 
     def wait_for_pause(self) -> bool:
@@ -190,6 +205,9 @@ class PausingRedis:
 
     def _pause(self) -> None:
         if threading.get_ident() != self._paused_thread:
+            return
+        if self._skip > 0:
+            self._skip -= 1
             return
         self._in_pause.set()
         assert self._resume.wait(SOME_TIME)
@@ -1026,6 +1044,374 @@ def test_chats_follow_the_account(
     assert session_store.get_user(chat) == new_user_id
 
 
+# *** confirming an email change ***
+
+
+DAVE = UName("dave@example.com")
+
+
+def request_change(
+        user_mng: UserManager, email: UName, new_email: UName) -> str:
+    """
+    Requests an email change that must be accepted.
+
+    Args:
+        user_mng (UserManager): The user manager.
+        email (UName): The current email.
+        new_email (UName): The new email.
+
+    Returns:
+        str: The confirmation token.
+    """
+    token = user_mng.request_email_change(email, new_email)
+    assert token is not None
+    return token
+
+
+def test_email_change_request_then_confirm(user_mng: UserManager) -> None:
+    """A request changes nothing; confirming it changes the email the way
+    `change_email` does, once."""
+    invite(user_mng, ALICE, "alice pw")
+    session = user_mng.login(ALICE, "alice pw")
+    assert session is not None
+    worker_token = worker_token_for(user_mng, ALICE)
+    reset_token = user_mng.generate_reset_token(ALICE)
+    assert reset_token is not None
+    ids = user_mng.get_ids(ALICE)
+
+    token = request_change(user_mng, ALICE, CAROL)
+
+    # nothing changed yet
+    assert user_mng.get_ids(ALICE) == ids
+    assert user_mng.get_ids(CAROL) is None
+    assert user_mng.get_email(session) == ALICE
+    assert user_mng.login(ALICE, "alice pw") is not None
+    assert user_mng.login(CAROL, "alice pw") is None
+    assert user_mng.get_email_for_reset_token(reset_token) == ALICE
+    assert list(user_mng.list_users()) == [ADMIN_EMAIL, ALICE]
+
+    assert user_mng.confirm_email_change(token) == {
+        "email": ALICE,
+        "new_email": CAROL,
+        "changed": True,
+    }
+
+    assert user_mng.get_ids(CAROL) == ids
+    assert user_mng.get_ids(ALICE) is None
+    assert user_mng.get_email(session) is None
+    assert user_mng.count_sessions(CAROL) == 0
+    assert user_mng.get_email_for_reset_token(reset_token) is None
+    assert user_mng.login(ALICE, "alice pw") is None
+    assert user_mng.login(CAROL, "alice pw") is not None
+    assert user_mng.is_correct_worker_token(CAROL, worker_token)
+    assert not stored_email_changes(user_mng)
+    # single use
+    assert user_mng.confirm_email_change(token) is None
+    assert user_mng.get_ids(CAROL) == ids
+
+
+def test_email_change_tokens_are_stored_hashed(user_mng: UserManager) -> None:
+    """The store only has the hash of a confirmation token: reading the
+    store is not enough to confirm the change."""
+    assert user_mng.create_user(ALICE, "Alice")
+    token = request_change(user_mng, ALICE, CAROL)
+    stored = stored_email_changes(user_mng)
+    assert stored == [sha256(token)]
+    assert token not in stored
+    assert user_mng.confirm_email_change(stored[0]) is None
+    assert user_mng.get_ids(CAROL) is None
+    assert user_mng.confirm_email_change(token) is not None
+
+
+def test_email_change_expires(
+        user_mng: UserManager,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(user_manager_module, "EMAIL_CHANGE_EXPIRE", 0.05)
+    assert user_mng.create_user(ALICE, "Alice")
+    token = request_change(user_mng, ALICE, CAROL)
+    time.sleep(0.1)
+    assert user_mng.confirm_email_change(token) is None
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE}
+    # a new request works and cleans up after the expired one
+    monkeypatch.setattr(
+        user_manager_module, "EMAIL_CHANGE_EXPIRE", SOME_TIME * 10.0)
+    assert user_mng.create_user(BOB, "Bob")
+    bob_token = request_change(user_mng, BOB, DAVE)
+    assert stored_email_changes(user_mng) == [sha256(bob_token)]
+
+
+def test_forged_email_change_token(user_mng: UserManager) -> None:
+    assert user_mng.create_user(ALICE, "Alice")
+    token = request_change(user_mng, ALICE, CAROL)
+    account_key = user_mng.get_account_key(ALICE)
+    assert account_key is not None
+    for forged in (
+            "",
+            uuid.uuid4().hex,
+            f"{account_key}{uuid.uuid4().hex}",
+            token[:-1],
+            f"{token}0",
+            ):
+        assert user_mng.confirm_email_change(forged) is None
+    assert user_mng.get_ids(CAROL) is None
+    # the real token still works
+    assert user_mng.confirm_email_change(token) is not None
+
+
+def test_email_change_request_refused(user_mng: UserManager) -> None:
+    assert user_mng.create_user(ALICE, "Alice")
+    assert user_mng.create_user(BOB, "Bob")
+    # taken, by an account or the admin; no change; unknown accounts; the
+    # admin's email
+    for email, new_email in [
+            (ALICE, BOB),
+            (ALICE, ADMIN_EMAIL),
+            (ALICE, ALICE),
+            (NOBODY, CAROL),
+            (ADMIN_EMAIL, CAROL),
+            ]:
+        assert user_mng.request_email_change(email, new_email) is None
+    assert not stored_email_changes(user_mng)
+
+
+def test_email_taken_before_confirm(user_mng: UserManager) -> None:
+    """The new email is checked again when the change is confirmed: it can
+    have been taken in the meantime. The token is used up either way."""
+    invite(user_mng, ALICE, "alice pw")
+    ids = user_mng.get_ids(ALICE)
+    token = request_change(user_mng, ALICE, CAROL)
+    assert user_mng.create_user(CAROL, "Carol")
+    assert user_mng.confirm_email_change(token) == {
+        "email": ALICE,
+        "new_email": CAROL,
+        "changed": False,
+    }
+    assert user_mng.get_ids(ALICE) == ids
+    assert user_mng.get_user_info(CAROL)["display_name"] == "Carol"
+    assert user_mng.login(ALICE, "alice pw") is not None
+    assert user_mng.confirm_email_change(token) is None
+
+
+def test_email_change_to_the_same_email(user_mng: UserManager) -> None:
+    """Two accounts can wait for the same new email; the first to confirm
+    gets it."""
+    assert user_mng.create_user(ALICE, "Alice")
+    assert user_mng.create_user(BOB, "Bob")
+    bob_ids = user_mng.get_ids(BOB)
+    alice_token = request_change(user_mng, ALICE, CAROL)
+    bob_token = request_change(user_mng, BOB, CAROL)
+    assert user_mng.confirm_email_change(bob_token) == {
+        "email": BOB,
+        "new_email": CAROL,
+        "changed": True,
+    }
+    assert user_mng.confirm_email_change(alice_token) == {
+        "email": ALICE,
+        "new_email": CAROL,
+        "changed": False,
+    }
+    assert user_mng.get_ids(CAROL) == bob_ids
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE, CAROL}
+
+
+def test_new_email_change_request_replaces_old(user_mng: UserManager) -> None:
+    assert user_mng.create_user(ALICE, "Alice")
+    assert user_mng.create_user(BOB, "Bob")
+    first = request_change(user_mng, ALICE, CAROL)
+    bob_token = request_change(user_mng, BOB, CAROL)
+    second = request_change(user_mng, ALICE, DAVE)
+    assert first != second
+    # one pending change per account
+    assert stored_email_changes(user_mng) == sorted(
+        [sha256(second), sha256(bob_token)])
+    assert user_mng.confirm_email_change(first) is None
+    assert user_mng.get_ids(CAROL) is None
+    assert user_mng.confirm_email_change(second) == {
+        "email": ALICE,
+        "new_email": DAVE,
+        "changed": True,
+    }
+    # the other account's change is untouched
+    assert user_mng.confirm_email_change(bob_token) == {
+        "email": BOB,
+        "new_email": CAROL,
+        "changed": True,
+    }
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, CAROL, DAVE}
+
+
+def test_delete_user_drops_email_change(user_mng: UserManager) -> None:
+    """A pending change does not outlive its account: neither for the
+    deleted account nor for a new account with the same email."""
+    assert user_mng.create_user(ALICE, "Alice")
+    token = request_change(user_mng, ALICE, CAROL)
+    assert user_mng.delete_user(ALICE)
+    assert not stored_email_changes(user_mng)
+    assert user_mng.create_user(ALICE, "New Alice")
+    assert user_mng.confirm_email_change(token) is None
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE}
+    assert user_mng.get_user_info(ALICE)["display_name"] == "New Alice"
+
+
+def test_change_email_drops_email_change(user_mng: UserManager) -> None:
+    """A pending change was requested for the account's email at the time:
+    once the email changed another way it is gone."""
+    assert user_mng.create_user(ALICE, "Alice")
+    token = request_change(user_mng, ALICE, CAROL)
+    assert user_mng.change_email(ALICE, DAVE)
+    assert not stored_email_changes(user_mng)
+    assert user_mng.confirm_email_change(token) is None
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, DAVE}
+
+
+def test_concurrent_email_change_confirm_redis(
+        monkeypatch: pytest.MonkeyPatch, admin_pw_hash: str) -> None:
+    """Two uses of the same token at the same time: one is stopped after its
+    first redis call, the other completes, and then the first must fail."""
+    redis = PausingRedis(memory_redis())
+    monkeypatch.setattr(user_redis_module, "Redis", lambda *_a, **_kw: redis)
+    user_mng = RedisUserManager(
+        admin_email=ADMIN_EMAIL, admin_pw=admin_pw_hash, cfg=UNUSED_REDIS)
+    assert user_mng.create_user(ALICE, "Alice")
+    token = request_change(user_mng, ALICE, CAROL)
+    results: dict[str, Any] = {}
+
+    def confirm_first() -> None:
+        redis.pause_current_thread()
+        results["first"] = user_mng.confirm_email_change(token)
+
+    first = threading.Thread(target=confirm_first, daemon=True)
+    first.start()
+    assert redis.wait_for_pause()
+    results["second"] = user_mng.confirm_email_change(token)
+    redis.resume()
+    first.join(SOME_TIME)
+    assert not first.is_alive()
+    assert results == {
+        "first": None,
+        "second": {"email": ALICE, "new_email": CAROL, "changed": True},
+    }
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, CAROL}
+
+
+def test_email_change_request_during_change_redis(
+        monkeypatch: pytest.MonkeyPatch, admin_pw_hash: str) -> None:
+    """A request that looked up the account before its email changed (it is
+    stopped right before its script) creates no pending change for the old
+    email."""
+    redis = PausingRedis(memory_redis())
+    monkeypatch.setattr(user_redis_module, "Redis", lambda *_a, **_kw: redis)
+    user_mng = RedisUserManager(
+        admin_email=ADMIN_EMAIL, admin_pw=admin_pw_hash, cfg=UNUSED_REDIS)
+    assert user_mng.create_user(ALICE, "Alice")
+    results: dict[str, str | None] = {}
+
+    def request_first() -> None:
+        # NOTE: the email and info lookups of _account_key pass
+        redis.pause_current_thread(skip=1)
+        results["first"] = user_mng.request_email_change(ALICE, CAROL)
+
+    first = threading.Thread(target=request_first, daemon=True)
+    first.start()
+    assert redis.wait_for_pause()
+    assert user_mng.change_email(ALICE, DAVE)
+    redis.resume()
+    first.join(SOME_TIME)
+    assert not first.is_alive()
+    assert results == {"first": None}
+    assert not stored_email_changes(user_mng)
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, DAVE}
+
+
+@pytest.mark.parametrize("first_commits", [True, False])
+def test_concurrent_email_change_confirm_postgres(
+        postgres_user_mng: DBUserManager,
+        postgres_url: str,
+        pg_schema: str,
+        first_commits: bool) -> None:
+    """A use of a token that is not committed yet makes a second use wait:
+    it fails if the first commits and succeeds if the first rolls back."""
+    user_mng = postgres_user_mng
+    assert user_mng.create_user(ALICE, "Alice")
+    token = request_change(user_mng, ALICE, CAROL)
+    engine = create_db_engine(postgres_url, schema=pg_schema)
+    results: dict[str, Any] = {}
+
+    def confirm_second() -> None:
+        results["second"] = user_mng.confirm_email_change(token)
+
+    try:
+        with engine.connect() as conn:
+            # NOTE: what the first use does before its transaction ends
+            conn.execute(
+                sa.delete(EMAIL_CHANGES)
+                .where(EMAIL_CHANGES.c.token_hash == sha256(token)))
+            second = threading.Thread(target=confirm_second, daemon=True)
+            second.start()
+            wait_for_lock_waiter(engine)
+            assert "second" not in results
+            if first_commits:
+                conn.commit()
+            else:
+                conn.rollback()
+        second.join(SOME_TIME)
+        assert not second.is_alive()
+    finally:
+        engine.dispose()
+    if first_commits:
+        assert results == {"second": None}
+        assert set(user_mng.list_users()) == {ADMIN_EMAIL, ALICE}
+    else:
+        assert results == {
+            "second": {"email": ALICE, "new_email": CAROL, "changed": True},
+        }
+        assert set(user_mng.list_users()) == {ADMIN_EMAIL, CAROL}
+
+
+@pytest.mark.parametrize("first_commits", [True, False])
+def test_email_change_request_during_change_postgres(
+        postgres_user_mng: DBUserManager,
+        postgres_url: str,
+        pg_schema: str,
+        first_commits: bool) -> None:
+    """A request while the account's email changes waits for the change: it
+    creates no pending change for the old email if the change commits."""
+    user_mng = postgres_user_mng
+    assert user_mng.create_user(ALICE, "Alice")
+    engine = create_db_engine(postgres_url, schema=pg_schema)
+    results: dict[str, str | None] = {}
+
+    def request_second() -> None:
+        results["second"] = user_mng.request_email_change(ALICE, CAROL)
+
+    try:
+        with engine.connect() as conn:
+            # NOTE: what an email change does before its transaction ends
+            conn.execute(
+                sa.update(USERS)
+                .where(USERS.c.email == ALICE.get())
+                .values(email=DAVE.get()))
+            second = threading.Thread(target=request_second, daemon=True)
+            second.start()
+            wait_for_lock_waiter(engine)
+            assert "second" not in results
+            if first_commits:
+                conn.commit()
+            else:
+                conn.rollback()
+        second.join(SOME_TIME)
+        assert not second.is_alive()
+    finally:
+        engine.dispose()
+    if first_commits:
+        assert results == {"second": None}
+        assert not stored_email_changes(user_mng)
+    else:
+        token = results["second"]
+        assert token is not None
+        assert stored_email_changes(user_mng) == [sha256(token)]
+
+
 # *** stores from before the stored ids ***
 
 
@@ -1478,6 +1864,7 @@ def test_load_postgres_user_manager(
         assert set(sa.inspect(engine).get_table_names(schema=pg_schema)) == {
             "users",
             "user_capabilities",
+            "user_email_changes",
             "user_reset_tokens",
             "user_sessions",
             "user_store_meta",

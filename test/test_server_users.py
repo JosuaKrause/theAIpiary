@@ -14,12 +14,15 @@
 """Tests for the user endpoints of the API server, run against the real
 request handlers on in-memory stores, once with each user manager."""
 import json
+import re
 import threading
+import time
 import urllib.error
 import urllib.request
+import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from test.util import ADMIN_EMAIL, memory_redis
+from test.util import ADMIN_EMAIL, memory_redis, stored_email_changes
 from typing import Any, cast
 
 import pytest
@@ -41,9 +44,11 @@ from swai.system.user import (
     CapabilityName,
 )
 from swai_server import config as config_module
+from swai_server.app import email as email_module
 from swai_server.app import server as server_module
 from swai_server.auction import queue as queue_module
 from swai_server.auction.queue import TaskQueue
+from swai_server.system.user import manager as user_manager_module
 from swai_server.system.user.manager import (
     ResetToken,
     SessionToken,
@@ -56,6 +61,16 @@ ALICE = UName("alice@example.com")
 BOB = UName("bob@example.com")
 NOBODY = UName("nobody@example.com")
 SOME_TIME = 5.0
+OWN_URL = "https://aipiary.example.com"
+OWN_EMAIL = "hive@example.com"
+
+
+@dataclass
+class Mail:
+    """An email the server sent."""
+    recipient: UName
+    subject: str
+    message: str
 
 
 @dataclass
@@ -68,6 +83,24 @@ class Api:
     sent: list[tuple[UName, ResetToken]] = field(default_factory=list)
     email_sent: threading.Event = field(default_factory=threading.Event)
     smtp_release: threading.Event = field(default_factory=threading.Event)
+    mails: list[Mail] = field(default_factory=list)
+    mail_cond: threading.Condition = field(default_factory=threading.Condition)
+
+    def wait_for_mails(self, count: int) -> list[Mail]:
+        """
+        Waits until the server sent a number of emails in total (besides the
+        password resets in `sent`).
+
+        Args:
+            count (int): The number of emails.
+
+        Returns:
+            list[Mail]: All emails sent so far.
+        """
+        with self.mail_cond:
+            assert self.mail_cond.wait_for(
+                lambda: len(self.mails) >= count, SOME_TIME)
+            return list(self.mails)
 
     def post(
             self,
@@ -110,17 +143,28 @@ class Api:
                 return err.code, err.read().decode("utf-8")
 
 
-@pytest.fixture(name="api")
-def fixture_api(
+def run_api(
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Any,
         admin_pw_hash: str,
         user_mng: UserManager,
-        session_store: SessionStore) -> Iterator[Api]:
+        session_store: SessionStore,
+        *,
+        email_configured: bool) -> Iterator[Api]:
     """
-    The API server on in-memory stores (and the user manager under test),
-    with email sending replaced by a recorder. The recorder only returns
-    once `smtp_release` is set, the way a slow SMTP server would.
+    Runs the API server on in-memory stores (and the user manager under
+    test), with email sending replaced by recorders: password resets go to
+    `sent` and every other email to `mails`. The recorders only return once
+    `smtp_release` is set, the way a slow SMTP server would.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch fixture.
+        tmp_path (Any): The temporary folder.
+        admin_pw_hash (str): The hashed admin password.
+        user_mng (UserManager): The user manager.
+        session_store (SessionStore): The session store.
+        email_configured (bool): Whether the server gets a valid email
+            configuration.
 
     Yields:
         Api: The running server.
@@ -143,8 +187,14 @@ def fixture_api(
     monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL.get())
     monkeypatch.setenv("ADMIN_PW", admin_pw_hash)
     monkeypatch.setenv("UI_PATH", f"{tmp_path}")
-    for env in ("SMTP_HOST", "SMTP_USER", "SMTP_PW", "OWN_EMAIL"):
+    for env in ("SMTP_HOST", "SMTP_USER", "SMTP_PW", "OWN_EMAIL", "OWN_URL"):
         monkeypatch.delenv(env, raising=False)
+    if email_configured:
+        # NOTE: no SMTP server is contacted: send_email is replaced below
+        monkeypatch.setenv("OWN_URL", OWN_URL)
+        monkeypatch.setenv("OWN_EMAIL", OWN_EMAIL)
+        monkeypatch.setenv("SMTP_HOST", "smtp.invalid")
+        monkeypatch.setenv("SMTP_USER", "hive")
 
     # NOTE: the user manager fixture has the same admin as the environment
     monkeypatch.setattr(
@@ -190,6 +240,22 @@ def fixture_api(
         monkeypatch.setattr(
             server_module, "send_password_reset", send_password_reset)
 
+        def send_email(
+                _config: Any,
+                *,
+                recipient_email: str,
+                subject: str,
+                message: str) -> None:
+            assert api.smtp_release.wait(SOME_TIME)
+            with api.mail_cond:
+                api.mails.append(Mail(
+                    recipient=UName(recipient_email),
+                    subject=subject,
+                    message=message))
+                api.mail_cond.notify_all()
+
+        monkeypatch.setattr(email_module, "send_email", send_email)
+
         def serve() -> None:
             while not server.done:
                 server.handle_request()
@@ -202,6 +268,51 @@ def fixture_api(
         serve_thread.join(SOME_TIME)
     finally:
         server.server_close()
+
+
+@pytest.fixture(name="api")
+def fixture_api(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Any,
+        admin_pw_hash: str,
+        user_mng: UserManager,
+        session_store: SessionStore) -> Iterator[Api]:
+    """
+    The API server with email configured (see `run_api`).
+
+    Yields:
+        Api: The running server.
+    """
+    yield from run_api(
+        monkeypatch,
+        tmp_path,
+        admin_pw_hash,
+        user_mng,
+        session_store,
+        email_configured=True)
+
+
+@pytest.fixture(name="api_without_email")
+def fixture_api_without_email(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Any,
+        admin_pw_hash: str,
+        user_mng: UserManager,
+        session_store: SessionStore) -> Iterator[Api]:
+    """
+    The API server without a valid email configuration (see `run_api`), the
+    way it runs without SMTP.
+
+    Yields:
+        Api: The running server.
+    """
+    yield from run_api(
+        monkeypatch,
+        tmp_path,
+        admin_pw_hash,
+        user_mng,
+        session_store,
+        email_configured=False)
 
 
 def request_reset(api: Api, email: UName) -> tuple[int, Any]:
@@ -601,9 +712,122 @@ def login(api: Api, email: UName, password: str) -> SessionToken | None:
     return cookie.split("user_session=", 1)[1].split(";", 1)[0]
 
 
+def confirmation_token(mail: Mail) -> str:
+    """
+    The token of the confirmation link in an email.
+
+    Args:
+        mail (Mail): The email to the new address.
+
+    Returns:
+        str: The token.
+    """
+    link = re.search(
+        rf'href="{re.escape(OWN_URL)}/confirm-email\?token=([^"#]+)#"',
+        mail.message)
+    assert link is not None, mail.message
+    return link.group(1)
+
+
+def request_change(
+        api: Api,
+        session: SessionToken,
+        email: UName,
+        new_email: UName) -> tuple[Mail, Mail]:
+    """
+    Requests an email change through the API that must be accepted, and
+    waits for its two emails.
+
+    Args:
+        api (Api): The server.
+        session (SessionToken): The session of the acting user.
+        email (UName): The current email.
+        new_email (UName): The new email.
+
+    Returns:
+        tuple[Mail, Mail]: The confirmation sent to the new address and the
+            notice sent to the old address.
+    """
+    count = len(api.mails)
+    assert change_email(api, session, email, new_email) == (200, {
+        "email": email.get(),
+        "new_email": new_email.get(),
+        "sent": True,
+    })
+    api.smtp_release.set()
+    mails = api.wait_for_mails(count + 2)[count:]
+    assert len(mails) == 2
+    by_recipient = {mail.recipient: mail for mail in mails}
+    assert set(by_recipient) == {email, new_email}
+    return by_recipient[new_email], by_recipient[email]
+
+
+def confirm(api: Api, token: str) -> tuple[int, Any]:
+    """
+    Uses a confirmation link.
+
+    Args:
+        api (Api): The server.
+        token (str): The token of the link.
+
+    Returns:
+        tuple[int, Any]: The status code and the response.
+    """
+    return api.post("/user/confirm_email_change", {"token": token})
+
+
+def assert_confirm_refused(api: Api, token: str, reason: str) -> None:
+    """
+    Checks that a confirmation link is refused and sends no email.
+
+    Args:
+        api (Api): The server.
+        token (str): The token of the link.
+        reason (str): A part of the message.
+    """
+    count = len(api.mails)
+    status, res = confirm(api, token)
+    assert status == 200
+    assert not res["confirmed"]
+    assert res["email"] is None
+    assert reason in res["message"]
+    # NOTE: the email that would be sent is sent in the background
+    time.sleep(0.1)
+    assert len(api.mails) == count
+
+
+def change_and_confirm(
+        api: Api,
+        session: SessionToken,
+        email: UName,
+        new_email: UName) -> Mail:
+    """
+    Changes an email through the API: the request and the confirmation.
+
+    Args:
+        api (Api): The server.
+        session (SessionToken): The session of the acting user.
+        email (UName): The current email.
+        new_email (UName): The new email.
+
+    Returns:
+        Mail: The email the old address got about the change.
+    """
+    confirm_mail, _ = request_change(api, session, email, new_email)
+    count = len(api.mails)
+    status, res = confirm(api, confirmation_token(confirm_mail))
+    assert status == 200
+    assert res["confirmed"]
+    assert res["email"] == new_email.get()
+    [changed_mail] = api.wait_for_mails(count + 1)[count:]
+    assert changed_mail.recipient == email
+    return changed_mail
+
+
 def test_change_email_endpoint_permissions(api: Api) -> None:
     alice = session_for(api, ALICE)
     bob = session_for(api, BOB)
+    api.smtp_release.set()
     assert api.post(
         "/user/change_email",
         {"name": BOB.get(), "new_email": CAROL.get()})[0] == 401
@@ -617,26 +841,164 @@ def test_change_email_endpoint_permissions(api: Api) -> None:
             (admin, ADMIN_EMAIL),
             ]:
         assert change_email(api, who, email, CAROL)[0] == 403
-    assert is_logged_in(api, bob)
-    # taken emails, including the admin's, and an empty one
-    for taken in (ALICE, ADMIN_EMAIL):
-        assert change_email(api, admin, BOB, taken) == (200, {
-            "email": BOB.get(),
-            "new_email": taken.get(),
-            "changed": False,
+    # taken emails, including the admin's, an unknown account, and an empty
+    # email
+    for email, new_email in [
+            (BOB, ALICE),
+            (BOB, ADMIN_EMAIL),
+            (NOBODY, CAROL),
+            ]:
+        assert change_email(api, admin, email, new_email) == (200, {
+            "email": email.get(),
+            "new_email": new_email.get(),
+            "sent": False,
         })
     assert api.post(
         "/user/change_email",
         {"name": BOB.get(), "new_email": " "},
         session=admin)[0] == 400
+    assert not stored_email_changes(api.user_mng)
     assert is_logged_in(api, bob)
     assert set(api.user_mng.list_users()) == {ADMIN_EMAIL, ALICE, BOB}
-    # with the capability (a user that is not the admin)
-    assert change_email(api, alice, BOB, CAROL) == (200, {
+    # with the capability (a user that is not the admin); the refused
+    # requests sent no email
+    request_change(api, alice, BOB, CAROL)
+    assert len(api.mails) == 2
+    assert is_logged_in(api, bob)
+
+
+def test_change_email_sends_confirmation(api: Api) -> None:
+    """A request sends a confirmation link to the new address and a notice
+    to the old one, and changes nothing. The link changes the email and the
+    old address is told."""
+    user_mng = api.user_mng
+    session_for(api, BOB)
+    reset_token = user_mng.generate_reset_token(BOB)
+    assert reset_token is not None
+    assert user_mng.set_password("bob pw", reset_token) == BOB
+    bob = login(api, BOB, "bob pw")
+    assert bob is not None
+    admin = session_for(api, ADMIN_EMAIL)
+
+    # the response does not wait for the emails
+    assert change_email(api, admin, BOB, CAROL) == (200, {
         "email": BOB.get(),
         "new_email": CAROL.get(),
-        "changed": True,
+        "sent": True,
     })
+    assert not api.mails
+    api.smtp_release.set()
+    mails = api.wait_for_mails(2)
+    assert len(mails) == 2
+    by_recipient = {mail.recipient: mail for mail in mails}
+    confirm_mail = by_recipient[CAROL]
+    notice = by_recipient[BOB]
+    assert "Confirm your new email" in confirm_mail.subject
+    assert BOB.get() in confirm_mail.message
+    assert "Email change requested" in notice.subject
+    assert CAROL.get() in notice.message
+    # who asked, to contact them
+    for mail in (confirm_mail, notice):
+        assert f"href=\"mailto:{ADMIN_EMAIL.get()}\"" in mail.message
+    # only the new address gets the link
+    token = confirmation_token(confirm_mail)
+    assert token not in notice.message
+
+    # nothing changed yet
+    assert is_logged_in(api, bob)
+    assert login(api, CAROL, "bob pw") is None
+    assert login(api, BOB, "bob pw") is not None
+
+    assert confirm(api, token) == (200, {
+        "confirmed": True,
+        "email": CAROL.get(),
+        "message": (
+            f"The email was changed to {CAROL.get()}. Log in with it and "
+            "your password."),
+    })
+    [changed] = api.wait_for_mails(3)[2:]
+    assert changed.recipient == BOB
+    assert "Your email was changed" in changed.subject
+    assert CAROL.get() in changed.message
+    assert f"href=\"mailto:{OWN_EMAIL}\"" in changed.message
+    assert not is_logged_in(api, bob)
+    assert login(api, BOB, "bob pw") is None
+    assert login(api, CAROL, "bob pw") is not None
+    # the link is used up
+    assert_confirm_refused(api, token, "invalid")
+
+
+DAVE = UName("dave@example.com")
+
+
+def test_confirm_email_change_refused(
+        api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Forged, used and expired links are refused, and so is a link whose
+    new email was taken in the meantime; none changes anything or sends an
+    email."""
+    user_mng = api.user_mng
+    session_for(api, BOB)
+    admin = session_for(api, ADMIN_EMAIL)
+    bob_ids = user_mng.get_ids(BOB)
+    for forged in ("", "0" * 32, uuid.uuid4().hex):
+        assert_confirm_refused(api, forged, "invalid")
+    # taken in the meantime
+    confirm_mail, _ = request_change(api, admin, BOB, CAROL)
+    session_for(api, CAROL)
+    token = confirmation_token(confirm_mail)
+    assert_confirm_refused(api, token, "belongs to another account")
+    # used up even so
+    assert_confirm_refused(api, token, "invalid")
+    # expired
+    monkeypatch.setattr(user_manager_module, "EMAIL_CHANGE_EXPIRE", 0.05)
+    confirm_mail, _ = request_change(api, admin, BOB, DAVE)
+    time.sleep(0.1)
+    assert_confirm_refused(api, confirmation_token(confirm_mail), "invalid")
+    assert user_mng.get_ids(BOB) == bob_ids
+    assert set(user_mng.list_users()) == {ADMIN_EMAIL, BOB, CAROL}
+
+
+def test_change_email_replaces_pending_change(api: Api) -> None:
+    session_for(api, BOB)
+    admin = session_for(api, ADMIN_EMAIL)
+    first, _ = request_change(api, admin, BOB, CAROL)
+    second, _ = request_change(api, admin, BOB, DAVE)
+    assert_confirm_refused(api, confirmation_token(first), "invalid")
+    status, res = confirm(api, confirmation_token(second))
+    assert status == 200
+    assert res["confirmed"]
+    assert set(api.user_mng.list_users()) == {ADMIN_EMAIL, DAVE}
+
+
+def test_delete_user_drops_pending_change(api: Api) -> None:
+    session_for(api, BOB)
+    admin = session_for(api, ADMIN_EMAIL)
+    confirm_mail, _ = request_change(api, admin, BOB, CAROL)
+    assert api.post(
+        "/user/delete", {"name": BOB.get()}, session=admin,
+    ) == (200, {"email": BOB.get(), "deleted": True, "chats": 0})
+    assert not stored_email_changes(api.user_mng)
+    session_for(api, BOB)
+    assert_confirm_refused(api, confirmation_token(confirm_mail), "invalid")
+    assert set(api.user_mng.list_users()) == {ADMIN_EMAIL, BOB}
+
+
+def test_change_email_without_email_config(api_without_email: Api) -> None:
+    """Without email the confirmation cannot be sent: the request says so
+    and creates no pending change. The permission checks come first."""
+    api = api_without_email
+    alice = session_for(api, ALICE)
+    session_for(api, BOB)
+    admin = session_for(api, ADMIN_EMAIL)
+    api.smtp_release.set()
+    assert change_email(api, alice, BOB, CAROL)[0] == 403
+    status, res = change_email(api, admin, BOB, CAROL)
+    assert status == 503
+    assert "email is not configured" in res
+    assert not stored_email_changes(api.user_mng)
+    time.sleep(0.1)
+    assert not api.mails
+    assert set(api.user_mng.list_users()) == {ADMIN_EMAIL, ALICE, BOB}
 
 
 def test_change_email_endpoint(api: Api) -> None:
@@ -678,7 +1040,7 @@ def test_change_email_endpoint(api: Api) -> None:
     assert res["task_id"] == task_id.to_parseable()
 
     admin = session_for(api, ADMIN_EMAIL)
-    assert change_email(api, admin, BOB, CAROL)[1]["changed"]
+    change_and_confirm(api, admin, BOB, CAROL)
 
     # logged out; only the new email logs in, with the same password
     assert not is_logged_in(api, bob)

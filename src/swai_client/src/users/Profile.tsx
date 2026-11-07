@@ -681,8 +681,10 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
       return;
     }
     const input = window.prompt(
-      `New email for ${selectedUser}? They will be logged out everywhere. ` +
-        'Their worker bees have to use the new email from then on.',
+      `New email for ${selectedUser}? A confirmation link is sent to the ` +
+        'new address and a notice to the old one. The email changes once ' +
+        'the link is used: then they are logged out everywhere and their ' +
+        'worker bees have to use the new email.',
       `${selectedUser}`,
     );
     const newEmail = input?.trim() as UserEmail | undefined;
@@ -693,26 +695,19 @@ class Profile extends PureComponent<ProfileProps, ProfileState> {
       (email) =>
         new Promise((resolve, reject) => {
           userActions
-            .changeEmail(email, newEmail, (changed) => {
-              if (changed) {
-                this.setState(({ users }) => ({
-                  users: users.map((userEntry) =>
-                    userEntry.email === email
-                      ? { ...userEntry, email: newEmail }
-                      : userEntry,
-                  ),
-                  selectedUser: newEmail,
-                }));
-              }
+            .changeEmail(email, newEmail, (sent) => {
+              // NOTE: nothing changes until the link is used
               resolve(
-                changed
-                  ? `Changed ${email} to ${newEmail}.`
+                sent
+                  ? `Sent a confirmation link to ${newEmail} and a notice ` +
+                      `to ${email}. The email changes to ${newEmail} once ` +
+                      'the link is used.'
                   : `${newEmail} is taken (or ${email} does not exist).`,
               );
             })
             .catch(reject);
         }),
-      'Could not change the email',
+      'Could not request the email change',
     );
   };
 

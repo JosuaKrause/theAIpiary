@@ -19,7 +19,9 @@ An account is stored under its account key (see `derive_account_key`):
 `hash_token`), and `cooldown:<key>`. The emails point to their account
 through `email:<hash of the email>`, the user ids through `uid:<user id>`
 (which keeps user ids unique), and the worker token is `worker:<user id>`.
-Reset tokens are `reset:<hash of the token>` and hold the email.
+Reset tokens are `reset:<hash of the token>` and hold the email. A pending
+email change is `change:<key>` (the hash of its token) and `change_to:<key>`
+(the new email), both expiring.
 """
 import uuid
 from collections.abc import Iterable
@@ -38,6 +40,8 @@ from swai_server.system.user.manager import (
     as_capability,
     derive_account_key,
     derive_user_id,
+    EmailChange,
+    EmailChangeToken,
     hash_token,
     HashPassword,
     random_account_key,
@@ -77,6 +81,8 @@ class RedisUserManager(UserManager):
         self._generate_reset_token = self._generate_reset_token_script()
         self._delete_user = self._delete_user_script()
         self._change_email = self._change_email_script()
+        self._request_email_change = self._request_email_change_script()
+        self._take_email_change = self._take_email_change_script()
         self.migrate()
 
     # *** scripts ***
@@ -150,6 +156,8 @@ class RedisUserManager(UserManager):
         worker = RedisVar(ctx.add_key("worker"))
         email_key = RedisVar(ctx.add_key("email"))
         uid = RedisVar(ctx.add_key("uid"))
+        change = RedisVar(ctx.add_key("change"))
+        change_to = RedisVar(ctx.add_key("change_to"))
         email = ctx.add_arg("email")
         res = ctx.add_local(False)
         b_then, _ = ctx.if_(info.hget("email").eq_(email))
@@ -160,6 +168,8 @@ class RedisUserManager(UserManager):
         b_then.add(worker.delete())
         b_then.add(email_key.delete())
         b_then.add(uid.delete())
+        b_then.add(change.delete())
+        b_then.add(change_to.delete())
         b_then.add(res.assign(True))
         ctx.set_return_value(res)
         return self._redis.register_script(ctx)
@@ -171,6 +181,8 @@ class RedisUserManager(UserManager):
         new_key = RedisVar(ctx.add_key("new"))
         sess = RedisVar(ctx.add_key("sess"))
         cooldown = RedisVar(ctx.add_key("cooldown"))
+        change = RedisVar(ctx.add_key("change"))
+        change_to = RedisVar(ctx.add_key("change_to"))
         email = ctx.add_arg("email")
         new_email = ctx.add_arg("new_email")
         account_key = ctx.add_arg("account_key")
@@ -184,7 +196,46 @@ class RedisUserManager(UserManager):
         b_then.add(info.hset({"email": new_email}))
         b_then.add(sess.delete())
         b_then.add(cooldown.delete())
+        b_then.add(change.delete())
+        b_then.add(change_to.delete())
         b_then.add(res.assign(True))
+        ctx.set_return_value(res)
+        return self._redis.register_script(ctx)
+
+    def _request_email_change_script(self) -> ExecFunction:
+        ctx = FnContext()
+        info = RedisHash(ctx.add_key("info"))
+        new_key = RedisVar(ctx.add_key("new"))
+        change = RedisVar(ctx.add_key("change"))
+        change_to = RedisVar(ctx.add_key("change_to"))
+        email = ctx.add_arg("email")
+        new_email = ctx.add_arg("new_email")
+        token_hash = ctx.add_arg("token_hash")
+        expire_ms = ctx.add_arg("expire_ms")
+        res = ctx.add_local(False)
+        # NOTE: the email is checked in the same step so that a pending change
+        # always belongs to the account's current email: changing the email
+        # (or deleting the account) drops it in one step as well. the new
+        # email is checked again when the change is confirmed
+        b_then, _ = ctx.if_(
+            info.hget("email").eq_(email).and_(new_key.exists().eq_(0)))
+        # NOTE: overwriting replaces a pending change (and its token)
+        b_then.add(change.redis_fn("set", token_hash, "PX", expire_ms))
+        b_then.add(change_to.redis_fn("set", new_email, "PX", expire_ms))
+        b_then.add(res.assign(True))
+        ctx.set_return_value(res)
+        return self._redis.register_script(ctx)
+
+    def _take_email_change_script(self) -> ExecFunction:
+        ctx = FnContext()
+        change = RedisVar(ctx.add_key("change"))
+        change_to = RedisVar(ctx.add_key("change_to"))
+        token_hash = ctx.add_arg("token_hash")
+        res = ctx.add_local("")
+        b_then, _ = ctx.if_(change.get_value().eq_(token_hash))
+        b_then.add(res.assign(change_to.get_value()))
+        b_then.add(change.delete())
+        b_then.add(change_to.delete())
         ctx.set_return_value(res)
         return self._redis.register_script(ctx)
 
@@ -223,6 +274,14 @@ class RedisUserManager(UserManager):
         return f"{cls._key_pw_reset_prefix()}{hash_token(reset_token)}"
 
     @staticmethod
+    def _key_email_change(account_key: AccountKey) -> str:
+        return f"change:{account_key}"
+
+    @staticmethod
+    def _key_email_change_to(account_key: AccountKey) -> str:
+        return f"change_to:{account_key}"
+
+    @staticmethod
     def _key_worker(user_id: UserId) -> str:
         return f"worker:{user_id.to_parseable()}"
 
@@ -232,6 +291,12 @@ class RedisUserManager(UserManager):
 
     @staticmethod
     def _session_token(account_key: AccountKey) -> SessionToken:
+        return f"{account_key}{uuid.uuid4().hex}"
+
+    @staticmethod
+    def _email_change_token(account_key: AccountKey) -> EmailChangeToken:
+        # NOTE: like a session token the token starts with the account key so
+        # that the pending change can be found without an index
         return f"{account_key}{uuid.uuid4().hex}"
 
     @staticmethod
@@ -364,6 +429,8 @@ class RedisUserManager(UserManager):
                 "worker": self._key_worker(ids["user_id"]),
                 "email": self._key_email(email),
                 "uid": self._key_uid(ids["user_id"]),
+                "change": self._key_email_change(account_key),
+                "change_to": self._key_email_change_to(account_key),
             },
             args={
                 "email": email.get(),
@@ -384,6 +451,8 @@ class RedisUserManager(UserManager):
                 "new": self._key_email(new_email),
                 "sess": self._key_session(account_key),
                 "cooldown": self._key_pw_cooldown(account_key),
+                "change": self._key_email_change(account_key),
+                "change_to": self._key_email_change_to(account_key),
             },
             args={
                 "email": email.get(),
@@ -395,6 +464,54 @@ class RedisUserManager(UserManager):
         # NOTE: a reset link sent to the old address must not work anymore
         self._remove_reset_tokens(email)
         return True
+
+    def do_request_email_change(
+            self, email: UName, new_email: UName) -> EmailChangeToken | None:
+        account_key = self._account_key(email)
+        if account_key is None or account_key == self._admin_key:
+            return None
+        token = self._email_change_token(account_key)
+        res = self._request_email_change(
+            keys={
+                "info": self._key_info(account_key),
+                "new": self._key_email(new_email),
+                "change": self._key_email_change(account_key),
+                "change_to": self._key_email_change_to(account_key),
+            },
+            args={
+                "email": email.get(),
+                "new_email": new_email.get(),
+                "token_hash": hash_token(token),
+                "expire_ms": int(self.email_change_expire() * 1000.0),
+            })
+        if not res:
+            return None
+        return token
+
+    def take_email_change(self, token: EmailChangeToken) -> EmailChange | None:
+        account_key = self._extract_account_key(token)
+        if not account_key or account_key == self._admin_key:
+            return None
+        # NOTE: a pending change belongs to the account's current email (see
+        # _request_email_change_script): if the email changes after it is
+        # read here the change is gone and the script finds nothing
+        email = self._redis.hget(self._key_info(account_key), "email")
+        if email is None:
+            return None
+        new_email = self._take_email_change(
+            keys={
+                "change": self._key_email_change(account_key),
+                "change_to": self._key_email_change_to(account_key),
+            },
+            args={
+                "token_hash": hash_token(token),
+            })
+        if not new_email:
+            return None
+        return {
+            "email": UName(email),
+            "new_email": UName(f"{new_email}"),
+        }
 
     def _remove_reset_tokens(self, email: UName) -> None:
         # NOTE: reset tokens are only found by token. there are few of them

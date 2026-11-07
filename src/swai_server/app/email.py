@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import html
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -18,7 +19,11 @@ from typing import TypedDict
 
 from scattermind.system.names import UName
 
-from swai_server.system.user.manager import ResetToken, UserInfo
+from swai_server.system.user.manager import (
+    EmailChangeToken,
+    ResetToken,
+    UserInfo,
+)
 
 
 EmailConfig = TypedDict('EmailConfig', {
@@ -257,5 +262,201 @@ def send_password_reset(
     send_email(
         config,
         recipient_email=user["email"].get(),
+        subject=subject,
+        message=message)
+
+
+def confirm_email_link(config: EmailConfig, token: EmailChangeToken) -> str:
+    return f"{config['own_url']}/confirm-email?token={token}#"
+
+
+def mailto_str(email: str, name: str) -> str:
+    return (
+        f"<a href=\"mailto:{html.escape(email)}\">{html.escape(name)}</a>")
+
+
+def hours_str(seconds: float) -> str:
+    hours = max(1, round(seconds / 3600.0))
+    return f"{hours} hour{'' if hours == 1 else 's'}"
+
+
+EMAIL_CHANGE_CONFIRM_SUBJECT = "The [app_name] - Confirm your new email"
+EMAIL_CHANGE_CONFIRM_EMAIL = """
+<p>
+Hello [user_name]!
+</p>
+<p>
+[requester] asked to change the email of your [app] account from
+[old_email] to this address. To confirm the change, click the link below:
+</p>
+<p>
+<a href="[confirm_link]">[confirm_link]</a>
+</p>
+<p>
+Afterwards you log in with this address and your current password, and your
+worker bees have to use this address as well. The link expires in [expires].
+</p>
+<p>
+If you did not expect this email, ignore it: nothing changes without the
+confirmation.
+</p>
+<p>
+Best regards,<br/>
+The [app_name]!
+</p>
+"""
+
+
+EMAIL_CHANGE_NOTICE_SUBJECT = "The [app_name] - Email change requested"
+EMAIL_CHANGE_NOTICE_EMAIL = """
+<p>
+Hello [user_name]!
+</p>
+<p>
+[requester] asked to change the email of your [app] account from this
+address to [new_email]. A confirmation link was sent there; the email changes
+once the link is used.
+</p>
+<p>
+If you do not want this change, contact [requester] before then.
+</p>
+<p>
+Best regards,<br/>
+The [app_name]!
+</p>
+"""
+
+
+EMAIL_CHANGED_SUBJECT = "The [app_name] - Your email was changed"
+EMAIL_CHANGED_EMAIL = """
+<p>
+Hello [user_name]!
+</p>
+<p>
+The email of your [app] account was changed from this address to
+[new_email]. You were logged out everywhere: log in with [new_email] and
+your password from now on.
+</p>
+<p>
+If you did not expect this, contact us at [contact].
+</p>
+<p>
+Best regards,<br/>
+The [app_name]!
+</p>
+"""
+
+
+def send_email_change_confirm(
+        config: EmailConfig,
+        *,
+        user: UserInfo,
+        new_email: UName,
+        requester: UserInfo,
+        token: EmailChangeToken,
+        expires_in: float) -> None:
+    """
+    Sends the confirmation link of a pending email change to the new address.
+
+    Args:
+        config (EmailConfig): The email configuration.
+        user (UserInfo): The account (with its current email).
+        new_email (UName): The new email.
+        requester (UserInfo): Who asked for the change.
+        token (EmailChangeToken): The token of the pending change.
+        expires_in (float): How long the token is valid, in seconds.
+    """
+    subject = format_email(
+        EMAIL_CHANGE_CONFIRM_SUBJECT,
+        {
+            "app_name": APP_NAME,
+        })
+    message = format_email(
+        EMAIL_CHANGE_CONFIRM_EMAIL,
+        {
+            "user_name": html.escape(user["display_name"]),
+            "requester": mailto_str(
+                requester["email"].get(), requester["display_name"]),
+            "old_email": html.escape(user["email"].get()),
+            "confirm_link": confirm_email_link(config, token),
+            "expires": hours_str(expires_in),
+            "app": app_str(config),
+            "app_name": APP_NAME,
+        })
+    send_email(
+        config,
+        recipient_email=new_email.get(),
+        subject=subject,
+        message=message)
+
+
+def send_email_change_notice(
+        config: EmailConfig,
+        *,
+        user: UserInfo,
+        new_email: UName,
+        requester: UserInfo) -> None:
+    """
+    Tells the current address of an account that a change of its email was
+    requested and whom to contact to object.
+
+    Args:
+        config (EmailConfig): The email configuration.
+        user (UserInfo): The account (with its current email).
+        new_email (UName): The new email.
+        requester (UserInfo): Who asked for the change.
+    """
+    subject = format_email(
+        EMAIL_CHANGE_NOTICE_SUBJECT,
+        {
+            "app_name": APP_NAME,
+        })
+    message = format_email(
+        EMAIL_CHANGE_NOTICE_EMAIL,
+        {
+            "user_name": html.escape(user["display_name"]),
+            "requester": mailto_str(
+                requester["email"].get(), requester["display_name"]),
+            "new_email": html.escape(new_email.get()),
+            "app": app_str(config),
+            "app_name": APP_NAME,
+        })
+    send_email(
+        config,
+        recipient_email=user["email"].get(),
+        subject=subject,
+        message=message)
+
+
+def send_email_changed(
+        config: EmailConfig,
+        *,
+        user: UserInfo,
+        old_email: UName) -> None:
+    """
+    Tells the former address of an account that its email was changed.
+
+    Args:
+        config (EmailConfig): The email configuration.
+        user (UserInfo): The account (with its new email).
+        old_email (UName): The former email.
+    """
+    subject = format_email(
+        EMAIL_CHANGED_SUBJECT,
+        {
+            "app_name": APP_NAME,
+        })
+    message = format_email(
+        EMAIL_CHANGED_EMAIL,
+        {
+            "user_name": html.escape(user["display_name"]),
+            "new_email": html.escape(user["email"].get()),
+            "contact": mailto_str(config["own_email"], config["own_email"]),
+            "app": app_str(config),
+            "app_name": APP_NAME,
+        })
+    send_email(
+        config,
+        recipient_email=old_email.get(),
         subject=subject,
         message=message)

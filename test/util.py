@@ -18,9 +18,14 @@ from collections.abc import Iterable, Iterator
 from typing import Any, cast, TYPE_CHECKING, TypeVar
 
 import pytest
+import sqlalchemy as sa
 from redipy import Redis, RedisConfig
 from scattermind.system.names import UName
 from scattermind.system.util import to_bool
+
+from swai_server.system.user.db import DBUserManager, EMAIL_CHANGES
+from swai_server.system.user.manager import UserManager
+from swai_server.system.user.redis import RedisUserManager
 
 
 if TYPE_CHECKING:
@@ -172,3 +177,32 @@ def strict_memory_redis(*_args: Any, **_kwargs: Any) -> Redis:
         Redis: A new, empty in-memory redis.
     """
     return cast(Redis, StrictDelete(Redis("memory")))
+
+
+def stored_email_changes(user_mng: UserManager) -> list[str]:
+    """
+    The token hashes the store keeps for pending email changes.
+
+    Args:
+        user_mng (UserManager): The user manager.
+
+    Returns:
+        list[str]: The stored token hashes, sorted.
+    """
+    # pylint: disable=protected-access
+    if isinstance(user_mng, RedisUserManager):
+        redis = user_mng._redis
+        res: list[str] = []
+        for key in redis.keys(match="change:*", block=False):
+            value = redis.get_value(key)
+            if value is None:
+                # NOTE: the memory runtime lists expired keys
+                continue
+            # the new email is kept next to it, for the same account
+            assert redis.get_value(f"change_to:{key.removeprefix('change:')}")
+            res.append(value)
+        return sorted(res)
+    assert isinstance(user_mng, DBUserManager)
+    with user_mng._engine.connect() as conn:
+        return sorted(conn.execute(
+            sa.select(EMAIL_CHANGES.c.token_hash)).scalars())
